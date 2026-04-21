@@ -20,6 +20,7 @@ export interface GatewayConfig {
   providers: Record<string, ProviderConfig>;
   defaultProvider: string;
   logLevel: 'debug' | 'info' | 'warn' | 'error';
+  aliases?: Record<string, string>;
 }
 
 // ─── Anthropic API Types (incoming from Claude Code) ───
@@ -248,4 +249,5 @@ export interface Provider {
 export interface RouteResult {
   provider: Provider;
   resolvedModel: string;
+  originalModel: string;
 }

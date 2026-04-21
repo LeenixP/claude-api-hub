@@ -7,6 +7,25 @@ import { AnthropicRequest, GatewayConfig, ProviderConfig } from './providers/typ
 import { dashboardHtml } from './dashboard.js';
 import { getConfigPath, loadConfig } from './config.js';
 
+interface RequestLogEntry {
+  timestamp: string;
+  originalModel: string;
+  resolvedModel: string;
+  provider: string;
+  status: number;
+  durationMs: number;
+}
+
+const requestLog: RequestLogEntry[] = [];
+const MAX_LOG_ENTRIES = 100;
+
+function addRequestLog(entry: RequestLogEntry): void {
+  requestLog.push(entry);
+  if (requestLog.length > MAX_LOG_ENTRIES) {
+    requestLog.shift();
+  }
+}
+
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
@@ -274,8 +293,45 @@ export function createServer(router: ModelRouter, config: GatewayConfig): http.S
       return;
     }
 
+    // GET /api/requests — return recent request log
+    if (req.method === 'GET' && pathname === '/api/requests') {
+      sendJson(res, 200, requestLog);
+      return;
+    }
+
+    // GET /api/aliases — return current aliases
+    if (req.method === 'GET' && pathname === '/api/aliases') {
+      sendJson(res, 200, config.aliases ?? {});
+      return;
+    }
+
+    // PUT /api/aliases — update aliases and save to config
+    if (req.method === 'PUT' && pathname === '/api/aliases') {
+      let bodyStr: string;
+      try {
+        bodyStr = await readBody(req);
+      } catch {
+        sendError(res, 400, 'invalid_request_error', 'Failed to read request body');
+        return;
+      }
+
+      let newAliases: Record<string, string>;
+      try {
+        newAliases = JSON.parse(bodyStr);
+      } catch {
+        sendError(res, 400, 'invalid_request_error', 'Invalid JSON body');
+        return;
+      }
+
+      config.aliases = newAliases;
+      saveConfig(config);
+      sendJson(res, 200, config.aliases);
+      return;
+    }
+
     // Messages endpoint
     if (req.method === 'POST' && pathname === '/v1/messages') {
+      const startTime = Date.now();
       let bodyStr: string;
       try {
         bodyStr = await readBody(req);
@@ -305,7 +361,7 @@ export function createServer(router: ModelRouter, config: GatewayConfig): http.S
         return;
       }
 
-      const { provider } = routeResult;
+      const { provider, originalModel, resolvedModel } = routeResult;
       let built: { url: string; headers: Record<string, string>; body: string };
       try {
         built = provider.buildRequest(anthropicReq);
@@ -328,8 +384,26 @@ export function createServer(router: ModelRouter, config: GatewayConfig): http.S
           built.headers,
           built.body,
           (chunk) => res.write(chunk),
-          () => res.end(),
+          () => {
+            addRequestLog({
+              timestamp: new Date().toISOString(),
+              originalModel,
+              resolvedModel,
+              provider: provider.name,
+              status: 200,
+              durationMs: Date.now() - startTime,
+            });
+            res.end();
+          },
           (err) => {
+            addRequestLog({
+              timestamp: new Date().toISOString(),
+              originalModel,
+              resolvedModel,
+              provider: provider.name,
+              status: 500,
+              durationMs: Date.now() - startTime,
+            });
             res.write(`data: ${JSON.stringify({ type: 'error', error: { type: 'api_error', message: err.message } })}\n\n`);
             res.end();
           },
@@ -342,9 +416,26 @@ export function createServer(router: ModelRouter, config: GatewayConfig): http.S
       try {
         upstream = await forwardRequest(built.url, built.headers, built.body);
       } catch (err) {
+        addRequestLog({
+          timestamp: new Date().toISOString(),
+          originalModel,
+          resolvedModel,
+          provider: provider.name,
+          status: 502,
+          durationMs: Date.now() - startTime,
+        });
         sendError(res, 502, 'api_error', `Upstream request failed: ${(err as Error).message}`);
         return;
       }
+
+      addRequestLog({
+        timestamp: new Date().toISOString(),
+        originalModel,
+        resolvedModel,
+        provider: provider.name,
+        status: upstream.status,
+        durationMs: Date.now() - startTime,
+      });
 
       if (upstream.status !== 200) {
         res.writeHead(upstream.status, { 'Content-Type': 'application/json', ...CORS_HEADERS });

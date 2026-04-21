@@ -27,7 +27,7 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  const router = createRouter(providers, config.defaultProvider);
+  const router = createRouter(providers, config.defaultProvider, config.aliases ?? {});
   const server = createServer(router, config);
 
   const totalModels = providers.reduce((sum, p) => sum + p.config.models.length, 0);

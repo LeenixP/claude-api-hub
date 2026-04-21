@@ -215,7 +215,7 @@ a:hover { text-decoration: underline; }
 }
 .log-header {
   display: grid;
-  grid-template-columns: 140px 1fr 80px 80px;
+  grid-template-columns: 120px 1fr 16px 1fr 100px 60px 70px;
   gap: 8px;
   padding: 8px 12px;
   color: #8b949e;
@@ -224,7 +224,7 @@ a:hover { text-decoration: underline; }
 }
 .log-row {
   display: grid;
-  grid-template-columns: 140px 1fr 80px 80px;
+  grid-template-columns: 120px 1fr 16px 1fr 100px 60px 70px;
   gap: 8px;
   padding: 8px 12px;
   font-size: 0.82rem;
@@ -288,6 +288,62 @@ a:hover { text-decoration: underline; }
 .code-block.copied::after { content: "copied!"; color: #3fb950; }
 .code-blocks { display: flex; flex-direction: column; gap: 12px; }
 .code-label { color: #8b949e; font-size: 0.82rem; margin-bottom: 4px; }
+.alias-table { width: 100%; display: flex; flex-direction: column; gap: 8px; }
+.alias-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid #21262d; }
+.alias-row input, .alias-row select {
+  background: #0f1117;
+  border: 1px solid #30363d;
+  border-radius: 8px;
+  color: #e6edf3;
+  padding: 6px 10px;
+  font-size: 0.85rem;
+  outline: none;
+  transition: border-color 0.2s;
+}
+.alias-row input:focus, .alias-row select:focus { border-color: #58a6ff; }
+.alias-row select option { background: #161b22; }
+.alias-row input { flex: 1; }
+.alias-row select { flex: 2; }
+.arrow { color: #8b949e; font-size: 1rem; flex-shrink: 0; }
+.alias-actions { display: flex; gap: 8px; margin-top: 12px; }
+.aliased { background: rgba(210, 153, 34, 0.15); color: #d29922; border-radius: 4px; padding: 1px 5px; }
+.quick-cmd {
+  background: #0f1117;
+  border: 1px solid #30363d;
+  border-radius: 8px;
+  padding: 12px 16px;
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 0.82rem;
+  color: #e6edf3;
+  white-space: pre;
+  overflow-x: auto;
+  cursor: pointer;
+  position: relative;
+  transition: border-color 0.2s;
+  margin-bottom: 8px;
+}
+.quick-cmd:hover { border-color: #58a6ff; }
+.quick-cmd::after {
+  content: "click to copy";
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  color: #8b949e;
+  font-size: 0.72rem;
+}
+.quick-cmd.copied::after { content: "copied!"; color: #3fb950; }
+.alias-summary {
+  background: rgba(88, 166, 255, 0.05);
+  border: 1px solid rgba(88, 166, 255, 0.2);
+  border-radius: 10px;
+  padding: 16px 20px;
+  margin-top: 16px;
+}
+.alias-summary-title { color: #58a6ff; font-size: 0.85rem; font-weight: 600; margin-bottom: 10px; }
+.alias-summary-row { display: flex; gap: 8px; align-items: center; font-size: 0.85rem; margin-bottom: 6px; }
+.alias-summary-key { font-family: "SFMono-Regular", Consolas, monospace; color: #bc8cff; min-width: 60px; }
+.alias-summary-val { font-family: "SFMono-Regular", Consolas, monospace; color: #3fb950; }
+.alias-summary-note { color: #8b949e; font-size: 0.78rem; margin-top: 10px; }
 .modal-overlay {
   display: none;
   position: fixed;
@@ -344,7 +400,7 @@ a:hover { text-decoration: underline; }
 @media (max-width: 768px) {
   .stats-bar { grid-template-columns: repeat(2, 1fr); }
   .form-row { flex-direction: column; }
-  .log-header, .log-row { grid-template-columns: 100px 1fr 60px 80px; }
+  .log-header, .log-row { grid-template-columns: 90px 1fr 14px 1fr 70px 50px 60px; font-size: 0.72rem; }
 }
 `;
 
@@ -421,23 +477,26 @@ function runTest() {
       document.getElementById('meta-status').textContent = status;
       document.getElementById('meta-tokens').textContent = tokens;
       metaBar.style.display = 'flex';
-      addLog(model, status, ms);
+      addLog(model, model, '', status, ms);
     });
   }).catch(function(err) {
     var ms = Date.now() - t0;
     respArea.textContent = 'Error: ' + err.message;
-    addLog(model, 'ERR', ms);
+    addLog(model, model, '', 'ERR', ms);
   });
 }
 
-function addLog(model, status, ms) {
+function addLog(originalModel, resolvedModel, provider, status, ms) {
   requestCount++;
   document.getElementById('req-count').textContent = requestCount;
   var entry = {
     time: new Date().toLocaleTimeString(),
-    model: model,
+    original: originalModel,
+    resolved: resolvedModel,
+    provider: provider || '',
     status: status,
-    ms: ms
+    ms: ms,
+    aliased: originalModel !== resolvedModel
   };
   logEntries.unshift(entry);
   if (logEntries.length > 50) logEntries.pop();
@@ -453,13 +512,42 @@ function renderLog() {
   }
   body.innerHTML = logEntries.map(function(e) {
     var statusClass = (e.status === 200 || e.status === '200') ? 'ok' : 'err';
+    var resolvedHtml = e.aliased
+      ? '<span class="aliased" title="alias applied">' + e.resolved + '</span>'
+      : '<span style="font-family:monospace;font-size:0.8rem">' + e.resolved + '</span>';
     return '<div class="log-row">' +
       '<span>' + e.time + '</span>' +
-      '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:monospace;font-size:0.8rem">' + e.model + '</span>' +
+      '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:monospace;font-size:0.8rem">' + e.original + '</span>' +
+      '<span style="color:#8b949e">→</span>' +
+      resolvedHtml +
+      '<span style="color:#8b949e;font-size:0.78rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + e.provider + '</span>' +
       '<span><span class="badge ' + statusClass + '">' + e.status + '</span></span>' +
       '<span>' + e.ms + 'ms</span>' +
       '</div>';
   }).join('');
+}
+
+function refreshRequestLog() {
+  fetch('/api/requests').then(function(r) {
+    if (!r.ok) return;
+    return r.json();
+  }).then(function(data) {
+    if (!data || !Array.isArray(data)) return;
+    logEntries = data.slice(0, 50).map(function(e) {
+      return {
+        time: e.time || new Date(e.timestamp).toLocaleTimeString(),
+        original: e.originalModel || e.model || '',
+        resolved: e.resolvedModel || e.model || '',
+        provider: e.provider || '',
+        status: e.status,
+        ms: e.duration || e.ms || 0,
+        aliased: (e.originalModel && e.resolvedModel && e.originalModel !== e.resolvedModel)
+      };
+    });
+    requestCount = logEntries.length;
+    document.getElementById('req-count').textContent = requestCount;
+    renderLog();
+  }).catch(function() {});
 }
 
 function copyText(el) {
@@ -530,10 +618,105 @@ function editProvider(name) {
   showAddProvider();
 }
 
+// --- Alias functions ---
+var allModelOptions = (function() {
+  var opts = [];
+  providers.forEach(function(p) {
+    p.config.models.forEach(function(m) {
+      opts.push({ value: m, label: m + ' (' + p.name + ')' });
+    });
+  });
+  return opts;
+})();
+
+function buildModelSelect(selectedValue) {
+  return '<select>' + allModelOptions.map(function(o) {
+    return '<option value="' + o.value + '"' + (o.value === selectedValue ? ' selected' : '') + '>' + o.label + '</option>';
+  }).join('') + '</select>';
+}
+
+function addAliasRow(source, target) {
+  var table = document.getElementById('alias-table');
+  var row = document.createElement('div');
+  row.className = 'alias-row';
+  row.innerHTML =
+    '<input type="text" placeholder="source model (e.g. claude-3-haiku)" value="' + (source || '') + '" />' +
+    '<span class="arrow">→</span>' +
+    buildModelSelect(target || '') +
+    '<button class="btn-small danger" onclick="removeAliasRow(this)">Remove</button>';
+  table.appendChild(row);
+}
+
+function removeAliasRow(btn) {
+  btn.closest('.alias-row').remove();
+}
+
+function loadAliases() {
+  fetch('/api/aliases').then(function(r) {
+    if (!r.ok) return;
+    return r.json();
+  }).then(function(data) {
+    if (!data) return;
+    var table = document.getElementById('alias-table');
+    table.innerHTML = '';
+    var aliases = data.aliases || data;
+    if (typeof aliases === 'object' && !Array.isArray(aliases)) {
+      Object.keys(aliases).forEach(function(src) {
+        addAliasRow(src, aliases[src]);
+      });
+    } else if (Array.isArray(aliases)) {
+      aliases.forEach(function(a) { addAliasRow(a.source || a.from, a.target || a.to); });
+    }
+    updateAliasSummary(aliases);
+  }).catch(function() {});
+}
+
+function saveAliases() {
+  var rows = document.querySelectorAll('#alias-table .alias-row');
+  var aliases = {};
+  rows.forEach(function(row) {
+    var src = row.querySelector('input').value.trim();
+    var tgt = row.querySelector('select').value;
+    if (src && tgt) aliases[src] = tgt;
+  });
+  fetch('/api/aliases', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ aliases: aliases })
+  }).then(function(r) {
+    if (r.ok) {
+      updateAliasSummary(aliases);
+      var btn = document.getElementById('save-aliases-btn');
+      if (btn) { btn.textContent = 'Saved!'; setTimeout(function() { btn.textContent = 'Save Aliases'; }, 1500); }
+    } else {
+      alert('Failed to save aliases');
+    }
+  }).catch(function(err) { alert('Error: ' + err.message); });
+}
+
+function updateAliasSummary(aliases) {
+  var keys = ['haiku', 'sonnet', 'opus'];
+  keys.forEach(function(k) {
+    var el = document.getElementById('alias-sum-' + k);
+    if (!el) return;
+    var found = '';
+    if (aliases && typeof aliases === 'object' && !Array.isArray(aliases)) {
+      Object.keys(aliases).forEach(function(src) {
+        if (src.toLowerCase().indexOf(k) !== -1) found = aliases[src];
+      });
+    }
+    el.textContent = found || '(not set)';
+    el.style.color = found ? '#3fb950' : '#8b949e';
+  });
+}
+
 document.addEventListener('DOMContentLoaded', function() {
   checkHealth();
   setInterval(checkHealth, 30000);
   renderLog();
+  loadAliases();
+  refreshRequestLog();
+  setInterval(refreshRequestLog, 5000);
   var input = document.getElementById('test-input');
   if (input) {
     input.addEventListener('keydown', function(e) {
@@ -619,6 +802,14 @@ const msg = await client.messages.create({
 });
 console.log(msg.content[0].text);`;
 
+  const quickLaunchRows = providers.map(p => {
+    const cmd = `claude --model ${p.config.defaultModel} -p "your prompt"`;
+    return `<div>
+          <div class="code-label">${p.name}</div>
+          <pre class="quick-cmd" onclick="copyText(this)">${cmd}</pre>
+        </div>`;
+  }).join('');
+
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -688,11 +879,44 @@ console.log(msg.content[0].text);`;
   </div>
 
   <div class="section">
+    <div class="section-title">Model Aliases</div>
+    <div class="panel">
+      <div id="alias-table" class="alias-table"></div>
+      <div class="alias-actions">
+        <button class="btn secondary" onclick="addAliasRow('','')">+ Add Alias</button>
+        <button class="btn" id="save-aliases-btn" onclick="saveAliases()">Save Aliases</button>
+      </div>
+      <div class="alias-summary">
+        <div class="alias-summary-title">Current Alias Config</div>
+        <div class="alias-summary-row">
+          <span class="alias-summary-key">haiku</span>
+          <span style="color:#8b949e">→</span>
+          <span class="alias-summary-val" id="alias-sum-haiku">(not set)</span>
+        </div>
+        <div class="alias-summary-row">
+          <span class="alias-summary-key">sonnet</span>
+          <span style="color:#8b949e">→</span>
+          <span class="alias-summary-val" id="alias-sum-sonnet">(not set)</span>
+        </div>
+        <div class="alias-summary-row">
+          <span class="alias-summary-key">opus</span>
+          <span style="color:#8b949e">→</span>
+          <span class="alias-summary-val" id="alias-sum-opus">(not set)</span>
+        </div>
+        <div class="alias-summary-note">OMC sub-agents using haiku/sonnet/opus will be automatically routed to these models.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
     <div class="section-title">Request Log</div>
     <div class="panel" style="padding:0">
       <div class="log-header">
         <span>Time</span>
-        <span>Model</span>
+        <span>Original Model</span>
+        <span></span>
+        <span>Resolved Model</span>
+        <span>Provider</span>
         <span>Status</span>
         <span>Duration</span>
       </div>
@@ -713,6 +937,10 @@ console.log(msg.content[0].text);`;
     <div class="section-title">Quick Start</div>
     <div class="panel">
       <div class="code-blocks">
+        <div>
+          <div class="code-label">Claude CLI — Quick Launch</div>
+          ${quickLaunchRows}
+        </div>
         <div>
           <div class="code-label">cURL</div>
           <pre class="code-block" onclick="copyText(this)" data-copy="${curlExample.replace(/"/g, '&quot;')}">${curlExample}</pre>

@@ -3,6 +3,11 @@
   "host": "0.0.0.0",
   "logLevel": "info",
   "defaultProvider": "claude",
+  "aliases": {
+    "claude-haiku-4-5": "claude-haiku-4-5",
+    "claude-sonnet-4-6": "claude-sonnet-4-6",
+    "claude-opus-4-6": "claude-opus-4-6"
+  },
   "providers": {
     "claude": {
       "name": "Claude (Anthropic)",
