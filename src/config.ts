@@ -1,6 +1,9 @@
-import { readFileSync } from 'fs';
-import { resolve } from 'path';
+import { readFileSync, existsSync } from 'fs';
+import { resolve, dirname } from 'path';
+import { fileURLToPath } from 'url';
 import { GatewayConfig, ProviderConfig } from './providers/types.js';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 function interpolateEnvVars(value: string): string {
   return value.replace(/\$\{([^}]+)\}/g, (_, varName) => {
@@ -50,7 +53,15 @@ function validateConfig(config: GatewayConfig): void {
 }
 
 export function loadConfig(configPath?: string): GatewayConfig {
-  const filePath = configPath ?? resolve(process.cwd(), 'config/providers.json');
+  const candidates = configPath ? [configPath] : [
+    resolve(process.cwd(), 'config/providers.json'),
+    resolve(__dirname, '../config/providers.json'),
+    resolve(__dirname, '../../config/providers.json'),
+  ];
+  const filePath = candidates.find(p => existsSync(p));
+  if (!filePath) {
+    throw new Error(`Config not found. Searched:\n${candidates.join('\n')}\nCreate config/providers.json or pass --config <path>.`);
+  }
   const raw = readFileSync(filePath, 'utf-8');
   const parsed = JSON.parse(raw);
   const config = interpolateConfig(parsed) as GatewayConfig;

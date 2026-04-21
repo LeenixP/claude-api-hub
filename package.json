@@ -1,6 +1,6 @@
 {
   "name": "claude-api-hub",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Multi-provider API gateway for Claude Code - routes requests to Claude/Kimi/MiniMax/GLM based on model ID",
   "type": "module",
   "main": "dist/index.js",
