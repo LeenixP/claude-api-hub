@@ -1,13 +1,15 @@
 import http from 'http';
 import https from 'https';
+import { writeFileSync } from 'fs';
 import { URL } from 'url';
 import { ModelRouter } from './router.js';
-import { AnthropicRequest } from './providers/types.js';
+import { AnthropicRequest, GatewayConfig, ProviderConfig } from './providers/types.js';
 import { dashboardHtml } from './dashboard.js';
+import { getConfigPath, loadConfig } from './config.js';
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+  'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-api-key, anthropic-version, anthropic-beta',
 };
 
@@ -28,6 +30,16 @@ function readBody(req: http.IncomingMessage): Promise<string> {
     req.on('end', () => resolve(Buffer.concat(chunks).toString('utf-8')));
     req.on('error', reject);
   });
+}
+
+function maskKey(key: string): string {
+  if (key.length <= 8) return '***';
+  return key.slice(0, 4) + '***' + key.slice(-4);
+}
+
+function saveConfig(config: GatewayConfig): void {
+  const path = getConfigPath();
+  writeFileSync(path, JSON.stringify(config, null, 2), 'utf-8');
 }
 
 function forwardRequest(
@@ -97,7 +109,7 @@ function forwardStream(
   req.end();
 }
 
-export function createServer(router: ModelRouter): http.Server {
+export function createServer(router: ModelRouter, config: GatewayConfig): http.Server {
   return http.createServer(async (req, res) => {
     // Handle CORS preflight
     if (req.method === 'OPTIONS') {
@@ -117,7 +129,6 @@ export function createServer(router: ModelRouter): http.Server {
       return;
     }
 
-
     // Health check
     if (req.method === 'GET' && pathname === '/health') {
       sendJson(res, 200, { status: 'ok', timestamp: new Date().toISOString() });
@@ -134,6 +145,132 @@ export function createServer(router: ModelRouter): http.Server {
         }
       }
       sendJson(res, 200, { object: 'list', data: models });
+      return;
+    }
+
+    // GET /api/config — return config with masked API keys
+    if (req.method === 'GET' && pathname === '/api/config') {
+      const masked: GatewayConfig = {
+        ...config,
+        providers: Object.fromEntries(
+          Object.entries(config.providers).map(([key, p]) => [
+            key,
+            { ...p, apiKey: maskKey(p.apiKey) },
+          ]),
+        ),
+      };
+      sendJson(res, 200, masked);
+      return;
+    }
+
+    // POST /api/config/providers — add a new provider
+    if (req.method === 'POST' && pathname === '/api/config/providers') {
+      let bodyStr: string;
+      try {
+        bodyStr = await readBody(req);
+      } catch {
+        sendError(res, 400, 'invalid_request_error', 'Failed to read request body');
+        return;
+      }
+
+      let body: Partial<ProviderConfig> & { name?: string; prefix?: string };
+      try {
+        body = JSON.parse(bodyStr);
+      } catch {
+        sendError(res, 400, 'invalid_request_error', 'Invalid JSON body');
+        return;
+      }
+
+      const { name, baseUrl, apiKey, models, defaultModel, enabled } = body;
+      if (!name || !baseUrl || !apiKey || !models || !defaultModel) {
+        sendError(res, 400, 'invalid_request_error', 'Missing required fields: name, baseUrl, apiKey, models, defaultModel');
+        return;
+      }
+      if (config.providers[name]) {
+        sendError(res, 409, 'conflict_error', `Provider "${name}" already exists`);
+        return;
+      }
+
+      const newProvider: ProviderConfig = {
+        name,
+        baseUrl,
+        apiKey,
+        models,
+        defaultModel,
+        enabled: enabled ?? true,
+      };
+      config.providers[name] = newProvider;
+      saveConfig(config);
+      sendJson(res, 201, { ...newProvider, apiKey: maskKey(newProvider.apiKey) });
+      return;
+    }
+
+    // PUT /api/config/providers/:name — update an existing provider
+    const putMatch = pathname.match(/^\/api\/config\/providers\/([^/]+)$/);
+    if (req.method === 'PUT' && putMatch) {
+      const providerName = decodeURIComponent(putMatch[1]);
+      if (!config.providers[providerName]) {
+        sendError(res, 404, 'not_found_error', `Provider "${providerName}" not found`);
+        return;
+      }
+
+      let bodyStr: string;
+      try {
+        bodyStr = await readBody(req);
+      } catch {
+        sendError(res, 400, 'invalid_request_error', 'Failed to read request body');
+        return;
+      }
+
+      let updates: Partial<ProviderConfig>;
+      try {
+        updates = JSON.parse(bodyStr);
+      } catch {
+        sendError(res, 400, 'invalid_request_error', 'Invalid JSON body');
+        return;
+      }
+
+      config.providers[providerName] = { ...config.providers[providerName], ...updates };
+      saveConfig(config);
+      const updated = config.providers[providerName];
+      sendJson(res, 200, { ...updated, apiKey: maskKey(updated.apiKey) });
+      return;
+    }
+
+    // DELETE /api/config/providers/:name — remove a provider
+    const deleteMatch = pathname.match(/^\/api\/config\/providers\/([^/]+)$/);
+    if (req.method === 'DELETE' && deleteMatch) {
+      const providerName = decodeURIComponent(deleteMatch[1]);
+      if (!config.providers[providerName]) {
+        sendError(res, 404, 'not_found_error', `Provider "${providerName}" not found`);
+        return;
+      }
+
+      delete config.providers[providerName];
+      saveConfig(config);
+      sendJson(res, 200, { deleted: providerName });
+      return;
+    }
+
+    // POST /api/config/reload — reload config from disk
+    if (req.method === 'POST' && pathname === '/api/config/reload') {
+      try {
+        const fresh = loadConfig(getConfigPath());
+        // Mutate config in place so the reference held by this closure stays current
+        Object.assign(config, fresh);
+        const masked: GatewayConfig = {
+          ...config,
+          providers: Object.fromEntries(
+            Object.entries(config.providers).map(([key, p]) => [
+              key,
+              { ...p, apiKey: maskKey(p.apiKey) },
+            ]),
+          ),
+        };
+        sendJson(res, 200, { reloaded: true, config: masked });
+      } catch (err) {
+        sendError(res, 500, 'api_error', `Reload failed: ${(err as Error).message}`);
+      }
       return;
     }
 

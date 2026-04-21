@@ -10,6 +10,8 @@ export interface ProviderConfig {
   models: string[];
   defaultModel: string;
   enabled: boolean;
+  prefix?: string | string[];
+  passthrough?: boolean;
 }
 
 export interface GatewayConfig {

@@ -1,13 +1,5 @@
 import { Provider, RouteResult } from './providers/types.js';
 
-const MODEL_PREFIX_MAP: Array<{ prefix: string; providerName: string }> = [
-  { prefix: 'claude-', providerName: 'claude' },
-  { prefix: 'kimi-', providerName: 'kimi' },
-  { prefix: 'minimax-', providerName: 'minimax' },
-  { prefix: 'MiniMax-', providerName: 'minimax' },
-  { prefix: 'glm-', providerName: 'glm' },
-];
-
 export class ModelRouter {
   private providers: Map<string, Provider> = new Map();
   private defaultProviderName: string;
@@ -21,17 +13,7 @@ export class ModelRouter {
   }
 
   route(model: string): RouteResult {
-    // Try prefix-based routing first
-    for (const { prefix, providerName } of MODEL_PREFIX_MAP) {
-      if (model.startsWith(prefix)) {
-        const provider = this.providers.get(providerName);
-        if (provider && provider.config.enabled) {
-          return { provider, resolvedModel: provider.resolveModel(model) };
-        }
-      }
-    }
-
-    // Try each provider's matchModel
+    // Use each provider's matchModel to find the right provider
     for (const provider of this.providers.values()) {
       if (provider.config.enabled && provider.matchModel(model)) {
         return { provider, resolvedModel: provider.resolveModel(model) };

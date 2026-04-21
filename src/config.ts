@@ -1,4 +1,4 @@
-import { readFileSync, existsSync } from 'fs';
+import { readFileSync, writeFileSync, existsSync } from 'fs';
 import { resolve, dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { homedir } from 'os';
@@ -53,6 +53,15 @@ function validateConfig(config: GatewayConfig): void {
   }
 }
 
+let resolvedConfigPath: string | null = null;
+
+export function getConfigPath(): string {
+  if (!resolvedConfigPath) {
+    throw new Error('Config not loaded yet. Call loadConfig() first.');
+  }
+  return resolvedConfigPath;
+}
+
 export function loadConfig(configPath?: string): GatewayConfig {
   const candidates = configPath ? [configPath] : [
     join(homedir(), '.claude-api-hub/providers.json'),
@@ -64,6 +73,7 @@ export function loadConfig(configPath?: string): GatewayConfig {
   if (!filePath) {
     throw new Error(`Config not found. Searched:\n${candidates.join('\n')}\nCreate config/providers.json or pass --config <path>.`);
   }
+  resolvedConfigPath = filePath;
   const raw = readFileSync(filePath, 'utf-8');
   const parsed = JSON.parse(raw);
   const config = interpolateConfig(parsed) as GatewayConfig;

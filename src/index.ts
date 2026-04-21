@@ -3,24 +3,22 @@ import { loadConfig } from './config.js';
 import { createRouter } from './router.js';
 import { createServer } from './server.js';
 import { Provider } from './providers/types.js';
+import { ClaudeProvider } from './providers/claude.js';
+import { GenericOpenAIProvider } from './providers/generic.js';
 
 async function main(): Promise<void> {
   const config = loadConfig();
 
-  // Dynamically import enabled providers
+  // Load enabled providers using a factory approach:
+  // - passthrough:true (or key === 'claude') → ClaudeProvider
+  // - everything else → GenericOpenAIProvider (works with any OpenAI-compatible API)
   const providers: Provider[] = [];
   for (const [key, providerConfig] of Object.entries(config.providers)) {
     if (!providerConfig.enabled) continue;
-    try {
-      const mod = await import(`./providers/${key}.js`);
-      const ProviderClass = mod.default ?? mod[Object.keys(mod)[0]];
-      if (typeof ProviderClass === 'function') {
-        providers.push(new ProviderClass(providerConfig));
-      } else {
-        console.warn(`[warn] Provider "${key}" module did not export a constructor, skipping`);
-      }
-    } catch {
-      console.warn(`[warn] Provider "${key}" not implemented yet, skipping`);
+    if (key === 'claude' || providerConfig.passthrough) {
+      providers.push(new ClaudeProvider(providerConfig));
+    } else {
+      providers.push(new GenericOpenAIProvider(providerConfig));
     }
   }
 
@@ -30,7 +28,7 @@ async function main(): Promise<void> {
   }
 
   const router = createRouter(providers, config.defaultProvider);
-  const server = createServer(router);
+  const server = createServer(router, config);
 
   const totalModels = providers.reduce((sum, p) => sum + p.config.models.length, 0);
 
