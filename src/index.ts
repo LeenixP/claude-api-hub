@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 import { loadConfig } from './config.js';
 import { createRouter } from './router.js';
 import { createServer } from './server.js';

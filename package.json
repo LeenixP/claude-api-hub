@@ -4,11 +4,50 @@
   "description": "Multi-provider API gateway for Claude Code - routes requests to Claude/Kimi/MiniMax/GLM based on model ID",
   "type": "module",
   "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "claude-api-hub": "dist/index.js"
+  },
+  "files": [
+    "dist",
+    "config",
+    "bin",
+    "plugin",
+    "README.md"
+  ],
   "scripts": {
     "build": "tsc",
     "start": "node dist/index.js",
     "dev": "tsx watch src/index.ts",
-    "test": "vitest run"
+    "test": "vitest run",
+    "prepublishOnly": "npm run build && npm test"
+  },
+  "keywords": [
+    "claude",
+    "claude-code",
+    "api-gateway",
+    "kimi",
+    "minimax",
+    "glm",
+    "zhipu",
+    "moonshot",
+    "anthropic",
+    "openai-compatible",
+    "llm",
+    "multi-provider"
+  ],
+  "author": "LeenixP",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/LeenixP/claude-api-hub.git"
+  },
+  "homepage": "https://github.com/LeenixP/claude-api-hub#readme",
+  "bugs": {
+    "url": "https://github.com/LeenixP/claude-api-hub/issues"
+  },
+  "engines": {
+    "node": ">=18"
   },
   "dependencies": {
     "eventsource-parser": "^3.0.1"
