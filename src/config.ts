@@ -1,6 +1,7 @@
 import { readFileSync, existsSync } from 'fs';
-import { resolve, dirname } from 'path';
+import { resolve, dirname, join } from 'path';
 import { fileURLToPath } from 'url';
+import { homedir } from 'os';
 import { GatewayConfig, ProviderConfig } from './providers/types.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -54,6 +55,7 @@ function validateConfig(config: GatewayConfig): void {
 
 export function loadConfig(configPath?: string): GatewayConfig {
   const candidates = configPath ? [configPath] : [
+    join(homedir(), '.claude-api-hub/providers.json'),
     resolve(process.cwd(), 'config/providers.json'),
     resolve(__dirname, '../config/providers.json'),
     resolve(__dirname, '../../config/providers.json'),
