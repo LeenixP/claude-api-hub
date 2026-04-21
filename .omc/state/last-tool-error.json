@@ -1,0 +1,7 @@
+{
+  "tool_name": "mcp__agent-file-control__afc_write_file",
+  "tool_input_preview": "{}",
+  "error": "MCP error -32602: Input validation error: Invalid arguments for tool afc_write_file: [\n  {\n    \"code\": \"invalid_type\",\n    \"expected\": \"string\",\n    \"received\": \"undefined\",\n    \"path\": [\n      \"path\"\n    ],\n    \"message\": \"Required\"\n  },\n  {\n    \"code\": \"invalid_type\",\n    \"expected\": \"string\",\n    \"received\": \"undefined\",\n    \"path\": [\n      \"content\"\n    ],\n    \"message\": \"Required\"\n  }\n]",
+  "timestamp": "2026-04-21T15:40:56.753Z",
+  "retry_count": 1
+}

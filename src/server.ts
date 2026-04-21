@@ -3,6 +3,7 @@ import https from 'https';
 import { URL } from 'url';
 import { ModelRouter } from './router.js';
 import { AnthropicRequest } from './providers/types.js';
+import { dashboardHtml } from './dashboard.js';
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -106,6 +107,16 @@ export function createServer(router: ModelRouter): http.Server {
     }
 
     const pathname = req.url?.split('?')[0] ?? '/';
+
+    // Dashboard
+    if (req.method === 'GET' && pathname === '/') {
+      const providers = router.getProviders().filter(p => p.config.enabled);
+      const html = dashboardHtml(providers, req.headers.host ?? 'localhost:9800');
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', ...CORS_HEADERS });
+      res.end(html);
+      return;
+    }
+
 
     // Health check
     if (req.method === 'GET' && pathname === '/health') {
