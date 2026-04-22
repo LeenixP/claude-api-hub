@@ -289,7 +289,8 @@ button {
   padding: 1px 6px;
   border-radius: 3px;
   font-size: 10px;
-  color: var(--text-dim);	-family: var(--mono);
+  color: var(--text-dim);
+  font-family: var(--mono);
 }
 .provider-models { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px; }
 .model-tag {
@@ -500,7 +501,7 @@ button {
         </div>
         <div class="alias-provider" id="alias-sonnet-provider"></div>
       </div>
-
+      <div class="alias-row">
         <div class="alias-label opus">Opus</div>
         <div class="combo">
           <input type="text" id="alias-opus" placeholder="Type or select a model..." autocomplete="off">
@@ -508,6 +509,7 @@ button {
         </div>
         <div class="alias-provider" id="alias-opus-provider"></div>
       </div>
+
       <div style="margin-top: 12px; display: flex; justify-content: flex-end;">
         <button class="btn-primary" onclick="saveAliases()">Save Aliases</button>
       </div>
@@ -628,6 +630,7 @@ async function load() {
     } catch (e) {
       fetchedModels = {};
     }
+    renderProviders();
     renderAliases();
   } catch (e) {
     toast('Failed to load config', 'error');
