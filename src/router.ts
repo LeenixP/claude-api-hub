@@ -14,6 +14,10 @@ export class ModelRouter {
     this.providers.set(provider.name, provider);
   }
 
+  clear(): void {
+    this.providers.clear();
+  }
+
   route(model: string): RouteResult {
     const originalModel = model;
     // Resolve alias by tier pattern matching (case-insensitive)
