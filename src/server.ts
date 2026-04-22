@@ -290,12 +290,19 @@ export function createServer(router: ModelRouter, config: GatewayConfig): http.S
       return;
     }
 
-    // PUT /api/config/providers/:name
-    const putMatch = pathname.match(/^\/api\/config\/providers\/([^/]+)$/);
-    if (req.method === 'PUT' && putMatch) {
-      const providerName = decodeURIComponent(putMatch[1]);
+    // PUT/DELETE /api/config/providers/:name
+    const providerMatch = pathname.match(/^\/api\/config\/providers\/([^/]+)$/);
+    if (providerMatch && (req.method === 'PUT' || req.method === 'DELETE')) {
+      const providerName = decodeURIComponent(providerMatch[1]);
       if (!config.providers[providerName]) {
         sendError(res, 404, 'not_found_error', `Provider "${providerName}" not found`); return;
+      }
+      if (req.method === 'DELETE') {
+        delete config.providers[providerName];
+        saveConfig(config);
+        rebuildProviders(router, config);
+        sendJson(res, 200, { deleted: providerName });
+        return;
       }
       let bodyStr: string;
       try { bodyStr = await readBody(req); } catch {
@@ -313,21 +320,8 @@ export function createServer(router: ModelRouter, config: GatewayConfig): http.S
       return;
     }
 
-    // DELETE /api/config/providers/:name
-    const deleteMatch = pathname.match(/^\/api\/config\/providers\/([^/]+)$/);
-    if (req.method === 'DELETE' && deleteMatch) {
-      const providerName = decodeURIComponent(deleteMatch[1]);
-      if (!config.providers[providerName]) {
-        sendError(res, 404, 'not_found_error', `Provider "${providerName}" not found`); return;
-      }
-      delete config.providers[providerName];
-      saveConfig(config);
-      rebuildProviders(router, config);
-      sendJson(res, 200, { deleted: providerName });
-      return;
-    }
-
     // GET /api/logs
+
     if (req.method === 'GET' && pathname === '/api/logs') {
       sendJson(res, 200, requestLogs.slice().reverse());
       return;
