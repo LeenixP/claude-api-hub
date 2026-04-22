@@ -372,6 +372,7 @@ export function createServer(router: ModelRouter, config: GatewayConfig): http.S
       }
 
       const { provider, resolvedModel, originalModel } = routeResult;
+      anthropicReq.model = resolvedModel;
       const protocol = provider.config.passthrough ? 'Anthropic' : 'OpenAI';
       let built: { url: string; headers: Record<string, string>; body: string };
       try { built = provider.buildRequest(anthropicReq); } catch (err) {
