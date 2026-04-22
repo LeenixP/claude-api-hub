@@ -206,7 +206,6 @@ button{border:none;border-radius:6px;padding:7px 14px;font-size:12px;font-weight
         </div>
         <button class="btn-ghost btn-sm" onclick="clearLogs()">Clear</button>
         <button class="btn-ghost btn-sm" onclick="loadLogs()">Refresh</button>
-        <button class="btn-ghost btn-sm" id="auto-btn" onclick="toggleAuto()">Auto: OFF</button>
       </div>
     </div>
     <div class="log-panel" id="log-panel"><div class="empty">No logs yet</div></div>
@@ -246,7 +245,7 @@ button{border:none;border-radius:6px;padding:7px 14px;font-size:12px;font-weight
 
 
 <script>
-let config=null,allModels=[],fetchedModels={},editingProvider=null,logFilter='all',autoTimer=null,healthCache={};
+let config=null,allModels=[],fetchedModels={},editingProvider=null,logFilter='all',healthCache={};
 
 async function load(){
   try{
@@ -306,7 +305,7 @@ function renderProviders(){
     const healthDot=h?'<span class="dot health-dot '+(h.status==='ok'?'dot-ok':h.status==='timeout'?'dot-warn':'dot-err')+'"></span>'+(h.latencyMs?'<span style="font-size:10px;color:var(--text-muted)">'+h.latencyMs+'ms</span>':''):'';
 
     const enableBadge=p.enabled?'<span class="badge badge-on">ON</span>':'<span class="badge badge-off">OFF</span>';
-    const formatBadge=p.passthrough?'<span class="badge badge-anthropic">Anthropic</span>':'<span class="badge badge-openai">OpenAI</span>';
+    const formatBadge='<button class="badge '+(p.passthrough?'badge-anthropic':'badge-openai')+'" onclick="event.stopPropagation();toggleProtocol(\\''+esc(key)+'\\')" style="cursor:pointer" title="Click to switch protocol">'+(p.passthrough?'Anthropic':'OpenAI')+'</button>';
     const models=(p.models||[]).map(m=>'<span class="model-tag">'+esc(m)+'</span>').join('');
     const prefix=p.prefix?(Array.isArray(p.prefix)?p.prefix.join(', '):p.prefix):'-';
     const keyStatus=!p.apiKey||p.apiKey==='***'?'<span class="key-warn">\\u26a0 Missing</span>':'<span class="key-ok">\\u2713 Set</span>';
@@ -406,13 +405,14 @@ async function saveProvider(){
   if(!key||!name||!baseUrl||models.length===0||!defaultModel){toast('Fill all required fields','error');return}
   try{
     if(editingProvider){
-      const body={name,baseUrl,models,defaultModel,enabled,passthrough:passthrough||undefined,prefix:prefix||undefined};
+      const body={name,baseUrl,models,defaultModel,enabled,passthrough,prefix:prefix||undefined};
       if(apiKey)body.apiKey=apiKey;
       await fetch('/api/config/providers/'+encodeURIComponent(key),{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
       toast('Provider updated','success');
     }else{
       if(!apiKey){toast('API Key required','error');return}
-      await fetch('/api/config/providers',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,baseUrl,apiKey,models,defaultModel,enabled,passthrough:passthrough||undefined,prefix:prefix||undefined})});
+      await fetch('/api/config/providers',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,baseUrl,apiKey,models,defaultModel,enabled,passthrough,prefix:prefix||undefined})});
+
       toast('Provider added','success');
     }
     closeModal();load();
@@ -422,6 +422,15 @@ async function saveProvider(){
 async function deleteProvider(key){
   if(!confirm('Delete "'+key+'"?'))return;
   try{await fetch('/api/config/providers/'+encodeURIComponent(key),{method:'DELETE'});toast('Deleted','success');load()}catch(e){toast('Delete failed','error')}
+}
+
+async function toggleProtocol(key){
+  const p=config.providers[key];
+  const newVal=!p.passthrough;
+  try{
+    await fetch('/api/config/providers/'+encodeURIComponent(key),{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({passthrough:newVal})});
+    toast(p.name+': '+(newVal?'Anthropic API':'OpenAI Compatible'),'success');load();
+  }catch(e){toast('Switch failed','error')}
 }
 
 async function loadLogs(){
@@ -437,12 +446,16 @@ async function loadLogs(){
       const stream=l.stream?' [stream]':'';
       const arrow=l.originalModel!==l.resolvedModel?' <span class="log-arrow">\\u2192</span> <span class="log-model">'+esc(l.resolvedModel)+'</span>':'';
       const detail='<div class="log-detail" id="log-d-'+i+'">'
-        +'<div>Request ID: '+esc(l.requestId||'-')+'</div>'
-        +'<div>Target: '+esc(l.targetUrl||'-')+'</div>'
-        +(l.error?'<div class="log-error">Error: '+esc(l.error)+'</div>':'')
-        +(l.upstreamBody?'<div>Upstream response:<pre>'+esc(l.upstreamBody)+'</pre></div>':'')
-        +(l.requestBody?'<div>Request body:<pre>'+esc(l.requestBody)+'</pre></div>':'')
+        +'<div><b>Request ID:</b> '+esc(l.requestId||'-')+'</div>'
+        +'<div><b>Target URL:</b> '+esc(l.targetUrl||'-')+'</div>'
+        +'<div><b>Provider:</b> '+esc(l.provider)+' ['+esc(l.protocol)+']</div>'
+        +'<div><b>Model:</b> '+esc(l.originalModel)+(l.originalModel!==l.resolvedModel?' \\u2192 '+esc(l.resolvedModel):'')+'</div>'
+        +'<div><b>Stream:</b> '+(l.stream?'Yes':'No')+' | <b>Duration:</b> '+l.durationMs+'ms</div>'
+        +(l.error?'<div class="log-error"><b>Error:</b> '+esc(l.error)+'</div>':'')
+        +(l.upstreamBody?'<div><b>Upstream response:</b><pre>'+esc(l.upstreamBody)+'</pre></div>':'')
+        +(l.requestBody?'<div><b>Request body:</b><pre>'+esc(l.requestBody)+'</pre></div>':'')
         +'</div>';
+
       return '<div class="log-entry" onclick="toggleLogDetail('+i+')">'
         +'<div class="log-row">'
           +'<span class="log-time">'+esc(time)+'</span>'
@@ -471,11 +484,8 @@ async function clearLogs(){
   try{await fetch('/api/logs/clear',{method:'POST'});loadLogs();toast('Logs cleared','success')}catch(e){toast('Clear failed','error')}
 }
 
-function toggleAuto(){
-  const btn=document.getElementById('auto-btn');
-  if(autoTimer){clearInterval(autoTimer);autoTimer=null;btn.textContent='Auto: OFF'}
-  else{autoTimer=setInterval(loadLogs,3000);btn.textContent='Auto: ON';loadLogs()}
-}
+
+
 
 function toast(msg,type){
   const el=document.getElementById('toast');
@@ -494,7 +504,7 @@ function initQuickStart(){
 function copyText(t){navigator.clipboard.writeText(t).then(()=>toast('Copied','success')).catch(()=>toast('Copy failed','error'))}
 function copyConfig(){copyText(JSON.stringify({env:{ANTHROPIC_BASE_URL:window.location.origin}},null,2))}
 
-initQuickStart();load();loadLogs();
+initQuickStart();load();loadLogs();setInterval(loadLogs,2000);
 </script>
 </body>
 </html>`;
