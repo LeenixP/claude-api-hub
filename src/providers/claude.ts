@@ -24,7 +24,7 @@ export class ClaudeProvider implements Provider {
       const prefixes = Array.isArray(this.prefix) ? this.prefix : [this.prefix];
       return prefixes.some((p) => model.startsWith(p));
     }
-    return this.config.models.some((m) => model.startsWith(m) || m.startsWith(model));
+    return this.config.models.some((m) => model === m || model.startsWith(m + '-'));
   }
 
   resolveModel(model: string): string {

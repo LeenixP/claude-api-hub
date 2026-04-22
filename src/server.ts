@@ -8,11 +8,14 @@ import { ClaudeProvider } from './providers/claude.js';
 import { GenericOpenAIProvider } from './providers/generic.js';
 import { dashboardHtml } from './dashboard.js';
 import { getConfigPath, loadConfig } from './config.js';
+import { mkdirSync, appendFileSync, readdirSync, unlinkSync } from 'fs';
+import { homedir } from 'os';
+import { join } from 'path';
 
 interface LogEntry {
   time: string;
   requestId: string;
-  originalModel: string;
+  claudeModel: string;
   resolvedModel: string;
   provider: string;
   protocol: string;
@@ -21,17 +24,50 @@ interface LogEntry {
   status: number;
   durationMs: number;
   error?: string;
-  upstreamBody?: string;
+  logFile?: string;
+}
+
+interface LogDetail {
+  originalBody?: string;
   requestBody?: string;
+  upstreamBody?: string;
+  forwardedHeaders?: Record<string, string>;
 }
 
 const requestLogs: LogEntry[] = [];
 const MAX_LOGS = 200;
+const LOG_DIR = join(homedir(), '.claude-api-hub', 'logs');
+const MAX_LOG_FILES = 4096;
+let logToFile = false;
 
-function addLog(entry: LogEntry): void {
+try { mkdirSync(LOG_DIR, { recursive: true }); } catch {}
+
+function cleanLogDir(): void {
+  try {
+    const files = readdirSync(LOG_DIR).filter(f => f.endsWith('.json'));
+    if (files.length >= MAX_LOG_FILES) {
+      for (const f of files) {
+        try { unlinkSync(join(LOG_DIR, f)); } catch {}
+      }
+    }
+  } catch {}
+}
+
+function addLog(entry: LogEntry, detail?: LogDetail): void {
+  if (logToFile && detail) {
+    cleanLogDir();
+    const filename = entry.requestId + '.json';
+    const filepath = join(LOG_DIR, filename);
+    try {
+      appendFileSync(filepath, JSON.stringify({ ...entry, ...detail }, null, 2), 'utf-8');
+      entry.logFile = filepath;
+    } catch {}
+  }
   requestLogs.push(entry);
   if (requestLogs.length > MAX_LOGS) requestLogs.shift();
 }
+
+
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -194,7 +230,7 @@ export function createServer(router: ModelRouter, config: GatewayConfig): http.S
 
     // Dashboard
     if (req.method === 'GET' && pathname === '/') {
-      const html = dashboardHtml();
+      const html = dashboardHtml(config.version || '');
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', ...CORS_HEADERS });
       res.end(html);
       return;
@@ -290,12 +326,19 @@ export function createServer(router: ModelRouter, config: GatewayConfig): http.S
       return;
     }
 
-    // PUT /api/config/providers/:name
-    const putMatch = pathname.match(/^\/api\/config\/providers\/([^/]+)$/);
-    if (req.method === 'PUT' && putMatch) {
-      const providerName = decodeURIComponent(putMatch[1]);
+    // PUT/DELETE /api/config/providers/:name
+    const providerMatch = pathname.match(/^\/api\/config\/providers\/([^/]+)$/);
+    if (providerMatch && (req.method === 'PUT' || req.method === 'DELETE')) {
+      const providerName = decodeURIComponent(providerMatch[1]);
       if (!config.providers[providerName]) {
         sendError(res, 404, 'not_found_error', `Provider "${providerName}" not found`); return;
+      }
+      if (req.method === 'DELETE') {
+        delete config.providers[providerName];
+        saveConfig(config);
+        rebuildProviders(router, config);
+        sendJson(res, 200, { deleted: providerName });
+        return;
       }
       let bodyStr: string;
       try { bodyStr = await readBody(req); } catch {
@@ -313,21 +356,8 @@ export function createServer(router: ModelRouter, config: GatewayConfig): http.S
       return;
     }
 
-    // DELETE /api/config/providers/:name
-    const deleteMatch = pathname.match(/^\/api\/config\/providers\/([^/]+)$/);
-    if (req.method === 'DELETE' && deleteMatch) {
-      const providerName = decodeURIComponent(deleteMatch[1]);
-      if (!config.providers[providerName]) {
-        sendError(res, 404, 'not_found_error', `Provider "${providerName}" not found`); return;
-      }
-      delete config.providers[providerName];
-      saveConfig(config);
-      rebuildProviders(router, config);
-      sendJson(res, 200, { deleted: providerName });
-      return;
-    }
-
     // GET /api/logs
+
     if (req.method === 'GET' && pathname === '/api/logs') {
       sendJson(res, 200, requestLogs.slice().reverse());
       return;
@@ -339,6 +369,23 @@ export function createServer(router: ModelRouter, config: GatewayConfig): http.S
       sendJson(res, 200, { cleared: true });
       return;
     }
+
+    // GET /api/logs/file-status
+    if (req.method === 'GET' && pathname === '/api/logs/file-status') {
+      let fileCount = 0;
+      try { fileCount = readdirSync(LOG_DIR).filter(f => f.endsWith('.json')).length; } catch {}
+      sendJson(res, 200, { enabled: logToFile, fileCount, maxFiles: MAX_LOG_FILES, logDir: LOG_DIR });
+      return;
+    }
+
+    // PUT /api/logs/file-toggle
+    if (req.method === 'PUT' && pathname === '/api/logs/file-toggle') {
+      logToFile = !logToFile;
+      sendJson(res, 200, { enabled: logToFile });
+      return;
+    }
+
+
 
     // GET /api/health/providers — test connectivity to each provider
     if (req.method === 'GET' && pathname === '/api/health/providers') {
@@ -440,19 +487,24 @@ export function createServer(router: ModelRouter, config: GatewayConfig): http.S
       if (!anthropicReq.model) {
         sendError(res, 400, 'invalid_request_error', 'Missing required field: model'); return;
       }
+      const rawModel = anthropicReq.model;
+      const claudeModel = rawModel.toLowerCase().includes('haiku') ? 'Haiku'
+        : rawModel.toLowerCase().includes('sonnet') ? 'Sonnet'
+        : rawModel.toLowerCase().includes('opus') ? 'Opus'
+        : rawModel;
 
       let routeResult;
       try { routeResult = router.route(anthropicReq.model); } catch (err) {
-        addLog({ time: new Date().toISOString(), requestId, originalModel: anthropicReq.model, resolvedModel: '', provider: '', protocol: '', targetUrl: '', stream: !!anthropicReq.stream, status: 500, durationMs: Date.now() - startTime, error: (err as Error).message });
+        addLog({ time: new Date().toISOString(), requestId, claudeModel, resolvedModel: '', provider: '', protocol: '', targetUrl: '', stream: !!anthropicReq.stream, status: 500, durationMs: Date.now() - startTime, error: (err as Error).message });
         sendError(res, 500, 'api_error', (err as Error).message); return;
       }
 
-      const { provider, resolvedModel, originalModel } = routeResult;
+      const { provider, resolvedModel } = routeResult;
       anthropicReq.model = resolvedModel;
       const protocol = provider.config.passthrough ? 'Anthropic' : 'OpenAI';
       let built: { url: string; headers: Record<string, string>; body: string };
       try { built = provider.buildRequest(anthropicReq); } catch (err) {
-        addLog({ time: new Date().toISOString(), requestId, originalModel, resolvedModel, provider: provider.name, protocol, targetUrl: '', stream: !!anthropicReq.stream, status: 500, durationMs: Date.now() - startTime, error: `Build error: ${(err as Error).message}` });
+        addLog({ time: new Date().toISOString(), requestId, claudeModel, resolvedModel, provider: provider.name, protocol, targetUrl: '', stream: !!anthropicReq.stream, status: 500, durationMs: Date.now() - startTime, error: `Build error: ${(err as Error).message}` });
         sendError(res, 500, 'api_error', `Provider build error: ${(err as Error).message}`); return;
       }
 
@@ -466,6 +518,22 @@ export function createServer(router: ModelRouter, config: GatewayConfig): http.S
 
       res.setHeader('X-Request-Id', requestId);
 
+      const maskedHeaders = { ...built.headers };
+      if (maskedHeaders['x-api-key']) maskedHeaders['x-api-key'] = maskKey(maskedHeaders['x-api-key']);
+      if (maskedHeaders['Authorization']) maskedHeaders['Authorization'] = 'Bearer ***';
+      const logBase: LogEntry = {
+        time: new Date().toISOString(), requestId, claudeModel, resolvedModel,
+        provider: provider.name, protocol, targetUrl: built.url, stream: !!anthropicReq.stream,
+        status: 0, durationMs: 0,
+      };
+      const logDetail: LogDetail = {
+        originalBody: bodyStr,
+        requestBody: built.body,
+        forwardedHeaders: maskedHeaders,
+      };
+
+
+
       if (anthropicReq.stream) {
         res.writeHead(200, {
           'Content-Type': 'text/event-stream',
@@ -478,11 +546,11 @@ export function createServer(router: ModelRouter, config: GatewayConfig): http.S
           built.url, built.headers, built.body,
           (chunk) => res.write(chunk),
           () => {
-            addLog({ time: new Date().toISOString(), requestId, originalModel, resolvedModel, provider: provider.name, protocol, targetUrl: built.url, stream: true, status: 200, durationMs: Date.now() - startTime });
+            addLog({ ...logBase, status: 200, durationMs: Date.now() - startTime }, logDetail);
             res.end();
           },
           (err) => {
-            addLog({ time: new Date().toISOString(), requestId, originalModel, resolvedModel, provider: provider.name, protocol, targetUrl: built.url, stream: true, status: 502, durationMs: Date.now() - startTime, error: err.message });
+            addLog({ ...logBase, status: 502, durationMs: Date.now() - startTime, error: err.message }, logDetail);
             res.write(`data: ${JSON.stringify({ type: 'error', error: { type: 'api_error', message: err.message } })}\n\n`);
             res.end();
           },
@@ -492,15 +560,14 @@ export function createServer(router: ModelRouter, config: GatewayConfig): http.S
 
       let upstream;
       try { upstream = await forwardRequest(built.url, built.headers, built.body); } catch (err) {
-        addLog({ time: new Date().toISOString(), requestId, originalModel, resolvedModel, provider: provider.name, protocol, targetUrl: built.url, stream: false, status: 502, durationMs: Date.now() - startTime, error: (err as Error).message });
+        addLog({ ...logBase, status: 502, durationMs: Date.now() - startTime, error: (err as Error).message }, logDetail);
         sendError(res, 502, 'api_error', `Upstream request failed: ${(err as Error).message}`); return;
       }
 
       if (upstream.status !== 200) {
-        const upBody = upstream.body.slice(0, 2048);
         let errMsg = '';
-        try { const j = JSON.parse(upstream.body); errMsg = j.error?.message || j.message || upBody; } catch { errMsg = upBody; }
-        addLog({ time: new Date().toISOString(), requestId, originalModel, resolvedModel, provider: provider.name, protocol, targetUrl: built.url, stream: false, status: upstream.status, durationMs: Date.now() - startTime, error: errMsg, upstreamBody: upBody, requestBody: built.body.slice(0, 2048) });
+        try { const j = JSON.parse(upstream.body); errMsg = j.error?.message || j.message || upstream.body.slice(0, 200); } catch { errMsg = upstream.body.slice(0, 200); }
+        addLog({ ...logBase, status: upstream.status, durationMs: Date.now() - startTime, error: errMsg }, { ...logDetail, upstreamBody: upstream.body });
         res.writeHead(upstream.status, { 'Content-Type': 'application/json', 'X-Request-Id': requestId, ...CORS_HEADERS });
         res.end(upstream.body);
         return;
@@ -508,20 +575,22 @@ export function createServer(router: ModelRouter, config: GatewayConfig): http.S
 
       let upstreamJson;
       try { upstreamJson = JSON.parse(upstream.body); } catch {
-        addLog({ time: new Date().toISOString(), requestId, originalModel, resolvedModel, provider: provider.name, protocol, targetUrl: built.url, stream: false, status: 502, durationMs: Date.now() - startTime, error: 'Invalid JSON from upstream', upstreamBody: upstream.body.slice(0, 2048) });
+        addLog({ ...logBase, status: 502, durationMs: Date.now() - startTime, error: 'Invalid JSON from upstream' }, { ...logDetail, upstreamBody: upstream.body });
         sendError(res, 502, 'api_error', 'Invalid JSON from upstream provider'); return;
       }
 
       let anthropicResp;
       try { anthropicResp = provider.parseResponse(upstreamJson, anthropicReq.model); } catch (err) {
-        addLog({ time: new Date().toISOString(), requestId, originalModel, resolvedModel, provider: provider.name, protocol, targetUrl: built.url, stream: false, status: 502, durationMs: Date.now() - startTime, error: `Parse error: ${(err as Error).message}` });
+        addLog({ ...logBase, status: 502, durationMs: Date.now() - startTime, error: `Parse error: ${(err as Error).message}` }, logDetail);
         sendError(res, 502, 'api_error', `Response parse error: ${(err as Error).message}`); return;
       }
 
-      addLog({ time: new Date().toISOString(), requestId, originalModel, resolvedModel, provider: provider.name, protocol, targetUrl: built.url, stream: false, status: 200, durationMs: Date.now() - startTime });
+      addLog({ ...logBase, status: 200, durationMs: Date.now() - startTime }, logDetail);
       sendJson(res, 200, anthropicResp);
       return;
+
     }
+
 
     sendError(res, 404, 'not_found_error', `Unknown endpoint: ${req.method} ${pathname}`);
   });

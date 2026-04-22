@@ -21,6 +21,7 @@ export interface GatewayConfig {
   defaultProvider: string;
   logLevel: 'debug' | 'info' | 'warn' | 'error';
   aliases?: Record<string, string>;
+  version?: string;
 }
 
 // ─── Anthropic API Types (incoming from Claude Code) ───
