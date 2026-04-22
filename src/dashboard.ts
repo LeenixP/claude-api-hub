@@ -812,6 +812,9 @@ async function toggleProtocol(key) {
     load();
   } catch (e) {
     toast('Switch failed', 'error');
+  }
+}
+
 // ── Model Tags ──
 let modalModels = [];
 
