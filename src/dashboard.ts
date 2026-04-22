@@ -1052,19 +1052,15 @@ async function loadLogs() {
       const model = l.originalModel !== l.resolvedModel
         ? esc(l.originalModel) + ' \\u2192 ' + esc(l.resolvedModel)
         : esc(l.originalModel);
-      const hdrs = l.forwardedHeaders ? Object.entries(l.forwardedHeaders).map(([k,v]) => esc(k) + ': ' + esc(v)).join('\\n') : '';
       const detail = '<div class="log-detail' + (isOpen ? ' open' : '') + '" id="log-d-' + i + '">'
         + '<div><b>Request ID:</b> ' + esc(l.requestId || '-') + '</div>'
         + '<div><b>Time:</b> ' + new Date(l.time).toLocaleString() + '</div>'
-        + '<div><b>Target URL:</b> ' + esc(l.targetUrl || '-') + '</div>'
+        + '<div><b>Target:</b> ' + esc(l.targetUrl || '-') + '</div>'
         + '<div><b>Provider:</b> ' + esc(l.provider) + ' [' + esc(l.protocol) + ']</div>'
         + '<div><b>Model:</b> ' + model + '</div>'
         + '<div><b>Stream:</b> ' + (l.stream ? 'Yes' : 'No') + ' | <b>Duration:</b> ' + l.durationMs + 'ms</div>'
         + (l.error ? '<div class="log-error"><b>Error:</b> ' + esc(l.error) + '</div>' : '')
-        + (hdrs ? '<div><b>Forwarded Headers:</b><pre>' + hdrs + '</pre></div>' : '')
-        + (l.originalBody ? '<div><b>Original Request (from Claude):</b><pre>' + esc(l.originalBody) + '</pre></div>' : '')
-        + (l.requestBody ? '<div><b>Translated Request (to Provider):</b><pre>' + esc(l.requestBody) + '</pre></div>' : '')
-        + (l.upstreamBody ? '<div><b>Upstream Response:</b><pre>' + esc(l.upstreamBody) + '</pre></div>' : '')
+        + (l.logFile ? '<div style="margin-top:6px"><b>Full log:</b> <code style="font-size:11px;background:var(--bg);padding:2px 6px;border-radius:3px">' + esc(l.logFile) + '</code></div>' : '')
         + '</div>';
 
       return '<div class="log-entry" data-rid="' + esc(l.requestId || '') + '" onclick="toggleLogDetail(' + i + ',this)">'

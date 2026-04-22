@@ -8,6 +8,9 @@ import { ClaudeProvider } from './providers/claude.js';
 import { GenericOpenAIProvider } from './providers/generic.js';
 import { dashboardHtml } from './dashboard.js';
 import { getConfigPath, loadConfig } from './config.js';
+import { mkdirSync, appendFileSync } from 'fs';
+import { homedir } from 'os';
+import { join } from 'path';
 
 interface LogEntry {
   time: string;
@@ -21,20 +24,34 @@ interface LogEntry {
   status: number;
   durationMs: number;
   error?: string;
-  upstreamBody?: string;
-  requestBody?: string;
+  logFile?: string;
+}
+
+interface LogDetail {
   originalBody?: string;
+  requestBody?: string;
+  upstreamBody?: string;
   forwardedHeaders?: Record<string, string>;
 }
 
-
 const requestLogs: LogEntry[] = [];
 const MAX_LOGS = 200;
+const LOG_DIR = join(homedir(), '.claude-api-hub', 'logs');
+try { mkdirSync(LOG_DIR, { recursive: true }); } catch {}
 
-function addLog(entry: LogEntry): void {
+function addLog(entry: LogEntry, detail?: LogDetail): void {
+  if (detail) {
+    const filename = entry.requestId + '.json';
+    const filepath = join(LOG_DIR, filename);
+    try {
+      appendFileSync(filepath, JSON.stringify({ ...entry, ...detail }, null, 2), 'utf-8');
+      entry.logFile = filepath;
+    } catch {}
+  }
   requestLogs.push(entry);
   if (requestLogs.length > MAX_LOGS) requestLogs.shift();
 }
+
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -466,13 +483,18 @@ export function createServer(router: ModelRouter, config: GatewayConfig): http.S
       const maskedHeaders = { ...built.headers };
       if (maskedHeaders['x-api-key']) maskedHeaders['x-api-key'] = maskKey(maskedHeaders['x-api-key']);
       if (maskedHeaders['Authorization']) maskedHeaders['Authorization'] = 'Bearer ***';
-      const logBase = {
+      const logBase: LogEntry = {
         time: new Date().toISOString(), requestId, originalModel, resolvedModel,
         provider: provider.name, protocol, targetUrl: built.url, stream: !!anthropicReq.stream,
-        originalBody: bodyStr.slice(0, 4096),
-        requestBody: built.body.slice(0, 4096),
+        status: 0, durationMs: 0,
+      };
+      const logDetail: LogDetail = {
+        originalBody: bodyStr,
+        requestBody: built.body,
         forwardedHeaders: maskedHeaders,
       };
+
+
 
       if (anthropicReq.stream) {
         res.writeHead(200, {
@@ -486,11 +508,11 @@ export function createServer(router: ModelRouter, config: GatewayConfig): http.S
           built.url, built.headers, built.body,
           (chunk) => res.write(chunk),
           () => {
-            addLog({ ...logBase, status: 200, durationMs: Date.now() - startTime });
+            addLog({ ...logBase, status: 200, durationMs: Date.now() - startTime }, logDetail);
             res.end();
           },
           (err) => {
-            addLog({ ...logBase, status: 502, durationMs: Date.now() - startTime, error: err.message });
+            addLog({ ...logBase, status: 502, durationMs: Date.now() - startTime, error: err.message }, logDetail);
             res.write(`data: ${JSON.stringify({ type: 'error', error: { type: 'api_error', message: err.message } })}\n\n`);
             res.end();
           },
@@ -500,15 +522,14 @@ export function createServer(router: ModelRouter, config: GatewayConfig): http.S
 
       let upstream;
       try { upstream = await forwardRequest(built.url, built.headers, built.body); } catch (err) {
-        addLog({ ...logBase, status: 502, durationMs: Date.now() - startTime, error: (err as Error).message });
+        addLog({ ...logBase, status: 502, durationMs: Date.now() - startTime, error: (err as Error).message }, logDetail);
         sendError(res, 502, 'api_error', `Upstream request failed: ${(err as Error).message}`); return;
       }
 
       if (upstream.status !== 200) {
-        const upBody = upstream.body.slice(0, 4096);
         let errMsg = '';
-        try { const j = JSON.parse(upstream.body); errMsg = j.error?.message || j.message || upBody; } catch { errMsg = upBody; }
-        addLog({ ...logBase, status: upstream.status, durationMs: Date.now() - startTime, error: errMsg, upstreamBody: upBody });
+        try { const j = JSON.parse(upstream.body); errMsg = j.error?.message || j.message || upstream.body.slice(0, 200); } catch { errMsg = upstream.body.slice(0, 200); }
+        addLog({ ...logBase, status: upstream.status, durationMs: Date.now() - startTime, error: errMsg }, { ...logDetail, upstreamBody: upstream.body });
         res.writeHead(upstream.status, { 'Content-Type': 'application/json', 'X-Request-Id': requestId, ...CORS_HEADERS });
         res.end(upstream.body);
         return;
@@ -516,21 +537,22 @@ export function createServer(router: ModelRouter, config: GatewayConfig): http.S
 
       let upstreamJson;
       try { upstreamJson = JSON.parse(upstream.body); } catch {
-        addLog({ ...logBase, status: 502, durationMs: Date.now() - startTime, error: 'Invalid JSON from upstream', upstreamBody: upstream.body.slice(0, 4096) });
+        addLog({ ...logBase, status: 502, durationMs: Date.now() - startTime, error: 'Invalid JSON from upstream' }, { ...logDetail, upstreamBody: upstream.body });
         sendError(res, 502, 'api_error', 'Invalid JSON from upstream provider'); return;
       }
 
       let anthropicResp;
       try { anthropicResp = provider.parseResponse(upstreamJson, anthropicReq.model); } catch (err) {
-        addLog({ ...logBase, status: 502, durationMs: Date.now() - startTime, error: `Parse error: ${(err as Error).message}` });
+        addLog({ ...logBase, status: 502, durationMs: Date.now() - startTime, error: `Parse error: ${(err as Error).message}` }, logDetail);
         sendError(res, 502, 'api_error', `Response parse error: ${(err as Error).message}`); return;
       }
 
-      addLog({ ...logBase, status: 200, durationMs: Date.now() - startTime });
+      addLog({ ...logBase, status: 200, durationMs: Date.now() - startTime }, logDetail);
       sendJson(res, 200, anthropicResp);
       return;
 
     }
+
 
     sendError(res, 404, 'not_found_error', `Unknown endpoint: ${req.method} ${pathname}`);
   });
