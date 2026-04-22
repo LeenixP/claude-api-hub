@@ -19,11 +19,13 @@ Claude Code ──► ANTHROPIC_BASE_URL=http://127.0.0.1:9800
 
 ## 核心特性
 
-- **Web 管理面板**：Provider 管理、别名映射、请求监控，全部可视化操作
-- **别名映射**：将 haiku / sonnet / opus 映射到任意厂商的任意模型，支持从 Provider API 自动检测模型列表
-- **协议自选**：每个 Provider 可选 Anthropic（直接透传）或 OpenAI（自动翻译）格式
-- **健康检查**：在面板中一键测试各 Provider 连通性和延迟
-- **请求日志**：详细日志含 Request ID、路由链路、耗时、完整错误信息
+- **Web 管理面板**：左右分栏布局 — 左侧 Provider 管理和别名映射，右侧实时请求日志
+- **别名映射**：将 haiku / sonnet / opus 映射到任意厂商模型，下拉框自动从 Provider API 检测可用模型，也支持自定义输入
+- **协议一键切换**：每个 Provider 卡片上点击 badge 即可切换 Anthropic（透传）或 OpenAI（自动翻译）
+- **健康检查**：通过真实的 `/v1/messages` 请求测试各 Provider，显示响应内容和延迟
+- **模型标签管理**：标签式模型编辑器 — 添加、删除、或从 Provider API 一键拉取模型列表
+- **请求日志**：2 秒自动刷新，展开状态保持不丢失，支持 All/OK/Errors 过滤，显示 Claude 请求层级（Haiku/Sonnet/Opus）
+- **文件日志**：可选的详细日志记录到 `~/.claude-api-hub/logs/`，4096 文件上限自动清理
 - **热重载**：增删改 Provider 和别名无需重启网关
 - **流式支持**：完整的 SSE 事件流转发和转换
 - **零运行时依赖**：网关核心使用 Node.js 原生 `http` 模块
@@ -47,14 +49,20 @@ claude-api-hub
 }
 ```
 
+重启 Claude Code，所有请求将通过网关路由。
+
 ## Web 管理面板
 
-访问 `http://localhost:9800`，功能包括：
+访问 `http://localhost:9800`，左右分栏布局：
 
-- **Quick Start**：显示网关地址和可复制的 Claude Code 配置片段
-- **Alias Mapping**：通过下拉框将 haiku/sonnet/opus 映射到任意模型（自动从 Provider API 检测可用模型，也支持手动输入自定义模型名）
-- **Providers**：增删改 Provider，显示 API 格式/路由前缀/Key 状态，一键测试连通性和延迟
-- **Request Logs**：按状态过滤（All/OK/Errors），点击展开详情（Request ID、目标 URL、上游响应体）
+**左栏：**
+- **Quick Start**：3 步引导，可复制的配置片段
+- **Alias Mapping**：将 haiku/sonnet/opus 映射到任意模型。下拉框自动检测 Provider API 的可用模型，也支持手动输入
+- **Providers**：卡片显示名称、协议 badge（点击切换 Anthropic/OpenAI）、模型列表（API 拉取 + 配置合并）、前缀、默认模型、Key 状态。每张卡片有 Test/Edit/Del 按钮
+
+**右栏：**
+- **Request Logs**：2 秒自动刷新，展开详情不会被刷新重置。按 All/OK/Errors 过滤。每条显示 `claudeModel → resolvedModel → provider` 和耗时。点击展开查看 Request ID、目标 URL、错误信息、日志文件路径
+- **File Log 开关**：启用/禁用详细文件日志
 
 ## 别名映射
 
@@ -70,7 +78,7 @@ claude-api-hub
 }
 ```
 
-当请求模型名包含 `haiku`、`sonnet` 或 `opus` 时，自动替换为目标模型，请求体中的 model 字段同步更新。
+当请求模型名包含 `haiku`、`sonnet` 或 `opus` 时，自动替换为目标模型。日志中显示层级名称（Haiku/Sonnet/Opus）和实际调用模型，方便调试。
 
 ## 添加 Provider
 
@@ -84,7 +92,8 @@ claude-api-hub
   "models": ["deepseek-chat"],
   "defaultModel": "deepseek-chat",
   "enabled": true,
-  "prefix": "deepseek-"
+  "prefix": "deepseek-",
+  "passthrough": false
 }
 ```
 
@@ -101,6 +110,13 @@ claude-api-hub
 | `passthrough` | `true` = Anthropic Messages API（直接转发），`false` = OpenAI Chat Completions API（自动翻译） |
 | `enabled` | `true` / `false` 启用或禁用 |
 
+### 协议选择
+
+每个 Provider 可选择任一协议 — 在 Provider 卡片上点击 badge 切换：
+
+- **Anthropic API**（透传）：请求原样转发，使用 `x-api-key` 认证。适用于 Anthropic 官方 API 或兼容代理（如 MiniMax Anthropic 端点）
+- **OpenAI Compatible**（自动翻译）：请求自动从 Anthropic 格式转换为 OpenAI 格式，使用 `Bearer` 认证。适用于 Kimi、GLM、DeepSeek 等 OpenAI 兼容 API
+
 ## API 端点
 
 | 端点 | 方法 | 说明 |
@@ -110,15 +126,23 @@ claude-api-hub
 | `/v1/models` | GET | 列出所有可用模型 |
 | `/health` | GET | 网关健康检查 |
 | `/api/config` | GET | 当前配置（API Key 已脱敏） |
-| `/api/config/providers` | POST | 添加 Provider |
-| `/api/config/providers/:name` | PUT | 更新 Provider |
-| `/api/config/providers/:name` | DELETE | 删除 Provider |
+| `/api/config/providers` | POST | 添加 Provider（热重载路由） |
+| `/api/config/providers/:name` | PUT/DELETE | 更新或删除 Provider（热重载路由） |
 | `/api/config/reload` | POST | 从磁盘重载配置 |
 | `/api/aliases` | GET/PUT | 获取或更新别名映射 |
 | `/api/fetch-models` | GET | 从各 Provider API 拉取真实模型列表 |
 | `/api/health/providers` | GET | 测试所有 Provider 连通性 |
-| `/api/logs` | GET | 请求日志（最近 200 条） |
+| `/api/logs` | GET | 请求日志（最近 200 条，轻量级） |
 | `/api/logs/clear` | POST | 清除日志 |
+| `/api/logs/file-status` | GET | 文件日志状态和文件数量 |
+| `/api/logs/file-toggle` | PUT | 开启/关闭文件日志 |
+
+## 日志系统
+
+两层日志架构：
+
+- **内存日志**（始终开启）：轻量级摘要存储在内存中，显示在面板。最近 200 条，包含 claudeModel 层级、resolvedModel、provider、状态码、耗时、错误信息
+- **文件日志**（可选）：详细 JSON 文件存储在 `~/.claude-api-hub/logs/`，包含原始请求体、转换后请求体、转发头、上游响应体。通过面板开关控制。达到 4096 个文件时自动清空
 
 ## 路由规则
 
