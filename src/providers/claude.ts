@@ -9,15 +9,22 @@ import type {
 } from './types.js';
 
 export class ClaudeProvider implements Provider {
-  name = 'claude';
+  name: string;
   config: ProviderConfig;
+  private prefix: string | string[] | undefined;
 
   constructor(config: ProviderConfig) {
+    this.name = config.name;
     this.config = config;
+    this.prefix = config.prefix;
   }
 
   matchModel(model: string): boolean {
-    return model.startsWith('claude-');
+    if (this.prefix !== undefined) {
+      const prefixes = Array.isArray(this.prefix) ? this.prefix : [this.prefix];
+      return prefixes.some((p) => model.startsWith(p));
+    }
+    return this.config.models.some((m) => model.startsWith(m) || m.startsWith(model));
   }
 
   resolveModel(model: string): string {
@@ -37,12 +44,10 @@ export class ClaudeProvider implements Provider {
   }
 
   parseResponse(raw: OpenAIResponse, _originalModel: string): AnthropicResponse {
-    // Passthrough: raw is already AnthropicResponse shape
     return raw as unknown as AnthropicResponse;
   }
 
   parseStreamChunk(chunk: OpenAIStreamChunk, _originalModel: string): AnthropicStreamEvent[] {
-    // Passthrough: chunk is already an Anthropic SSE event
     return [chunk as unknown as AnthropicStreamEvent];
   }
 }
