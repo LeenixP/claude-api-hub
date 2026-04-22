@@ -521,7 +521,7 @@ button {
     <h3 id="modal-title">Add Provider</h3>
     <div class="form-grid">
       <div class="form-group">
-        <label>Provider Key</label>
+        <label>ID <span style="font-weight:400;color:var(--text-muted)">(unique key for routing)</span></label>
         <input type="text" id="f-key" placeholder="e.g. deepseek">
       </div>
       <div class="form-group">
@@ -537,15 +537,20 @@ button {
         <input type="text" id="f-key-val" placeholder="sk-... or \${ENV_VAR}">
       </div>
       <div class="form-group full">
-        <label>Models (comma separated)</label>
-        <input type="text" id="f-models" placeholder="deepseek-chat, deepseek-coder">
+        <label>Models</label>
+        <div id="f-models-tags" style="display:flex;flex-wrap:wrap;gap:5px;min-height:32px;padding:6px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:4px"></div>
+        <div style="display:flex;gap:6px">
+          <input type="text" id="f-model-input" placeholder="Type model name and press Enter" style="flex:1">
+          <button class="btn-ghost btn-sm" type="button" onclick="addModelTag()">Add</button>
+          <button class="btn-ghost btn-sm" type="button" onclick="fetchAndAddModels()">Fetch from API</button>
+        </div>
       </div>
       <div class="form-group">
         <label>Default Model</label>
         <input type="text" id="f-default" placeholder="deepseek-chat">
       </div>
       <div class="form-group">
-        <label>Prefix (for routing)</label>
+        <label>Prefix <span style="font-weight:400;color:var(--text-muted)">(for routing)</span></label>
         <input type="text" id="f-prefix" placeholder="deepseek-">
       </div>
       <div class="form-group">
@@ -553,6 +558,7 @@ button {
           <input type="checkbox" id="f-enabled" checked>
           <label for="f-enabled">Enabled</label>
         </div>
+
       </div>
     </div>
     <div class="modal-actions">
@@ -604,8 +610,21 @@ function updateStats() {
 }
 
 // ── Alias Mapping ──
+function getProviderModels() {
+  const result = {};
+  Object.entries(config.providers).forEach(([key, p]) => {
+    if (!p.enabled) return;
+    const name = p.name || key;
+    const configModels = p.models || [];
+    const apiModels = fetchedModels[name] || [];
+    result[name] = [...new Set([...apiModels, ...configModels])];
+  });
+  return result;
+}
+
 function renderAliases() {
   const aliases = config.aliases || {};
+  const providerModels = getProviderModels();
   ['haiku', 'sonnet', 'opus'].forEach(tier => {
     const input = document.getElementById('alias-' + tier);
     const panel = document.getElementById('panel-' + tier);
@@ -614,7 +633,8 @@ function renderAliases() {
 
     function buildPanel(filter) {
       let html = '';
-      Object.entries(fetchedModels).forEach(([provider, models]) => {
+      Object.entries(providerModels).forEach(([provider, models]) => {
+
         const filtered = (models || []).filter(id =>
           !filter || id.toLowerCase().includes(filter.toLowerCase())
         );
@@ -639,11 +659,12 @@ function renderAliases() {
     function updateProv() {
       const v = input.value.trim();
       let found = '';
-      Object.entries(fetchedModels).forEach(([p, m]) => {
+      Object.entries(providerModels).forEach(([p, m]) => {
         if ((m || []).includes(v)) found = p;
       });
       provSpan.textContent = found || (v ? 'custom' : '');
     }
+
 
     input.addEventListener('focus', () => { buildPanel(input.value); panel.classList.add('open'); });
     input.addEventListener('input', () => { buildPanel(input.value); panel.classList.add('open'); updateProv(); });
@@ -694,7 +715,10 @@ function renderProviders() {
     const formatBadge = '<button class="badge ' + (p.passthrough ? 'badge-anthropic' : 'badge-openai')
       + '" onclick="event.stopPropagation();toggleProtocol(\\'' + esc(key) + '\\')" title="Click to switch">'
       + (p.passthrough ? 'Anthropic' : 'OpenAI') + '</button>';
-    const models = (p.models || []).map(m => '<span class="model-tag">' + esc(m) + '</span>').join('');
+    const configModels = p.models || [];
+    const apiModels = fetchedModels[p.name || key] || [];
+    const allProviderModels = [...new Set([...apiModels, ...configModels])];
+    const models = allProviderModels.map(m => '<span class="model-tag">' + esc(m) + '</span>').join('');
     const prefix = p.prefix ? (Array.isArray(p.prefix) ? p.prefix.join(', ') : p.prefix) : '-';
     const keyStatus = (!p.apiKey || p.apiKey === '***')
       ? '<span class="key-warn">\\u26a0 Missing</span>'
@@ -788,24 +812,93 @@ async function toggleProtocol(key) {
     load();
   } catch (e) {
     toast('Switch failed', 'error');
+// ── Model Tags ──
+let modalModels = [];
+
+function renderModelTags() {
+  const container = document.getElementById('f-models-tags');
+  container.innerHTML = modalModels.map((m, i) =>
+    '<span class="model-tag" style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px">'
+    + esc(m)
+    + '<span style="cursor:pointer;color:var(--text-muted);font-size:14px;line-height:1" onclick="removeModelTag(' + i + ')">&times;</span>'
+    + '</span>'
+  ).join('');
+}
+
+function addModelTag() {
+  const input = document.getElementById('f-model-input');
+  const val = input.value.trim();
+  if (val && !modalModels.includes(val)) {
+    modalModels.push(val);
+    renderModelTags();
+  }
+  input.value = '';
+  input.focus();
+}
+
+function removeModelTag(i) {
+  modalModels.splice(i, 1);
+  renderModelTags();
+}
+
+async function fetchAndAddModels() {
+  const baseUrl = document.getElementById('f-url').value.trim();
+  const apiKey = document.getElementById('f-key-val').value.trim();
+  const key = document.getElementById('f-key').value.trim();
+  if (!baseUrl) { toast('Enter Base URL first', 'error'); return; }
+  const existingProvider = editingProvider ? config.providers[editingProvider] : null;
+  const realKey = apiKey || (existingProvider ? existingProvider.apiKey : '');
+  if (!realKey || realKey === '***') { toast('Enter API Key first', 'error'); return; }
+  toast('Fetching models...', 'info');
+  try {
+    const isPassthrough = existingProvider ? existingProvider.passthrough : false;
+    let url, headers;
+    if (isPassthrough) {
+      url = baseUrl + '/v1/models';
+      headers = { 'x-api-key': realKey, 'anthropic-version': '2023-06-01' };
+    } else {
+      url = baseUrl + '/models';
+      headers = { 'Authorization': 'Bearer ' + realKey };
+    }
+    const res = await fetch('/api/health/providers').then(r => r.json());
+    const name = existingProvider ? (existingProvider.name || key) : key;
+    if (fetchedModels[name]) {
+      fetchedModels[name].forEach(m => { if (!modalModels.includes(m)) modalModels.push(m); });
+    }
+    renderModelTags();
+    toast('Models fetched', 'success');
+  } catch (e) {
+    toast('Fetch failed: ' + e.message, 'error');
   }
 }
+
+// Enter key to add model tag
+document.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && e.target && e.target.id === 'f-model-input') {
+    e.preventDefault();
+    addModelTag();
+  }
+});
 
 // ── Provider CRUD ──
 function openAddProvider() {
   editingProvider = null;
+  modalModels = [];
   document.getElementById('modal-title').textContent = 'Add Provider';
-  ['f-key', 'f-name', 'f-url', 'f-key-val', 'f-models', 'f-default', 'f-prefix'].forEach(id => {
+  ['f-key', 'f-name', 'f-url', 'f-key-val', 'f-default', 'f-prefix', 'f-model-input'].forEach(id => {
     document.getElementById(id).value = '';
   });
   document.getElementById('f-key').disabled = false;
   document.getElementById('f-enabled').checked = true;
+  renderModelTags();
   document.getElementById('provider-modal').classList.add('active');
 }
 
 function editProvider(key) {
   editingProvider = key;
   const p = config.providers[key];
+  const apiModels = fetchedModels[p.name || key] || [];
+  modalModels = [...new Set([...apiModels, ...(p.models || [])])];
   document.getElementById('modal-title').textContent = 'Edit: ' + (p.name || key);
   document.getElementById('f-key').value = key;
   document.getElementById('f-key').disabled = true;
@@ -813,10 +906,11 @@ function editProvider(key) {
   document.getElementById('f-url').value = p.baseUrl || '';
   document.getElementById('f-key-val').value = '';
   document.getElementById('f-key-val').placeholder = p.apiKey ? 'Leave blank to keep current' : 'Enter API key';
-  document.getElementById('f-models').value = (p.models || []).join(', ');
   document.getElementById('f-default').value = p.defaultModel || '';
   document.getElementById('f-prefix').value = Array.isArray(p.prefix) ? p.prefix.join(', ') : (p.prefix || '');
   document.getElementById('f-enabled').checked = p.enabled !== false;
+  document.getElementById('f-model-input').value = '';
+  renderModelTags();
   document.getElementById('provider-modal').classList.add('active');
 }
 
@@ -834,7 +928,7 @@ async function saveProvider() {
   const name = document.getElementById('f-name').value.trim();
   const baseUrl = document.getElementById('f-url').value.trim();
   const apiKey = document.getElementById('f-key-val').value.trim();
-  const models = document.getElementById('f-models').value.split(',').map(s => s.trim()).filter(Boolean);
+  const models = [...modalModels];
   const defaultModel = document.getElementById('f-default').value.trim();
   const prefixStr = document.getElementById('f-prefix').value.trim();
   const enabled = document.getElementById('f-enabled').checked;
@@ -874,6 +968,7 @@ async function saveProvider() {
 }
 
 async function deleteProvider(key) {
+
   if (!confirm('Delete provider "' + key + '"?')) return;
   try {
     await fetch('/api/config/providers/' + encodeURIComponent(key), { method: 'DELETE' });
