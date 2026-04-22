@@ -153,7 +153,15 @@ button {
   padding: 16px;
   margin-bottom: 24px;
 }
-.info-card h3 { font-size: 13px; font-weight: 600; color: #f1f5f9; margin-bottom: 10px; }
+.info-card h3 { font-size: 13px; font-weight: 600; color: #f1f5f9; margin-bottom: 12px; }
+.setup-steps { display: flex; flex-direction: column; gap: 12px; }
+.setup-step { display: flex; gap: 12px; align-items: flex-start; }
+.step-num { width: 24px; height: 24px; border-radius: 50%; background: var(--primary); color: #fff; font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.step-content { flex: 1; min-width: 0; }
+.step-title { font-size: 12px; font-weight: 600; color: var(--text); margin-bottom: 4px; }
+.step-desc { font-size: 11px; color: var(--text-dim); margin-bottom: 4px; }
+.step-code { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 8px 12px; font-size: 11px; color: var(--text-dim); font-family: var(--mono); position: relative; white-space: pre; line-height: 1.6; overflow-x: auto; }
+.step-code .copy-btn { position: absolute; top: 4px; right: 4px; }
 .info-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; font-size: 12px; }
 .info-row .label { color: var(--text-dim); min-width: 120px; flex-shrink: 0; }
 .info-row code {
@@ -439,22 +447,42 @@ button {
   <!-- Quick Start -->
   <div class="info-card">
     <h3>Quick Start</h3>
-    <div class="info-row">
-      <span class="label">Gateway URL</span>
-      <code id="gateway-url"></code>
-      <button class="copy-btn" onclick="copyText(document.getElementById('gateway-url').textContent)">Copy</button>
+    <div class="setup-steps">
+      <div class="setup-step">
+        <div class="step-num">1</div>
+        <div class="step-content">
+          <div class="step-title">Gateway URL</div>
+          <div class="step-desc">Your API Hub is running at:</div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <code id="gateway-url" style="background:var(--bg);border:1px solid var(--border);padding:4px 10px;border-radius:4px;font-family:var(--mono);font-size:12px"></code>
+            <button class="copy-btn" onclick="copyText(document.getElementById('gateway-url').textContent)">Copy</button>
+          </div>
+        </div>
+      </div>
+      <div class="setup-step">
+        <div class="step-num">2</div>
+        <div class="step-content">
+          <div class="step-title">Configure Claude Code</div>
+          <div class="step-desc">Add this to <code style="background:var(--bg);padding:1px 5px;border-radius:3px;font-size:11px">~/.claude/settings.json</code> (env section):</div>
+          <div class="step-code" id="config-snippet"><button class="copy-btn" onclick="copyConfig()">Copy</button></div>
+        </div>
+      </div>
+      <div class="setup-step">
+        <div class="step-num">3</div>
+        <div class="step-content">
+          <div class="step-title">Restart Claude Code</div>
+          <div class="step-desc">Close and reopen Claude Code for the new settings to take effect. All requests will now route through this gateway.</div>
+        </div>
+      </div>
     </div>
-    <div class="info-row">
-      <span class="label">Config file</span>
-      <code>~/.claude/settings.json</code>
-    </div>
-    <div class="config-block" id="config-snippet"><button class="copy-btn" onclick="copyConfig()">Copy</button></div>
-
   </div>
+
+
 
   <!-- Alias Mapping -->
   <section>
     <div class="section-header"><h2>Alias Mapping</h2></div>
+    <div style="font-size:11px;color:var(--text-muted);margin:-10px 0 12px">Map Claude Code model tiers to any provider's model. When a request contains haiku/sonnet/opus, it routes to the mapped model.</div>
     <div class="card" id="aliases-card">
       <div class="alias-row">
         <div class="alias-label haiku">Haiku</div>
@@ -468,8 +496,8 @@ button {
         <div class="alias-label sonnet">Sonnet</div>
         <div class="combo">
           <input type="text" id="alias-sonnet" placeholder="Type or select a model..." autocomplete="off">
-      <div class="combo-panel" id="panel-sonnet"></div>
-        </div>
+          <div class="combo-panel" id="panel-sonnet"></div>
+
         <div class="alias-provider" id="alias-sonnet-provider"></div>
       </div>
       <div class="alias-row">
@@ -514,6 +542,10 @@ button {
     <div class="log-panel" id="log-panel"><div class="empty">No logs yet</div></div>
   </section>
 </main>
+
+<footer style="text-align:center;padding:16px 24px;font-size:11px;color:var(--text-muted);border-top:1px solid var(--border)">
+  API Hub v\${version} &middot; <a href="https://github.com/LeenixP/claude-api-hub" target="_blank" style="color:var(--primary);text-decoration:none">GitHub</a>
+</footer>
 
 <!-- Provider Modal -->
 <div class="modal-overlay" id="provider-modal">
