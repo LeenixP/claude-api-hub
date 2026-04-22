@@ -554,7 +554,8 @@ button {
 </main>
 
 <footer style="text-align:center;padding:16px 24px;font-size:12px;color:var(--text-muted);border-top:1px solid var(--border)">
-  API Hub v\${version} &middot; <a href="https://github.com/LeenixP/claude-api-hub" target="_blank" style="color:var(--primary);text-decoration:none">GitHub</a>
+  API Hub v${version} &middot; <a href="https://github.com/LeenixP/claude-api-hub" target="_blank" style="color:var(--primary);text-decoration:none">GitHub</a>
+
 
 </footer>
 
