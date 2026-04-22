@@ -42,6 +42,23 @@ button{border:none;border-radius:6px;padding:8px 16px;font-size:13px;font-weight
 .badge-on{background:#166534;color:#4ade80}
 .badge-off{background:#7f1d1d;color:#fca5a5}
 .badge-pass{background:#1e3a5f;color:#7dd3fc}
+.badge-openai{background:#064e3b;color:#6ee7b7}
+.badge-anthropic{background:#1e3a5f;color:#7dd3fc}
+.info-card{background:#1e293b;border:1px solid #334155;border-radius:8px;padding:16px;margin-bottom:24px}
+.info-card h3{font-size:14px;font-weight:600;color:#f1f5f9;margin-bottom:12px}
+.info-row{display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:13px}
+.info-row .label{color:#94a3b8;min-width:140px}
+.info-row code{background:#334155;padding:3px 8px;border-radius:4px;font-size:12px;color:#e2e8f0;font-family:monospace}
+.copy-btn{background:#334155;color:#94a3b8;border:none;border-radius:4px;padding:3px 8px;font-size:11px;cursor:pointer}
+.copy-btn:hover{background:#475569;color:#e2e8f0}
+.config-block{background:#0f172a;border:1px solid #334155;border-radius:6px;padding:10px 14px;font-size:12px;color:#94a3b8;font-family:monospace;margin-top:8px;position:relative;white-space:pre;line-height:1.5}
+.config-block .copy-btn{position:absolute;top:6px;right:6px}
+.provider-meta{display:flex;flex-wrap:wrap;gap:12px;margin-top:6px;font-size:12px;color:#64748b}
+.provider-meta span{display:flex;align-items:center;gap:4px}
+.key-ok{color:#4ade80}
+.key-warn{color:#fbbf24}
+.key-env{color:#7dd3fc}
+.help-text{font-size:11px;color:#64748b;margin-top:4px}
 .form-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 .form-grid .full{grid-column:1/-1}
 .form-group{display:flex;flex-direction:column;gap:4px}
@@ -66,6 +83,20 @@ button{border:none;border-radius:6px;padding:8px 16px;font-size:13px;font-weight
   <div class="status"><span class="dot"></span>Running</div>
 </header>
 <main>
+  <div class="info-card">
+    <h3>Quick Start</h3>
+    <div class="info-row">
+      <span class="label">Gateway URL</span>
+      <code id="gateway-url"></code>
+      <button class="copy-btn" onclick="copyText(document.getElementById('gateway-url').textContent)">Copy</button>
+    </div>
+    <div class="info-row">
+      <span class="label">Config file</span>
+      <code>~/.claude/settings.json</code>
+    </div>
+    <div class="config-block" id="config-snippet"><button class="copy-btn" onclick="copyConfig()">Copy</button></div>
+  </div>
+
   <section>
     <h2>Alias Mapping</h2>
     <div class="card" id="aliases-card">
@@ -140,6 +171,7 @@ button{border:none;border-radius:6px;padding:8px 16px;font-size:13px;font-weight
           <input type="checkbox" id="f-passthrough">
           <label for="f-passthrough">Passthrough (Anthropic format)</label>
         </div>
+        <div class="help-text">Checked = Anthropic Messages API (direct forward, no translation)<br>Unchecked = OpenAI Chat Completions API (auto-translated)</div>
       </div>
     </div>
     <div class="modal-actions">
@@ -215,19 +247,30 @@ function renderProviders() {
     return;
   }
   list.innerHTML = entries.map(([key, p]) => {
-    const badges = [
-      p.enabled ? '<span class="badge badge-on">ON</span>' : '<span class="badge badge-off">OFF</span>',
-      p.passthrough ? '<span class="badge badge-pass">passthrough</span>' : ''
-    ].filter(Boolean).join(' ');
+    const enableBadge = p.enabled ? '<span class="badge badge-on">ON</span>' : '<span class="badge badge-off">OFF</span>';
+    const formatBadge = p.passthrough
+      ? '<span class="badge badge-anthropic">Anthropic API</span>'
+      : '<span class="badge badge-openai">OpenAI Compatible</span>';
     const models = (p.models||[]).map(m => '<span class="model-tag">' + esc(m) + '</span>').join('');
+    const prefix = p.prefix ? (Array.isArray(p.prefix) ? p.prefix.join(', ') : p.prefix) : '-';
+    const keyStatus = !p.apiKey || p.apiKey === '***'
+      ? '<span class="key-warn">\\u26a0 Missing</span>'
+      : p.apiKey.includes('***')
+        ? '<span class="key-ok">\\u2713 Configured</span>'
+        : '<span class="key-env">\\u2713 Configured</span>';
     return '<div class="card">' +
       '<div class="provider-header">' +
-        '<div><span class="provider-name">' + esc(p.name || key) + '</span> ' + badges +
+        '<div><span class="provider-name">' + esc(p.name || key) + '</span> ' + enableBadge + ' ' + formatBadge +
         '<div class="provider-url">' + esc(p.baseUrl) + '</div></div>' +
         '<div class="provider-actions">' +
           '<button class="btn-ghost btn-sm" onclick="editProvider(\\'' + esc(key) + '\\')">Edit</button>' +
           '<button class="btn-danger btn-sm" onclick="deleteProvider(\\'' + esc(key) + '\\')">Delete</button>' +
         '</div>' +
+      '</div>' +
+      '<div class="provider-meta">' +
+        '<span>Prefix: <code>' + esc(prefix) + '</code></span>' +
+        '<span>Default: <code>' + esc(p.defaultModel || '-') + '</code></span>' +
+        '<span>API Key: ' + keyStatus + '</span>' +
       '</div>' +
       '<div class="provider-models">' + models + '</div>' +
     '</div>';
@@ -342,6 +385,25 @@ function toast(msg, isError) {
   setTimeout(() => el.className = 'toast', 2500);
 }
 
+function initQuickStart() {
+  const url = window.location.origin;
+  document.getElementById('gateway-url').textContent = url;
+  const snippet = document.getElementById('config-snippet');
+  const json = JSON.stringify({ env: { ANTHROPIC_BASE_URL: url } }, null, 2);
+  snippet.insertBefore(document.createTextNode(json), snippet.firstChild);
+}
+
+function copyText(text) {
+  navigator.clipboard.writeText(text).then(() => toast('Copied')).catch(() => toast('Copy failed', true));
+}
+
+function copyConfig() {
+  const url = window.location.origin;
+  const json = JSON.stringify({ env: { ANTHROPIC_BASE_URL: url } }, null, 2);
+  copyText(json);
+}
+
+initQuickStart();
 load();
 </script>
 </body>
