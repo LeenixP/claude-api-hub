@@ -12,9 +12,12 @@ async function main(): Promise<void> {
   const providers: Provider[] = [];
   for (const [key, providerConfig] of Object.entries(config.providers)) {
     if (!providerConfig.enabled) continue;
-    if (key === 'claude' || providerConfig.passthrough) {
+    if (providerConfig.passthrough) {
       providers.push(new ClaudeProvider(providerConfig));
     } else {
+      if (key === 'claude' && !('passthrough' in providerConfig)) {
+        console.warn(`[warn] Provider "${key}" looks like Anthropic but missing passthrough:true — using OpenAI translation. Set passthrough:true in config if this is an Anthropic-format API.`);
+      }
       providers.push(new GenericOpenAIProvider(providerConfig));
     }
   }

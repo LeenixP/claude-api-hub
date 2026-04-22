@@ -188,7 +188,16 @@ button{border:none;border-radius:6px;padding:8px 16px;font-size:13px;font-weight
           <input type="checkbox" id="f-passthrough">
           <label for="f-passthrough">Passthrough (Anthropic format)</label>
         </div>
-        <div class="help-text">Checked = Anthropic Messages API (direct forward, no translation)<br>Unchecked = OpenAI Chat Completions API (auto-translated)</div>
+        <div class="help-text" style="background:#0f172a;border:1px solid #334155;border-radius:6px;padding:8px 10px;margin-top:6px;line-height:1.6">
+          <b style="color:#7dd3fc">\\u2611 Checked = Anthropic Messages API</b><br>
+          Request body is forwarded as-is, no protocol translation.<br>
+          Use for: Anthropic official API, or proxies that accept Anthropic format.<br>
+          Auth header: <code style="background:#334155;padding:1px 4px;border-radius:3px">x-api-key</code><br><br>
+          <b style="color:#6ee7b7">\\u2610 Unchecked = OpenAI Chat Completions API</b><br>
+          Request is auto-translated from Anthropic to OpenAI format.<br>
+          Use for: Kimi, MiniMax, GLM, DeepSeek, and any OpenAI-compatible API.<br>
+          Auth header: <code style="background:#334155;padding:1px 4px;border-radius:3px">Authorization: Bearer</code>
+        </div>
       </div>
     </div>
     <div class="modal-actions">
@@ -281,7 +290,7 @@ function renderProviders() {
   }
   list.innerHTML = entries.map(([key, p]) => {
     const enableBadge = p.enabled ? '<span class="badge badge-on">ON</span>' : '<span class="badge badge-off">OFF</span>';
-    const formatBadge = (p.passthrough || key === 'claude')
+    const formatBadge = p.passthrough
       ? '<span class="badge badge-anthropic">Anthropic API</span>'
       : '<span class="badge badge-openai">OpenAI Compatible</span>';
     const models = (p.models||[]).map(m => '<span class="model-tag">' + esc(m) + '</span>').join('');
