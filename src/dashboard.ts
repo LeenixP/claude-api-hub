@@ -497,10 +497,10 @@ button {
         <div class="combo">
           <input type="text" id="alias-sonnet" placeholder="Type or select a model..." autocomplete="off">
           <div class="combo-panel" id="panel-sonnet"></div>
-
+        </div>
         <div class="alias-provider" id="alias-sonnet-provider"></div>
       </div>
-      <div class="alias-row">
+
         <div class="alias-label opus">Opus</div>
         <div class="combo">
           <input type="text" id="alias-opus" placeholder="Type or select a model..." autocomplete="off">
