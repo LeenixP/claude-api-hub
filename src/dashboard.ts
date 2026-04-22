@@ -1049,9 +1049,11 @@ async function loadLogs() {
       const ok = l.status >= 200 && l.status < 300;
       const time = new Date(l.time).toLocaleTimeString();
       const isOpen = openLogIds.has(l.requestId);
-      const model = l.originalModel !== l.resolvedModel
-        ? esc(l.originalModel) + ' \\u2192 ' + esc(l.resolvedModel)
-        : esc(l.originalModel);
+      const cm = l.claudeModel || l.originalModel;
+      const model = cm !== l.resolvedModel
+        ? esc(cm) + ' \\u2192 ' + esc(l.resolvedModel)
+        : esc(cm);
+
       const detail = '<div class="log-detail' + (isOpen ? ' open' : '') + '" id="log-d-' + i + '">'
         + '<div><b>Request ID:</b> ' + esc(l.requestId || '-') + '</div>'
         + '<div><b>Time:</b> ' + new Date(l.time).toLocaleString() + '</div>'
