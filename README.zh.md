@@ -1,27 +1,30 @@
 # Claude API Hub
 
-一个本地 API 网关，让 [Claude Code](https://docs.anthropic.com/en/docs/claude-code) 能够同时使用多家 LLM 厂商的模型。通过模型名称自动路由到对应的 API 后端，在同一个会话中无缝切换不同厂商的模型。
+本地 API 网关，让 Claude Code 通过模型别名（haiku / sonnet / opus）无缝路由到任意 LLM 厂商。
 
 ## 工作原理
 
 ```
 Claude Code ──► ANTHROPIC_BASE_URL=http://127.0.0.1:9800
                         │
-                  API 网关 (本项目)
-                        │ 根据 model 字段路由
+                  API Gateway
+                        │ aliases: sonnet → kimi-k2.6
           ┌─────────────┼─────────────┬──────────────┐
           ▼             ▼             ▼              ▼
        Claude         Kimi        MiniMax          GLM
-     (Anthropic)   (Moonshot)    (MiniMax)      (智谱 AI)
-      直接透传      协议转换       协议转换       协议转换
+     (直接透传)    (协议转换)    (协议转换)     (协议转换)
 ```
 
-网关接收 Anthropic Messages API 格式的请求，检查 `model` 字段，路由到对应后端。对于非 Claude 厂商，自动完成 Anthropic ↔ OpenAI 协议转换。
+Claude Code 发出的请求始终是 Anthropic Messages API 格式。网关拦截后：
 
-## 特性
+1. 根据别名映射（haiku/sonnet/opus → 目标模型）解析实际模型
+2. 根据模型名前缀路由到对应 Provider
+3. 对非 Claude 厂商自动完成 Anthropic ↔ OpenAI 协议转换
 
-- **通用 Provider 系统**：支持任意 OpenAI 兼容的 API，在配置文件中添加即可，无需改代码
-- **Web 管理面板**：可视化管理 Provider、测试模型、查看请求日志
+## 核心特性
+
+- **别名映射**：将 haiku / sonnet / opus 映射到任意厂商的任意模型
+- **通用 Provider**：支持任意 OpenAI 兼容 API，配置即用
 - **协议自动转换**：Anthropic Messages API ↔ OpenAI Chat Completions API
 - **流式支持**：完整的 SSE 事件流转发和转换
 - **Claude 透传**：Claude 模型零开销直接转发
@@ -29,51 +32,32 @@ Claude Code ──► ANTHROPIC_BASE_URL=http://127.0.0.1:9800
 
 ## 快速开始
 
-### 方式一：npm 全局安装
+### 安装
 
 ```bash
+# npm 全局安装
 npm install -g claude-api-hub
-```
 
-### 方式二：从源码安装
-
-```bash
+# 或从源码
 git clone https://github.com/LeenixP/claude-api-hub.git
 cd claude-api-hub
-npm install
-npm run build
+npm install && npm run build
 ```
 
-### 配置 API Key
-
-在 shell 配置文件（`~/.bashrc` 或 `~/.zshrc`）中添加：
-
-```bash
-# Claude (Anthropic 官方或中转)
-export ANTHROPIC_AUTH_TOKEN="your-anthropic-key"
-
-# Kimi (月之暗面)
-export MOONSHOT_API_KEY="your-kimi-key"
-
-# MiniMax
-export MINIMAX_API_KEY="your-minimax-key"
-
-# GLM (智谱 AI)
-export ZHIPUAI_API_KEY="your-glm-key"
-```
-
-### 配置 Provider
+### 配置
 
 配置文件位置：`~/.claude-api-hub/providers.json`
-
-首次运行会使用内置默认配置。你也可以手动创建：
 
 ```json
 {
   "port": 9800,
   "host": "0.0.0.0",
-  "logLevel": "info",
   "defaultProvider": "claude",
+  "aliases": {
+    "haiku": "kimi-k2.6",
+    "sonnet": "MiniMax-M2.7",
+    "opus": "claude-opus-4-6"
+  },
   "providers": {
     "claude": {
       "name": "Claude (Anthropic)",
@@ -104,7 +88,7 @@ export ZHIPUAI_API_KEY="your-glm-key"
       "prefix": ["minimax-", "MiniMax-"]
     },
     "glm": {
-      "name": "GLM (智谱 AI)",
+      "name": "GLM (Zhipu AI)",
       "baseUrl": "https://open.bigmodel.cn/api/paas/v4",
       "apiKey": "${ZHIPUAI_API_KEY}",
       "models": ["glm-4-plus", "glm-4", "glm-4-air", "glm-4-flash"],
@@ -116,28 +100,31 @@ export ZHIPUAI_API_KEY="your-glm-key"
 }
 ```
 
-配置说明：
-- `apiKey` 支持 `${ENV_VAR}` 语法引用环境变量
-- `prefix` 用于模型路由匹配，支持字符串或字符串数组
-- `passthrough: true` 表示直接转发 Anthropic 格式（仅 Claude 需要）
-- `enabled: false` 可临时禁用某个 Provider
+### 配置说明
 
-### 启动网关
+| 字段 | 说明 |
+|------|------|
+| `aliases` | 别名映射，key 为 haiku/sonnet/opus，value 为目标模型全名 |
+| `apiKey` | 支持 `${ENV_VAR}` 语法引用环境变量 |
+| `prefix` | 模型路由匹配前缀，支持字符串或字符串数组 |
+| `passthrough` | 设为 `true` 表示直接转发 Anthropic 格式（仅 Claude 需要） |
+| `enabled` | 设为 `false` 可临时禁用某个 Provider |
+
+### 设置环境变量
 
 ```bash
-# npm 全局安装后
-claude-api-hub
-
-# 或使用管理脚本
-chmod +x bin/hub.sh
-bin/hub.sh start     # 后台启动
-bin/hub.sh status    # 查看状态
-bin/hub.sh stop      # 停止
-bin/hub.sh restart   # 重启
-bin/hub.sh logs      # 查看日志
+# ~/.bashrc 或 ~/.zshrc
+export ANTHROPIC_AUTH_TOKEN="your-anthropic-key"
+export MOONSHOT_API_KEY="your-kimi-key"
+export MINIMAX_API_KEY="your-minimax-key"
+export ZHIPUAI_API_KEY="your-glm-key"
 ```
 
-网关默认监听 `http://0.0.0.0:9800`。
+### 启动
+
+```bash
+claude-api-hub
+```
 
 ### 配置 Claude Code
 
@@ -151,39 +138,32 @@ bin/hub.sh logs      # 查看日志
 }
 ```
 
-局域网内其他设备使用：
+## 别名映射
+
+这是本项目的核心功能。通过 `aliases` 配置，你可以将 Claude Code 中的三个模型层级映射到任意厂商的任意模型：
 
 ```json
 {
-  "env": {
-    "ANTHROPIC_BASE_URL": "http://192.168.x.x:9800"
+  "aliases": {
+    "haiku": "glm-4-flash",
+    "sonnet": "kimi-k2.6",
+    "opus": "claude-opus-4-6"
   }
 }
 ```
 
-### 使用不同模型
+映射规则：当请求的模型名包含 `haiku`、`sonnet` 或 `opus` 关键字时，自动替换为对应的目标模型。
 
-```bash
-# 使用 Kimi
-claude --model kimi-k2.6 -p "你好"
+例如上面的配置下：
+- `claude-haiku-4-5` → 实际调用 `glm-4-flash`（智谱 AI）
+- `claude-sonnet-4-6` → 实际调用 `kimi-k2.6`（月之暗面）
+- `claude-opus-4-6` → 实际调用 `claude-opus-4-6`（Anthropic 原生）
 
-# 使用 MiniMax
-claude --model MiniMax-M2.7 -p "你好"
-
-# 使用 GLM
-claude --model glm-4-plus -p "你好"
-
-# Claude 照常使用
-claude --model claude-sonnet-4-6 -p "你好"
-```
+这样你可以在不改变 Claude Code 使用习惯的前提下，灵活切换底层模型。
 
 ## 添加自定义 Provider
 
-任何 OpenAI 兼容的 API 都可以接入，无需修改代码。
-
-### 方式一：编辑配置文件
-
-在 `~/.claude-api-hub/providers.json` 的 `providers` 中添加：
+任何 OpenAI 兼容的 API 都可以接入，在配置文件的 `providers` 中添加即可：
 
 ```json
 "deepseek": {
@@ -197,74 +177,37 @@ claude --model claude-sonnet-4-6 -p "你好"
 }
 ```
 
-重启网关后即可使用 `claude --model deepseek-chat`。
+然后在 `aliases` 中映射即可使用：
 
-### 方式二：通过 Web 管理面板
-
-打开 `http://localhost:9800`，在 Provider Management 区域点击 "Add Provider"，填写表单后保存。
-
-### 方式三：通过 API
-
-```bash
-curl -X POST http://localhost:9800/api/config/providers \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "DeepSeek",
-    "baseUrl": "https://api.deepseek.com/v1",
-    "apiKey": "your-key",
-    "models": ["deepseek-chat", "deepseek-coder"],
-    "defaultModel": "deepseek-chat",
-    "enabled": true,
-    "prefix": "deepseek-"
-  }'
+```json
+{
+  "aliases": {
+    "sonnet": "deepseek-chat"
+  }
+}
 ```
-
-## Web 管理面板
-
-访问 `http://localhost:9800` 打开管理面板，功能包括：
-
-- 查看所有 Provider 状态和健康检查
-- 在线测试任意模型（发送消息、查看响应和 token 用量）
-- 请求日志（最近 50 条）
-- 增删改 Provider（无需重启）
-- 一键复制配置命令
 
 ## API 端点
 
 | 端点 | 方法 | 说明 |
 |------|------|------|
-| `/` | GET | Web 管理面板 |
-| `/v1/messages` | POST | Anthropic Messages API（主代理端点） |
+| `/v1/messages` | POST | Anthropic Messages API 代理（主端点） |
 | `/v1/models` | GET | 列出所有可用模型 |
 | `/health` | GET | 健康检查 |
-| `/api/config` | GET | 获取当前配置（API Key 已脱敏） |
-| `/api/config/providers` | POST | 添加 Provider |
-| `/api/config/providers/:name` | PUT | 更新 Provider |
-| `/api/config/providers/:name` | DELETE | 删除 Provider |
-| `/api/config/reload` | POST | 重新加载配置文件 |
 
 ## 路由规则
 
-网关根据请求中的 `model` 字段匹配 Provider：
-
-1. 检查每个 Provider 配置的 `prefix`，匹配则路由到该 Provider
-2. 检查每个 Provider 的 `models` 列表，精确匹配则路由
-3. 都不匹配则使用 `defaultProvider`
-
-## Claude Code 插件
-
-`plugin/` 目录包含一个 Claude Code 插件：
-
-- MCP 工具：`hub_list_models`（列出模型）、`hub_status`（健康检查）、`hub_set_default`（设置默认模型）
-- Skill：`/switch-model` 快速切换模型
-- 安装脚本：`plugin/install.sh`
+1. 检查别名：请求模型名包含 haiku/sonnet/opus → 替换为 aliases 中的目标模型
+2. 前缀匹配：根据 Provider 的 `prefix` 配置匹配
+3. 精确匹配：检查 Provider 的 `models` 列表
+4. 兜底：使用 `defaultProvider`
 
 ## 开发
 
 ```bash
 npm run dev      # 开发模式（热重载）
-npm run build    # 编译 TypeScript
-npm test         # 运行测试
+npm run build    # 编译
+npm test         # 测试
 ```
 
 ## License

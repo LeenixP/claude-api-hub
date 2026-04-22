@@ -1,67 +1,75 @@
 # Claude API Hub
 
-A local API gateway that lets [Claude Code](https://docs.anthropic.com/en/docs/claude-code) route requests to multiple LLM providers based on model ID. Use Claude, Kimi, MiniMax, and GLM models side-by-side in the same session.
+A local API gateway that lets Claude Code route requests to any LLM provider via model aliases (haiku / sonnet / opus).
 
 ## How It Works
 
 ```
 Claude Code ──► ANTHROPIC_BASE_URL=http://127.0.0.1:9800
                         │
-                  API Gateway (this project)
-                        │ route by model prefix
+                  API Gateway
+                        │ aliases: sonnet → kimi-k2.6
           ┌─────────────┼─────────────┬──────────────┐
           ▼             ▼             ▼              ▼
        Claude         Kimi        MiniMax          GLM
-     (Anthropic)   (Moonshot)    (MiniMax)      (Zhipu AI)
+    (passthrough)  (translate)  (translate)    (translate)
 ```
 
-The gateway accepts Anthropic Messages API format, inspects the `model` field, and forwards to the right backend — translating between Anthropic and OpenAI formats on the fly.
+The gateway intercepts Anthropic Messages API requests from Claude Code, resolves model aliases, routes to the matching provider, and auto-translates between Anthropic and OpenAI protocols for non-Claude providers.
 
-## Supported Providers
+## Features
 
-| Provider | Models | Base URL |
-|----------|--------|----------|
-| Claude (Anthropic) | `claude-opus-4-6`, `claude-sonnet-4-6`, `claude-haiku-4-5` | `https://api.anthropic.com` |
-| Kimi (Moonshot AI) | `kimi-k2.6`, `kimi-k2.5`, `kimi-k2` | `https://api.moonshot.cn/v1` |
-| MiniMax | `MiniMax-M2.7`, `MiniMax-M2.5`, `MiniMax-M2.1`, `MiniMax-M1` | `https://api.minimaxi.com/v1` |
-| GLM (Zhipu AI) | `glm-4-plus`, `glm-4`, `glm-4-air`, `glm-4-flash`, `glm-4-long` | `https://open.bigmodel.cn/api/paas/v4` |
+- **Alias mapping**: Map haiku / sonnet / opus to any provider's model
+- **Generic providers**: Any OpenAI-compatible API works out of the box
+- **Protocol translation**: Anthropic Messages API ↔ OpenAI Chat Completions API
+- **Streaming**: Full SSE event stream forwarding and translation
+- **Claude passthrough**: Zero-overhead direct forwarding for Claude models
+- **Zero runtime deps**: Built on Node.js native `http` module
 
 ## Quick Start
 
-### 1. Install
-
 ```bash
-git clone https://github.com/lipeng/claude-api-hub.git
-cd claude-api-hub
-npm install
-npm run build
+npm install -g claude-api-hub
+claude-api-hub
 ```
 
-### 2. Set API Keys
+Configure `~/.claude-api-hub/providers.json`:
 
-```bash
-export ANTHROPIC_AUTH_TOKEN="your-anthropic-key"
-export MOONSHOT_API_KEY="your-kimi-key"
-export MINIMAX_API_KEY="your-minimax-key"
-export ZHIPUAI_API_KEY="your-glm-key"
+```json
+{
+  "port": 9800,
+  "host": "0.0.0.0",
+  "defaultProvider": "claude",
+  "aliases": {
+    "haiku": "glm-4-flash",
+    "sonnet": "kimi-k2.6",
+    "opus": "claude-opus-4-6"
+  },
+  "providers": {
+    "claude": {
+      "name": "Claude (Anthropic)",
+      "baseUrl": "https://api.anthropic.com",
+      "apiKey": "${ANTHROPIC_AUTH_TOKEN}",
+      "models": ["claude-opus-4-6", "claude-sonnet-4-6", "claude-haiku-4-5"],
+      "defaultModel": "claude-sonnet-4-6",
+      "enabled": true,
+      "prefix": "claude-",
+      "passthrough": true
+    },
+    "kimi": {
+      "name": "Kimi (Moonshot AI)",
+      "baseUrl": "https://api.moonshot.cn/v1",
+      "apiKey": "${MOONSHOT_API_KEY}",
+      "models": ["kimi-k2.6"],
+      "defaultModel": "kimi-k2.6",
+      "enabled": true,
+      "prefix": "kimi-"
+    }
+  }
+}
 ```
 
-### 3. Start the Gateway
-
-```bash
-# Direct
-node dist/index.js
-
-# Or use the CLI
-chmod +x bin/hub.sh
-bin/hub.sh start
-```
-
-The gateway starts on `http://127.0.0.1:9800` by default.
-
-### 4. Configure Claude Code
-
-Update `~/.claude/settings.json`:
+Point Claude Code at the gateway in `~/.claude/settings.json`:
 
 ```json
 {
@@ -71,76 +79,58 @@ Update `~/.claude/settings.json`:
 }
 ```
 
-### 5. Use Different Models
+## Alias Mapping
 
-```bash
-# Use Kimi
-claude --model kimi-k2.6 -p "Hello from Kimi"
+The core feature. Map Claude Code's three model tiers to any provider's model:
 
-# Use MiniMax
-claude --model MiniMax-M2.7 -p "Hello from MiniMax"
-
-# Use GLM
-claude --model glm-4-plus -p "Hello from GLM"
-
-# Claude still works as usual
-claude --model claude-sonnet-4-6 -p "Hello from Claude"
+```json
+{
+  "aliases": {
+    "haiku": "glm-4-flash",
+    "sonnet": "kimi-k2.6",
+    "opus": "claude-opus-4-6"
+  }
+}
 ```
 
-## Routing Rules
+When a request model contains `haiku`, `sonnet`, or `opus`, it's replaced with the alias target. The gateway then routes by prefix to the correct provider.
 
-| Model prefix | Provider |
-|-------------|----------|
-| `claude-*` | Anthropic (passthrough, no translation) |
-| `kimi-*` | Kimi / Moonshot AI |
-| `minimax-*`, `MiniMax-*` | MiniMax |
-| `glm-*` | GLM / Zhipu AI |
-| Unknown | Falls back to default provider (Claude) |
+## Adding Providers
+
+Any OpenAI-compatible API — just add to `providers` in config:
+
+```json
+"deepseek": {
+  "name": "DeepSeek",
+  "baseUrl": "https://api.deepseek.com/v1",
+  "apiKey": "${DEEPSEEK_API_KEY}",
+  "models": ["deepseek-chat"],
+  "defaultModel": "deepseek-chat",
+  "enabled": true,
+  "prefix": "deepseek-"
+}
+```
+
+Config notes:
+- `apiKey` supports `${ENV_VAR}` syntax
+- `prefix` can be a string or array of strings
+- `passthrough: true` skips protocol translation (Claude only)
 
 ## API Endpoints
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/v1/messages` | POST | Main proxy — Anthropic Messages API |
+| `/v1/messages` | POST | Anthropic Messages API proxy |
 | `/v1/models` | GET | List all available models |
-| `/health` | GET | Provider health check |
-
-## Configuration
-
-Edit `config/providers.json` to customize providers, models, and endpoints. API keys use `${ENV_VAR}` interpolation.
-
-## Claude Code Plugin
-
-The `plugin/` directory contains a Claude Code plugin with:
-
-- MCP tools: `hub_list_models`, `hub_status`, `hub_set_default`
-- Skill: `/switch-model` for quick model switching
-- Install script: `plugin/install.sh`
-
-## CLI Management
-
-```bash
-bin/hub.sh start    # Start gateway (background)
-bin/hub.sh stop     # Stop gateway
-bin/hub.sh status   # Check if running
-bin/hub.sh restart  # Restart
-bin/hub.sh logs     # Tail logs
-```
+| `/health` | GET | Health check |
 
 ## Development
 
 ```bash
-npm run dev          # Watch mode with tsx
-npm run build        # CompiScript
-npm test             # Run tests (vitest)
+npm run dev      # Dev mode (hot reload)
+npm run build    # Compile TypeScript
+npm test         # Run tests
 ```
-
-## Architecture
-
-- **Zero runtime dependencies** for the gateway core (Node.js native `http`)
-- **Protocol translation**: Anthropic Messages API ↔ OpenAI Chat Completions API
-- **Streaming support**: Full SSE relay with event translation
-- **Claude passthrough**: No translation overhead for Claude models
 
 ## License
 
