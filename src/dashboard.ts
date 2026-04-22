@@ -213,7 +213,7 @@ button{border:none;border-radius:6px;padding:7px 14px;font-size:12px;font-weight
 </main>
 
 <div class="modal-overlay" id="provider-modal">
-  <div class="ml">
+  <div class="modal">
     <h3 id="modal-title">Add Provider</h3>
     <div class="form-grid">
       <div class="form-group"><label>Provider Key</label><input type="text" id="f-key" placeholder="e.g. deepseek"></div>
@@ -225,14 +225,13 @@ button{border:none;border-radius:6px;padding:7px 14px;font-size:12px;font-weight
       <div class="form-group"><label>Prefix (for routing)</label><input type="text" id="f-prefix" placeholder="deepseek-"></div>
       <div class="form-group"><div class="form-check"><input type="checkbox" id="f-enabled" checked><label for="f-enabled">Enabled</label></div></div>
     </div>
-
-    </div>
     <div class="modal-actions">
       <button class="btn-ghost" onclick="closeModal()">Cancel</button>
       <button class="btn-primary" onclick="saveProvider()">Save</button>
     </div>
   </div>
 </div>
+
 
 <div class="toast" id="toast"></div>
 
@@ -337,24 +336,40 @@ async function saveAliases(){
 
 async function testProvider(key){
   const p=config.providers[key];
-  toast('Testing '+p.name+'...','info');
+  const model=p.defaultModel||p.models[0];
+  if(!model){toast('No model configured','error');return}
+  toast('Testing '+p.name+' ('+model+')...','info');
+  const start=Date.now();
   try{
-    const res=await fetch('/api/health/providers').then(r=>r.json());
-    healthCache=res;renderProviders();
-    const h=res[p.name||key];
-    if(h&&h.status==='ok')toast(p.name+': OK ('+h.latencyMs+'ms)','success');
-    else toast(p.name+': '+(h?.error||h?.status||'unknown'),'error');
-  }catch(e){toast('Test failed','error')}
+    const res=await fetch('/v1/messages',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','x-api-key':'test','anthropic-version':'2023-06-01'},
+      body:JSON.stringify({model,messages:[{role:'user',content:'Say "OK" and nothing else.'}],max_tokens:16,stream:false})
+    });
+    const latency=Date.now()-start;
+    const body=await res.json();
+    healthCache[p.name||key]={status:res.ok?'ok':'error',latencyMs:latency,error:res.ok?undefined:body?.error?.message||res.status+''};
+    renderProviders();
+    if(res.ok){
+      const text=(body.content||[]).map(b=>b.text||'').join('').slice(0,80);
+      toast(p.name+': OK ('+latency+'ms) — "'+text+'"','success');
+    }else{
+      toast(p.name+': '+res.status+' '+(body?.error?.message||''),'error');
+    }
+  }catch(e){
+    healthCache[p.name||key]={status:'error',latencyMs:Date.now()-start,error:e.message};
+    renderProviders();
+    toast(p.name+': '+e.message,'error');
+  }
 }
 
 async function testAllProviders(){
   toast('Testing all providers...','info');
-  try{
-    healthCache=await fetch('/api/health/providers').then(r=>r.json());
-    renderProviders();
-    const ok=Object.values(healthCache).filter(h=>h.status==='ok').length; toast(ok+'/'+Object.keys(healthCache).length+' providers OK','success');
-  }catch(e){toast('Test failed','error')}
+  const entries=Object.entries(config.providers).filter(([,p])=>p.enabled);
+  await Promise.all(entries.map(([key])=>testProvider(key)));
 }
+
+
 
 function openAddProvider(){
   editingProvider=null;

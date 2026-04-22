@@ -32,6 +32,23 @@ export class ClaudeProvider implements Provider {
   }
 
   buildRequest(req: AnthropicRequest): { url: string; headers: Record<string, string>; body: string } {
+    const clean: Record<string, unknown> = {
+      model: req.model,
+      messages: req.messages,
+      max_tokens: req.max_tokens,
+    };
+    if (req.system !== undefined) clean.system = req.system;
+    if (req.temperature !== undefined) clean.temperature = req.temperature;
+    if (req.top_p !== undefined) clean.top_p = req.top_p;
+    if (req.top_k !== undefined) clean.top_k = req.top_k;
+    if (req.stream !== undefined) clean.stream = req.stream;
+    if (req.stop_sequences) clean.stop_sequences = req.stop_sequences;
+    if (req.tools && req.tools.length > 0) clean.tools = req.tools;
+    if (req.tool_choice) clean.tool_choice = req.tool_choice;
+    if (req.metadata) clean.metadata = req.metadata;
+    const rawReq = req as unknown as Record<string, unknown>;
+    if (rawReq.thinking) clean.thinking = rawReq.thinking;
+
     return {
       url: `${this.config.baseUrl}/v1/messages`,
       headers: {
@@ -39,7 +56,7 @@ export class ClaudeProvider implements Provider {
         'anthropic-version': '2023-06-01',
         'content-type': 'application/json',
       },
-      body: JSON.stringify(req),
+      body: JSON.stringify(clean),
     };
   }
 
