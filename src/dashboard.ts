@@ -1049,7 +1049,7 @@ async function loadLogs() {
       const ok = l.status >= 200 && l.status < 300;
       const time = new Date(l.time).toLocaleTimeString();
       const isOpen = openLogIds.has(l.requestId);
-      const cm = l.claudeModel || l.originalModel;
+      const cm = l.claudeModel || '';
       const model = cm !== l.resolvedModel
         ? esc(cm) + ' \\u2192 ' + esc(l.resolvedModel)
         : esc(cm);

@@ -16,7 +16,6 @@ interface LogEntry {
   time: string;
   requestId: string;
   claudeModel: string;
-  originalModel: string;
   resolvedModel: string;
   provider: string;
   protocol: string;
@@ -455,20 +454,24 @@ export function createServer(router: ModelRouter, config: GatewayConfig): http.S
       if (!anthropicReq.model) {
         sendError(res, 400, 'invalid_request_error', 'Missing required field: model'); return;
       }
-      const claudeModel = anthropicReq.model;
+      const rawModel = anthropicReq.model;
+      const claudeModel = rawModel.toLowerCase().includes('haiku') ? 'Haiku'
+        : rawModel.toLowerCase().includes('sonnet') ? 'Sonnet'
+        : rawModel.toLowerCase().includes('opus') ? 'Opus'
+        : rawModel;
 
       let routeResult;
       try { routeResult = router.route(anthropicReq.model); } catch (err) {
-        addLog({ time: new Date().toISOString(), requestId, claudeModel, originalModel: anthropicReq.model, resolvedModel: '', provider: '', protocol: '', targetUrl: '', stream: !!anthropicReq.stream, status: 500, durationMs: Date.now() - startTime, error: (err as Error).message });
+        addLog({ time: new Date().toISOString(), requestId, claudeModel, resolvedModel: '', provider: '', protocol: '', targetUrl: '', stream: !!anthropicReq.stream, status: 500, durationMs: Date.now() - startTime, error: (err as Error).message });
         sendError(res, 500, 'api_error', (err as Error).message); return;
       }
 
-      const { provider, resolvedModel, originalModel } = routeResult;
+      const { provider, resolvedModel } = routeResult;
       anthropicReq.model = resolvedModel;
       const protocol = provider.config.passthrough ? 'Anthropic' : 'OpenAI';
       let built: { url: string; headers: Record<string, string>; body: string };
       try { built = provider.buildRequest(anthropicReq); } catch (err) {
-        addLog({ time: new Date().toISOString(), requestId, claudeModel, originalModel, resolvedModel, provider: provider.name, protocol, targetUrl: '', stream: !!anthropicReq.stream, status: 500, durationMs: Date.now() - startTime, error: `Build error: ${(err as Error).message}` });
+        addLog({ time: new Date().toISOString(), requestId, claudeModel, resolvedModel, provider: provider.name, protocol, targetUrl: '', stream: !!anthropicReq.stream, status: 500, durationMs: Date.now() - startTime, error: `Build error: ${(err as Error).message}` });
         sendError(res, 500, 'api_error', `Provider build error: ${(err as Error).message}`); return;
       }
 
@@ -486,7 +489,7 @@ export function createServer(router: ModelRouter, config: GatewayConfig): http.S
       if (maskedHeaders['x-api-key']) maskedHeaders['x-api-key'] = maskKey(maskedHeaders['x-api-key']);
       if (maskedHeaders['Authorization']) maskedHeaders['Authorization'] = 'Bearer ***';
       const logBase: LogEntry = {
-        time: new Date().toISOString(), requestId, claudeModel, originalModel, resolvedModel,
+        time: new Date().toISOString(), requestId, claudeModel, resolvedModel,
         provider: provider.name, protocol, targetUrl: built.url, stream: !!anthropicReq.stream,
         status: 0, durationMs: 0,
       };
