@@ -44,6 +44,10 @@ export class ModelRouter {
   getProviders(): Provider[] {
     return Array.from(this.providers.values());
   }
+
+  setAliases(aliases: Record<string, string>): void {
+    this.aliases = aliases;
+  }
 }
 
 export function createRouter(providers: Provider[], defaultProviderName: string, aliases: Record<string, string> = {}): ModelRouter {

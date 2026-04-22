@@ -327,6 +327,7 @@ export function createServer(router: ModelRouter, config: GatewayConfig): http.S
         sendError(res, 400, 'invalid_request_error', `Invalid alias keys: ${invalidKeys.join(', ')}. Only haiku, sonnet, opus are allowed.`); return;
       }
       config.aliases = newAliases;
+      router.setAliases(newAliases);
       saveConfig(config);
       sendJson(res, 200, config.aliases);
       return;
@@ -337,6 +338,7 @@ export function createServer(router: ModelRouter, config: GatewayConfig): http.S
       try {
         const fresh = loadConfig(getConfigPath());
         Object.assign(config, fresh);
+        router.setAliases(config.aliases ?? {});
         const masked: GatewayConfig = {
           ...config,
           providers: Object.fromEntries(
