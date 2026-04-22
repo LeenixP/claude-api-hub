@@ -536,21 +536,21 @@ button {
     <div class="main-right">
       <!-- Request Logs -->
       <section>
-        <div class="section-header">
-          <h2>Request Logs</h2>
-          <div style="display: flex; gap: 6px; align-items: center;">
-            <div class="log-filter">
-              <button class="btn-ghost btn-sm active" onclick="setLogFilter('all', this)">All</button>
-              <button class="btn-ghost btn-sm" onclick="setLogFilter('ok', this)">OK</button>
-              <button class="btn-ghost btn-sm" onclick="setLogFilter('err', this)">Errors</button>
-            </div>
-            <button class="btn-ghost btn-sm" onclick="clearLogs()">Clear</button>
-                <button class="btn-ghost btn-sm" id="file-log-btn" onclick="toggleFileLog()">File Log: OFF</button>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+          <h2 style="font-size:17px;font-weight:600;color:#f1f5f9">Request Logs</h2>
+          <button class="btn-ghost btn-sm" id="file-log-btn" onclick="toggleFileLog()">File Log: OFF</button>
+        </div>
+        <div style="display:flex;gap:6px;align-items:center;margin-bottom:12px">
+          <div class="log-filter">
+            <button class="btn-ghost btn-sm active" onclick="setLogFilter('all', this)">All</button>
+            <button class="btn-ghost btn-sm" onclick="setLogFilter('ok', this)">OK</button>
+            <button class="btn-ghost btn-sm" onclick="setLogFilter('err', this)">Errors</button>
           </div>
+          <button class="btn-ghost btn-sm" onclick="clearLogs()">Clear</button>
         </div>
         <div class="log-panel" id="log-panel"><div class="empty">No logs yet</div></div>
       </section>
-    </div>
+
   </div>
 </main>
 
