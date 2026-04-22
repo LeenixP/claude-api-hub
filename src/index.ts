@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+import { readFileSync } from 'fs';
+import { dirname, join } from 'path';
+import { fileURLToPath } from 'url';
 import { loadConfig } from './config.js';
 import { createRouter } from './router.js';
 import { createServer } from './server.js';
@@ -6,8 +9,15 @@ import { Provider } from './providers/types.js';
 import { ClaudeProvider } from './providers/claude.js';
 import { GenericOpenAIProvider } from './providers/generic.js';
 
+const __dirname = dirname(fileURLToPath(import.meta.url));
+
 async function main(): Promise<void> {
   const config = loadConfig();
+  try {
+    const pkg = JSON.parse(readFileSync(join(__dirname, '../package.json'), 'utf-8'));
+    config.version = pkg.version;
+  } catch { /* ignore */ }
+
 
   const providers: Provider[] = [];
   for (const [key, providerConfig] of Object.entries(config.providers)) {

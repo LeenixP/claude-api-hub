@@ -194,7 +194,7 @@ export function createServer(router: ModelRouter, config: GatewayConfig): http.S
 
     // Dashboard
     if (req.method === 'GET' && pathname === '/') {
-      const html = dashboardHtml();
+      const html = dashboardHtml(config.version || '');
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', ...CORS_HEADERS });
       res.end(html);
       return;

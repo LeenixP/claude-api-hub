@@ -1,4 +1,4 @@
-export function dashboardHtml(): string {
+export function dashboardHtml(version: string = ''): string {
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -427,7 +427,7 @@ button {
 <body>
 
 <header>
-  <h1>API Hub</h1>
+  <h1>API Hub <span style="font-size:11px;font-weight:400;color:var(--text-muted);margin-left:6px">v${version}</span></h1>
   <div class="header-right">
     <div class="header-stat" id="stat-providers"></div>
     <div class="header-stat" id="stat-models"></div>
