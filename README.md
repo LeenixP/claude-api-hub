@@ -1,6 +1,6 @@
 # Claude API Hub
 
-A local API gateway that lets Claude Code route requests to any LLM provider via model aliases (haiku / sonnet / opus).
+A local API gateway that lets Claude Code route requests to any LLM provider via model aliases (haiku / sonnet / opus). Manage everything from a Web dashboard — no config files needed.
 
 ## How It Works
 
@@ -19,12 +19,14 @@ The gateway intercepts Anthropic Messages API requests from Claude Code, resolve
 
 ## Features
 
-- **Alias mapping**: Map haiku / sonnet / opus to any provider's model
-- **Generic providers**: Any OpenAI-compatible API works out of the box
-- **Protocol translation**: Anthropic Messages API ↔ OpenAI Chat Completions API
+- **Web Dashboard**: Manage providers, aliases, and monitor requests — no config editing needed
+- **Alias Mapping**: Map haiku / sonnet / opus to any provider's model, with auto-detection from provider APIs
+- **Protocol Selection**: Choose Anthropic (passthrough) or OpenAI (auto-translate) per provider
+- **Provider Health Check**: Test connectivity to each provider from the dashboard
+- **Request Logging**: Detailed logs with request ID, routing chain, timing, and full error details
+- **Hot Reload**: Add/edit/delete providers and aliases without restarting
 - **Streaming**: Full SSE event stream forwarding and translation
-- **Claude passthrough**: Zero-overhead direct forwarding for Claude models
-- **Zero runtime deps**: Built on Node.js native `http` module
+- **Zero Runtime Deps**: Built on Node.js native `http` module (only `eventsource-parser` for SSE)
 
 ## Quick Start
 
@@ -33,41 +35,7 @@ npm install -g claude-api-hub
 claude-api-hub
 ```
 
-Configure `~/.claude-api-hub/providers.json`:
-
-```json
-{
-  "port": 9800,
-  "host": "0.0.0.0",
-  "defaultProvider": "claude",
-  "aliases": {
-    "haiku": "glm-4-flash",
-    "sonnet": "kimi-k2.6",
-    "opus": "claude-opus-4-6"
-  },
-  "providers": {
-    "claude": {
-      "name": "Claude (Anthropic)",
-      "baseUrl": "https://api.anthropic.com",
-      "apiKey": "${ANTHROPIC_AUTH_TOKEN}",
-      "models": ["claude-opus-4-6", "claude-sonnet-4-6", "claude-haiku-4-5"],
-      "defaultModel": "claude-sonnet-4-6",
-      "enabled": true,
-      "prefix": "claude-",
-      "passthrough": true
-    },
-    "kimi": {
-      "name": "Kimi (Moonshot AI)",
-      "baseUrl": "https://api.moonshot.cn/v1",
-      "apiKey": "${MOONSHOT_API_KEY}",
-      "models": ["kimi-k2.6"],
-      "defaultModel": "kimi-k2.6",
-      "enabled": true,
-      "prefix": "kimi-"
-    }
-  }
-}
-```
+Open `http://localhost:9800` to access the Web dashboard.
 
 Point Claude Code at the gateway in `~/.claude/settings.json`:
 
@@ -79,9 +47,18 @@ Point Claude Code at the gateway in `~/.claude/settings.json`:
 }
 ```
 
+## Web Dashboard
+
+Access `http://localhost:9800` for:
+
+- **Quick Start**: Shows gateway URL and copyable Claude Code config snippet
+- **Alias Mapping**: Map haiku/sonnet/opus to any model via combo dropdown (auto-detects models from provider APIs, also accepts custom model names)
+- **Providers**: Add/edit/delete providers, view API format/prefix/key status, test connectivity with latency display
+- **Request Logs**: Filter byAll/OK/Errors), click to expand details (request ID, target URL, upstream response body)
+
 ## Alias Mapping
 
-The core feature. Map Claude Code's three model tiers to any provider's model:
+Map Claude Code's three model tiers to any provider's model:
 
 ```json
 {
@@ -93,11 +70,11 @@ The core feature. Map Claude Code's three model tiers to any provider's model:
 }
 ```
 
-When a request model contains `haiku`, `sonnet`, or `opus`, it's replaced with the alias target. The gateway then routes by prefix to the correct provider.
+When a request model contains `haiku`, `sonnet`, or `opus`, it's replaced with the alias target and the request body is updated accordingly.
 
 ## Adding Providers
 
-Any OpenAI-compatible API — just add to `providers` in config:
+Via the Web dashboard (recommended) or config file at `~/.claude-api-hub/providers.json`:
 
 ```json
 "deepseek": {
@@ -111,25 +88,51 @@ Any OpenAI-compatible API — just add to `providers` in config:
 }
 ```
 
-Config notes:
-- `apiKey` supports `${ENV_VAR}` syntax
-- `prefix` can be a string or array of strings
-- `passthrough: true` skips protocol translation (Claude only)
+### Provider Config Fields
+
+| Field | Description |
+|-------|-------------|
+| `name` | Display name |
+| `baseUrl` | API endpoint base URL |
+| `apiKey` | API key (supports `${ENV_VAR}` syntax) |
+| `models` | List of available model IDs |
+| `defaultModel` | Default model for this provider |
+| `prefix` | Routing prefix (string or array),  `"kimi-"` |
+| `passthrough` | `true` = Anthropic Messages API (direct forward), `false` = OpenAI Chat Completions API (auto-translate) |
+| `enabled` | `true` / `false` to enable/disable |
 
 ## API Endpoints
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/v1/messages` | POST | Anthropic Messages API proxy |
+| `/` | GET | Web dashboard |
+| `/v1/messages` | POST | Anthropic Messages API proxy (main endpoint) |
 | `/v1/models` | GET | List all available models |
-| `/health` | GET | Health check |
+| `/health` | GET | Gateway health check |
+| `/api/config` | GET | Current config (API keys masked) |
+| `/api/config/providers` | POST | Add provider |
+| `/api/config/providers/:name` | PUT | Update provider |
+| `/api/config/providers/:name` | DELETE | Delete provider |
+| `/api/config/reload` | POST | Reload config from disk |
+| `/api/aliases` | GET/PUT | Get or update alias mapping |
+| `/api/fetch-models` | GET | Fetch real model lists from provider APIs |
+| `/api/health/providers` | GET | Test connectivity to all providers |
+| `/api/logs` | GET | Request logs (last 200) |
+| `/api/logs/clear` | POST | Clear log buffer |
+
+## Routing Rules
+
+1. **Alias resolution**: Model name containing haiku/sonnet/opus → replace target
+2. **Prefix match**: Route by provider's `prefix` config
+3. **Model list match**: Check provider's `models` array
+4. **Fallback**: Use `defaultProvider`
 
 ## Development
 
 ```bash
 npm run dev      # Dev mode (hot reload)
 npm run build    # Compile TypeScript
-npm test         # Run tests
+npm test         # Run tests (24 tests)
 ```
 
 ## License

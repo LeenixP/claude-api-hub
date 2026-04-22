@@ -101,4 +101,60 @@ describe('ModelRouter', () => {
     const result = router.route('kimi-latest');
     expect(result.resolvedModel).toBe('latest');
   });
+
+  it('resolves alias: opus → target model and routes to correct provider', () => {
+    const claude = makeProvider('claude', 'claude-');
+    const kimi = makeProvider('kimi', 'kimi-');
+    const router = createRouter([claude, kimi], 'claude', { opus: 'kimi-k2.6' });
+    const result = router.route('claude-opus-4-7');
+    expect(result.provider.name).toBe('kimi');
+    expect(result.resolvedModel).toBe('k2.6');
+    expect(result.originalModel).toBe('claude-opus-4-7');
+  });
+
+  it('resolves alias: sonnet → target model', () => {
+    const claude = makeProvider('claude', 'claude-');
+    const glm = makeProvider('glm', 'glm-');
+    const router = createRouter([claude, glm], 'claude', { sonnet: 'glm-4-flash' });
+    const result = router.route('claude-sonnet-4-6');
+    expect(result.provider.name).toBe('glm');
+    expect(result.resolvedModel).toBe('4-flash');
+  });
+
+  it('resolves alias: haiku → target model', () => {
+    const claude = makeProvider('claude', 'claude-');
+    const minimax = makeProvider('minimax', 'minimax-');
+    const router = createRouter([claude, minimax], 'claude', { haiku: 'minimax-M2.7' });
+    const result = router.route('claude-haiku-4-5');
+    expect(result.provider.name).toBe('minimax');
+  });
+
+  it('setAliases updates alias mapping at runtime', () => {
+    const claude = makeProvider('claude', 'claude-');
+    const kimi = makeProvider('kimi', 'kimi-');
+    const router = createRouter([claude, kimi], 'claude', { opus: 'claude-opus-4-6' });
+    let result = router.route('claude-opus-4-7');
+    expect(result.provider.name).toBe('claude');
+
+    router.setAliases({ opus: 'kimi-k2.6' });
+    result = router.route('claude-opus-4-7');
+    expect(result.provider.name).toBe('kimi');
+  });
+
+  it('clear removes all providers', () => {
+    const claude = makeProvider('claude', 'claude-');
+    const kimi = makeProvider('kimi', 'kimi-');
+    const router = createRouter([claude, kimi], 'claude');
+    expect(router.getProviders()).toHaveLength(2);
+    router.clear();
+    expect(router.getProviders()).toHaveLength(0);
+  });
+
+  it('no alias configured s model passes through unchanged', () => {
+    const claude = makeProvider('claude', 'claude-');
+    const router = createRouter([claude], 'claude');
+    const result = router.route('claude-opus-4-7');
+    expect(result.resolvedModel).toBe('opus-4-7');
+    expect(result.originalModel).toBe('claude-opus-4-7');
+  });
 });
