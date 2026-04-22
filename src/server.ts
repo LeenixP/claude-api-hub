@@ -323,6 +323,13 @@ export function createServer(router: ModelRouter, config: GatewayConfig): http.S
         return;
       }
 
+      const validTiers = ['haiku', 'sonnet', 'opus'];
+      const invalidKeys = Object.keys(newAliases).filter(k => !validTiers.includes(k));
+      if (invalidKeys.length > 0) {
+        sendError(res, 400, 'invalid_request_error', `Invalid alias keys: ${invalidKeys.join(', ')}. Only haiku, sonnet, opus are allowed.`);
+        return;
+      }
+
       config.aliases = newAliases;
       saveConfig(config);
       sendJson(res, 200, config.aliases);

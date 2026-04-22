@@ -16,10 +16,14 @@ export class ModelRouter {
 
   route(model: string): RouteResult {
     const originalModel = model;
-    // Resolve alias first
-    const resolvedAlias = this.aliases[model];
-    if (resolvedAlias) {
-      model = resolvedAlias;
+    // Resolve alias by tier pattern matching (case-insensitive)
+    const lc = model.toLowerCase();
+    if (lc.includes('haiku') && this.aliases['haiku']) {
+      model = this.aliases['haiku'];
+    } else if (lc.includes('sonnet') && this.aliases['sonnet']) {
+      model = this.aliases['sonnet'];
+    } else if (lc.includes('opus') && this.aliases['opus']) {
+      model = this.aliases['opus'];
     }
 
     // Use each provider's matchModel to find the right provider

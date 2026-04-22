@@ -289,8 +289,16 @@ a:hover { text-decoration: underline; }
 .code-blocks { display: flex; flex-direction: column; gap: 12px; }
 .code-label { color: #8b949e; font-size: 0.82rem; margin-bottom: 4px; }
 .alias-table { width: 100%; display: flex; flex-direction: column; gap: 8px; }
-.alias-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid #21262d; }
-.alias-row input, .alias-row select {
+.alias-row { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid #21262d; }
+.alias-tier-label {
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #bc8cff;
+  min-width: 64px;
+  flex-shrink: 0;
+}
+.alias-row input[type="text"] {
   background: #0f1117;
   border: 1px solid #30363d;
   border-radius: 8px;
@@ -299,13 +307,11 @@ a:hover { text-decoration: underline; }
   font-size: 0.85rem;
   outline: none;
   transition: border-color 0.2s;
+  flex: 1;
 }
-.alias-row input:focus, .alias-row select:focus { border-color: #58a6ff; }
-.alias-row select option { background: #161b22; }
-.alias-row input { flex: 1; }
-.alias-row select { flex: 2; }
+.alias-row input[type="text"]:focus { border-color: #58a6ff; }
 .arrow { color: #8b949e; font-size: 1rem; flex-shrink: 0; }
-.alias-actions { display: flex; gap: 8px; margin-top: 12px; }
+.alias-actions { display: flex; gap: 8px; margin-top: 16px; }
 .aliased { background: rgba(210, 153, 34, 0.15); color: #d29922; border-radius: 4px; padding: 1px 5px; }
 .quick-cmd {
   background: #0f1117;
@@ -629,84 +635,49 @@ var allModelOptions = (function() {
   return opts;
 })();
 
-function buildModelSelect(selectedValue) {
-  return '<select>' + allModelOptions.map(function(o) {
-    return '<option value="' + o.value + '"' + (o.value === selectedValue ? ' selected' : '') + '>' + o.label + '</option>';
-  }).join('') + '</select>';
-}
-
-function addAliasRow(source, target) {
-  var table = document.getElementById('alias-table');
-  var row = document.createElement('div');
-  row.className = 'alias-row';
-  row.innerHTML =
-    '<input type="text" placeholder="source model (e.g. claude-3-haiku)" value="' + (source || '') + '" />' +
-    '<span class="arrow">→</span>' +
-    buildModelSelect(target || '') +
-    '<button class="btn-small danger" onclick="removeAliasRow(this)">Remove</button>';
-  table.appendChild(row);
-}
-
-function removeAliasRow(btn) {
-  btn.closest('.alias-row').remove();
-}
-
 function loadAliases() {
   fetch('/api/aliases').then(function(r) {
     if (!r.ok) return;
     return r.json();
   }).then(function(data) {
     if (!data) return;
-    var table = document.getElementById('alias-table');
-    table.innerHTML = '';
     var aliases = data.aliases || data;
-    if (typeof aliases === 'object' && !Array.isArray(aliases)) {
-      Object.keys(aliases).forEach(function(src) {
-        addAliasRow(src, aliases[src]);
-      });
-    } else if (Array.isArray(aliases)) {
-      aliases.forEach(function(a) { addAliasRow(a.source || a.from, a.target || a.to); });
-    }
+    ['haiku', 'sonnet', 'opus'].forEach(function(tier) {
+      var input = document.getElementById('alias-input-' + tier);
+      if (input && aliases[tier]) input.value = aliases[tier];
+    });
     updateAliasSummary(aliases);
   }).catch(function() {});
 }
 
 function saveAliases() {
-  var rows = document.querySelectorAll('#alias-table .alias-row');
   var aliases = {};
-  rows.forEach(function(row) {
-    var src = row.querySelector('input').value.trim();
-    var tgt = row.querySelector('select').value;
-    if (src && tgt) aliases[src] = tgt;
+  ['haiku', 'sonnet', 'opus'].forEach(function(tier) {
+    var input = document.getElementById('alias-input-' + tier);
+    if (input && input.value.trim()) aliases[tier] = input.value.trim();
   });
   fetch('/api/aliases', {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ aliases: aliases })
+    body: JSON.stringify(aliases)
   }).then(function(r) {
     if (r.ok) {
       updateAliasSummary(aliases);
       var btn = document.getElementById('save-aliases-btn');
-      if (btn) { btn.textContent = 'Saved!'; setTimeout(function() { btn.textContent = 'Save Aliases'; }, 1500); }
+      if (btn) { btn.textContent = 'Saved!'; setTimeout(function() { btn.textContent = 'Save'; }, 1500); }
     } else {
-      alert('Failed to save aliases');
+      r.json().then(function(d) { alert('Error: ' + (d.error && d.error.message || 'Failed to save')); });
     }
   }).catch(function(err) { alert('Error: ' + err.message); });
 }
 
 function updateAliasSummary(aliases) {
-  var keys = ['haiku', 'sonnet', 'opus'];
-  keys.forEach(function(k) {
+  ['haiku', 'sonnet', 'opus'].forEach(function(k) {
     var el = document.getElementById('alias-sum-' + k);
     if (!el) return;
-    var found = '';
-    if (aliases && typeof aliases === 'object' && !Array.isArray(aliases)) {
-      Object.keys(aliases).forEach(function(src) {
-        if (src.toLowerCase().indexOf(k) !== -1) found = aliases[src];
-      });
-    }
-    el.textContent = found || '(not set)';
-    el.style.color = found ? '#3fb950' : '#8b949e';
+    var val = aliases && aliases[k];
+    el.textContent = val || '(not set)';
+    el.style.color = val ? '#3fb950' : '#8b949e';
   });
 }
 
@@ -881,10 +852,29 @@ console.log(msg.content[0].text);`;
   <div class="section">
     <div class="section-title">Model Aliases</div>
     <div class="panel">
-      <div id="alias-table" class="alias-table"></div>
+      <p style="color:#8b949e;font-size:0.85rem;margin-bottom:16px">OMC sub-agents using haiku/sonnet/opus will be routed to these models.</p>
+      <datalist id="model-datalist">
+        ${providers.flatMap(p => p.config.models.map(m => `<option value="${m}">`)).join('')}
+      </datalist>
+      <div class="alias-table">
+        <div class="alias-row">
+          <span class="alias-tier-label">Haiku</span>
+          <span class="arrow">→</span>
+          <input type="text" id="alias-input-haiku" list="model-datalist" placeholder="e.g. claude-haiku-4-5" />
+        </div>
+        <div class="alias-row">
+          <span class="alias-tier-label">Sonnet</span>
+          <span class="arrow">→</span>
+          <input type="text" id="alias-input-sonnet" list="model-datalist" placeholder="e.g. claude-sonnet-4-6" />
+        </div>
+        <div class="alias-row">
+          <span class="alias-tier-label">Opus</span>
+          <span class="arrow">→</span>
+          <input type="text" id="alias-input-opus" list="model-datalist" placeholder="e.g. claude-opus-4-6" />
+        </div>
+      </div>
       <div class="alias-actions">
-        <button class="btn secondary" onclick="addAliasRow('','')">+ Add Alias</button>
-        <button class="btn" id="save-aliases-btn" onclick="saveAliases()">Save Aliases</button>
+        <button class="btn" id="save-aliases-btn" onclick="saveAliases()">Save</button>
       </div>
       <div class="alias-summary">
         <div class="alias-summary-title">Current Alias Config</div>
@@ -903,7 +893,7 @@ console.log(msg.content[0].text);`;
           <span style="color:#8b949e">→</span>
           <span class="alias-summary-val" id="alias-sum-opus">(not set)</span>
         </div>
-        <div class="alias-summary-note">OMC sub-agents using haiku/sonnet/opus will be automatically routed to these models.</div>
+        <div class="alias-summary-note">Any model name containing "haiku", "sonnet", or "opus" will be routed to the corresponding target above.</div>
       </div>
     </div>
   </div>
