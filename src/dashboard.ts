@@ -224,15 +224,8 @@ button{border:none;border-radius:6px;padding:7px 14px;font-size:12px;font-weight
       <div class="form-group"><label>Default Model</label><input type="text" id="f-default" placeholder="deepseek-chat"></div>
       <div class="form-group"><label>Prefix (for routing)</label><input type="text" id="f-prefix" placeholder="deepseek-"></div>
       <div class="form-group"><div class="form-check"><input type="checkbox" id="f-enabled" checked><label for="f-enabled">Enabled</label></div></div>
-      <div class="form-group"><div class="form-check"><input type="checkbox" id="f-passthrough"><label for="f-passthrough">Passthrough</label></div></div>
-      <div class="form-group full">
-        <div class="help-box">
-          <b class="anthropic">Passthrough ON = Anthropic Messages API</b>
-          Direct forward, no translation. Auth: x-api-key. Use for Anthropic API or compatible proxies.<br><br>
-          <b class="openai">Passthrough OFF = OpenAI Chat Completions API</b>
-          Auto-translated from Anthropic format. Auth: Bearer token. Use for Kimi, MiniMax, GLM, DeepSeek, etc.
-        </div>
-      </div>
+    </div>
+
     </div>
     <div class="modal-actions">
       <button class="btn-ghost" onclick="closeModal()">Cancel</button>
@@ -369,7 +362,6 @@ function openAddProvider(){
   ['f-key','f-name','f-url','f-key-val','f-models','f-default','f-prefix'].forEach(id=>document.getElementById(id).value='');
   document.getElementById('f-key').disabled=false;
   document.getElementById('f-enabled').checked=true;
-  document.getElementById('f-passthrough').checked=false;
   document.getElementById('provider-modal').classList.add('active');
 }
 
@@ -385,7 +377,8 @@ function editProvider(key){
   document.getElementById('f-default').value=p.defaultModel||'';
   document.getElementById('f-prefix').value=Array.isArray(p.prefix)?p.prefix.join(', '):(p.prefix||'');
   document.getElementById('f-enabled').checked=p.enabled!==false;
-  document.getElementById('f-passthrough').checked=!!p.passthrough;
+  document.getElementById('provider-modal').classList.add('active');
+
   document.getElementById('provider-modal').classList.add('active');
 }
 
@@ -400,18 +393,19 @@ async function saveProvider(){
   const defaultModel=document.getElementById('f-default').value.trim();
   const prefixStr=document.getElementById('f-prefix').value.trim();
   const enabled=document.getElementById('f-enabled').checked;
-  const passthrough=document.getElementById('f-passthrough').checked;
+
+
   const prefix=prefixStr.includes(',')?prefixStr.split(',').map(s=>s.trim()).filter(Boolean):prefixStr;
   if(!key||!name||!baseUrl||models.length===0||!defaultModel){toast('Fill all required fields','error');return}
   try{
     if(editingProvider){
-      const body={name,baseUrl,models,defaultModel,enabled,passthrough,prefix:prefix||undefined};
+      const body={name,baseUrl,models,defaultModel,enabled,prefix:prefix||undefined};
       if(apiKey)body.apiKey=apiKey;
       await fetch('/api/config/providers/'+encodeURIComponent(key),{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
       toast('Provider updated','success');
     }else{
       if(!apiKey){toast('API Key required','error');return}
-      await fetch('/api/config/providers',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,baseUrl,apiKey,models,defaultModel,enabled,passthrough,prefix:prefix||undefined})});
+      await fetch('/api/config/providers',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,baseUrl,apiKey,models,defaultModel,enabled,passthrough:false,prefix:prefix||undefined})});
 
       toast('Provider added','success');
     }
