@@ -25,7 +25,7 @@ async function main(): Promise<void> {
   }
 
   const router = createRouter(providers, config.defaultProvider, config.aliases ?? {});
-  const server = createServer(router);
+  const server = createServer(router, config);
 
   server.listen(config.port, config.host, () => {
     console.log(`[info] claude-api-hub listening on http://${config.host}:${config.port}`);
