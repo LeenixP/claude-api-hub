@@ -22,6 +22,7 @@ interface LogEntry {
   durationMs: number;
   error?: string;
   upstreamBody?: string;
+  requestBody?: string;
 }
 
 const requestLogs: LogEntry[] = [];
@@ -499,7 +500,7 @@ export function createServer(router: ModelRouter, config: GatewayConfig): http.S
         const upBody = upstream.body.slice(0, 2048);
         let errMsg = '';
         try { const j = JSON.parse(upstream.body); errMsg = j.error?.message || j.message || upBody; } catch { errMsg = upBody; }
-        addLog({ time: new Date().toISOString(), requestId, originalModel, resolvedModel, provider: provider.name, protocol, targetUrl: built.url, stream: false, status: upstream.status, durationMs: Date.now() - startTime, error: errMsg, upstreamBody: upBody });
+        addLog({ time: new Date().toISOString(), requestId, originalModel, resolvedModel, provider: provider.name, protocol, targetUrl: built.url, stream: false, status: upstream.status, durationMs: Date.now() - startTime, error: errMsg, upstreamBody: upBody, requestBody: built.body.slice(0, 2048) });
         res.writeHead(upstream.status, { 'Content-Type': 'application/json', 'X-Request-Id': requestId, ...CORS_HEADERS });
         res.end(upstream.body);
         return;

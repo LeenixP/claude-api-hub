@@ -441,6 +441,7 @@ async function loadLogs(){
         +'<div>Target: '+esc(l.targetUrl||'-')+'</div>'
         +(l.error?'<div class="log-error">Error: '+esc(l.error)+'</div>':'')
         +(l.upstreamBody?'<div>Upstream response:<pre>'+esc(l.upstreamBody)+'</pre></div>':'')
+        +(l.requestBody?'<div>Request body:<pre>'+esc(l.requestBody)+'</pre></div>':'')
         +'</div>';
       return '<div class="log-entry" onclick="toggleLogDetail('+i+')">'
         +'<div class="log-row">'
