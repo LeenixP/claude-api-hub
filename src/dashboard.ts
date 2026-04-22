@@ -69,19 +69,20 @@ button{border:none;border-radius:6px;padding:8px 16px;font-size:13px;font-weight
   <section>
     <h2>Alias Mapping</h2>
     <div class="card" id="aliases-card">
+      <datalist id="all-models-list"></datalist>
       <div class="alias-row">
         <div class="alias-label haiku">Haiku</div>
-        <select id="alias-haiku"></select>
+        <input type="text" id="alias-haiku" list="all-models-list" placeholder="Type or select a model...">
         <span id="alias-haiku-provider" style="font-size:12px;color:#64748b"></span>
       </div>
       <div class="alias-row">
         <div class="alias-label sonnet">Sonnet</div>
-        <select id="alias-sonnet"></select>
+        <input type="text" id="alias-sonnet" list="all-models-list" placeholder="Type or select a model...">
         <span id="alias-sonnet-provider" style="font-size:12px;color:#64748b"></span>
       </div>
       <div class="alias-row">
         <div class="alias-label opus">Opus</div>
-        <select id="alias-opus"></select>
+        <input type="text" id="alias-opus" list="all-models-list" placeholder="Type or select a model...">
         <span id="alias-opus-provider" style="font-size:12px;color:#64748b"></span>
       </div>
       <div style="margin-top:12px;display:flex;justify-content:flex-end">
@@ -172,34 +173,33 @@ async function load() {
 
 function renderAliases() {
   const aliases = config.aliases || {};
+  // Build datalist with all known models + defaultModels
+  const dl = document.getElementById('all-models-list');
+  const seen = new Set();
+  let opts = '';
+  Object.entries(config.providers).forEach(([key, p]) => {
+    (p.models || []).forEach(id => {
+      if (!seen.has(id)) { seen.add(id); opts += '<option value="' + esc(id) + '">' + esc(p.name || key) + '</option>'; }
+    });
+    if (p.defaultModel && !seen.has(p.defaultModel)) {
+      seen.add(p.defaultModel);
+      opts += '<option value="' + esc(p.defaultModel) + '">' + esc(p.name || key) + ' (default)</option>';
+    }
+  });
+  dl.innerHTML = opts;
+
   ['haiku','sonnet','opus'].forEach(tier => {
-    const sel = document.getElementById('alias-' + tier);
+    const input = document.getElementById('alias-' + tier);
     const provSpan = document.getElementById('alias-' + tier + '-provider');
-    sel.innerHTML = '<option value="">(not mapped)</option>';
-    const groups = {};
-    allModels.forEach(m => {
-      if (!groups[m.owned_by]) groups[m.owned_by] = [];
-      groups[m.owned_by].push(m.id);
-    });
-    Object.keys(groups).forEach(provider => {
-      const og = document.createElement('optgroup');
-      og.label = provider;
-      groups[provider].forEach(id => {
-        const opt = document.createElement('option');
-        opt.value = id;
-        opt.textContent = id;
-        if (aliases[tier] === id) opt.selected = true;
-        og.appendChild(opt);
-      });
-      sel.appendChild(og);
-    });
-    sel.onchange = () => {
-      const v = sel.value;
+    input.value = aliases[tier] || '';
+    const updateProvider = () => {
+      const v = input.value.trim();
       const m = allModels.find(x => x.id === v);
-      provSpan.textContent = m ? m.owned_by : '';
+      provSpan.textContent = m ? m.owned_by : (v ? 'custom' : '');
     };
-    const cur = allModels.find(x => x.id === aliases[tier]);
-    provSpan.textContent = cur ? cur.owned_by : '';
+    input.oninput = updateProvider;
+    input.onchange = updateProvider;
+    updateProvider();
   });
 }
 
@@ -235,7 +235,7 @@ function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').re
 async function saveAliases() {
   const aliases = {};
   ['haiku','sonnet','opus'].forEach(tier => {
-    const v = document.getElementById('alias-' + tier).value;
+    const v = document.getElementById('alias-' + tier).value.trim();
     if (v) aliases[tier] = v;
   });
   try {
