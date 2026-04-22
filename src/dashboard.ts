@@ -1126,7 +1126,7 @@ async function loadFileLogStatus() {
   try {
     const res = await fetch('/api/logs/file-status').then(r => r.json());
     const btn = document.getElementById('file-log-btn');
-    btn.textContent = 'File Log: ' + (res.enabled ? 'ON' : 'OFF') + (res.fileCount ? ' (' + res.fileCount + ')' : '');
+    btn.textContent = 'File Log: ' + (res.enabled ? 'ON (' + res.fileCount + ')' : 'OFF');
     btn.style.background = res.enabled ? 'var(--success)' : '';
     btn.style.color = res.enabled ? '#fff' : '';
     btn.style.borderColor = res.enabled ? 'var(--success)' : '';
