@@ -23,7 +23,10 @@ interface LogEntry {
   error?: string;
   upstreamBody?: string;
   requestBody?: string;
+  originalBody?: string;
+  forwardedHeaders?: Record<string, string>;
 }
+
 
 const requestLogs: LogEntry[] = [];
 const MAX_LOGS = 200;
@@ -460,6 +463,17 @@ export function createServer(router: ModelRouter, config: GatewayConfig): http.S
 
       res.setHeader('X-Request-Id', requestId);
 
+      const maskedHeaders = { ...built.headers };
+      if (maskedHeaders['x-api-key']) maskedHeaders['x-api-key'] = maskKey(maskedHeaders['x-api-key']);
+      if (maskedHeaders['Authorization']) maskedHeaders['Authorization'] = 'Bearer ***';
+      const logBase = {
+        time: new Date().toISOString(), requestId, originalModel, resolvedModel,
+        provider: provider.name, protocol, targetUrl: built.url, stream: !!anthropicReq.stream,
+        originalBody: bodyStr.slice(0, 4096),
+        requestBody: built.body.slice(0, 4096),
+        forwardedHeaders: maskedHeaders,
+      };
+
       if (anthropicReq.stream) {
         res.writeHead(200, {
           'Content-Type': 'text/event-stream',
@@ -472,11 +486,11 @@ export function createServer(router: ModelRouter, config: GatewayConfig): http.S
           built.url, built.headers, built.body,
           (chunk) => res.write(chunk),
           () => {
-            addLog({ time: new Date().toISOString(), requestId, originalModel, resolvedModel, provider: provider.name, protocol, targetUrl: built.url, stream: true, status: 200, durationMs: Date.now() - startTime });
+            addLog({ ...logBase, status: 200, durationMs: Date.now() - startTime });
             res.end();
           },
           (err) => {
-            addLog({ time: new Date().toISOString(), requestId, originalModel, resolvedModel, provider: provider.name, protocol, targetUrl: built.url, stream: true, status: 502, durationMs: Date.now() - startTime, error: err.message });
+            addLog({ ...logBase, status: 502, durationMs: Date.now() - startTime, error: err.message });
             res.write(`data: ${JSON.stringify({ type: 'error', error: { type: 'api_error', message: err.message } })}\n\n`);
             res.end();
           },
@@ -486,15 +500,15 @@ export function createServer(router: ModelRouter, config: GatewayConfig): http.S
 
       let upstream;
       try { upstream = await forwardRequest(built.url, built.headers, built.body); } catch (err) {
-        addLog({ time: new Date().toISOString(), requestId, originalModel, resolvedModel, provider: provider.name, protocol, targetUrl: built.url, stream: false, status: 502, durationMs: Date.now() - startTime, error: (err as Error).message });
+        addLog({ ...logBase, status: 502, durationMs: Date.now() - startTime, error: (err as Error).message });
         sendError(res, 502, 'api_error', `Upstream request failed: ${(err as Error).message}`); return;
       }
 
       if (upstream.status !== 200) {
-        const upBody = upstream.body.slice(0, 2048);
+        const upBody = upstream.body.slice(0, 4096);
         let errMsg = '';
         try { const j = JSON.parse(upstream.body); errMsg = j.error?.message || j.message || upBody; } catch { errMsg = upBody; }
-        addLog({ time: new Date().toISOString(), requestId, originalModel, resolvedModel, provider: provider.name, protocol, targetUrl: built.url, stream: false, status: upstream.status, durationMs: Date.now() - startTime, error: errMsg, upstreamBody: upBody, requestBody: built.body.slice(0, 2048) });
+        addLog({ ...logBase, status: upstream.status, durationMs: Date.now() - startTime, error: errMsg, upstreamBody: upBody });
         res.writeHead(upstream.status, { 'Content-Type': 'application/json', 'X-Request-Id': requestId, ...CORS_HEADERS });
         res.end(upstream.body);
         return;
@@ -502,19 +516,20 @@ export function createServer(router: ModelRouter, config: GatewayConfig): http.S
 
       let upstreamJson;
       try { upstreamJson = JSON.parse(upstream.body); } catch {
-        addLog({ time: new Date().toISOString(), requestId, originalModel, resolvedModel, provider: provider.name, protocol, targetUrl: built.url, stream: false, status: 502, durationMs: Date.now() - startTime, error: 'Invalid JSON from upstream', upstreamBody: upstream.body.slice(0, 2048) });
+        addLog({ ...logBase, status: 502, durationMs: Date.now() - startTime, error: 'Invalid JSON from upstream', upstreamBody: upstream.body.slice(0, 4096) });
         sendError(res, 502, 'api_error', 'Invalid JSON from upstream provider'); return;
       }
 
       let anthropicResp;
       try { anthropicResp = provider.parseResponse(upstreamJson, anthropicReq.model); } catch (err) {
-        addLog({ time: new Date().toISOString(), requestId, originalModel, resolvedModel, provider: provider.name, protocol, targetUrl: built.url, stream: false, status: 502, durationMs: Date.now() - startTime, error: `Parse error: ${(err as Error).message}` });
+        addLog({ ...logBase, status: 502, durationMs: Date.now() - startTime, error: `Parse error: ${(err as Error).message}` });
         sendError(res, 502, 'api_error', `Response parse error: ${(err as Error).message}`); return;
       }
 
-      addLog({ time: new Date().toISOString(), requestId, originalModel, resolvedModel, provider: provider.name, protocol, targetUrl: built.url, stream: false, status: 200, durationMs: Date.now() - startTime });
+      addLog({ ...logBase, status: 200, durationMs: Date.now() - startTime });
       sendJson(res, 200, anthropicResp);
       return;
+
     }
 
     sendError(res, 404, 'not_found_error', `Unknown endpoint: ${req.method} ${pathname}`);
