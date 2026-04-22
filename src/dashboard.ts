@@ -68,6 +68,18 @@ button{border:none;border-radius:6px;padding:8px 16px;font-size:13px;font-weight
 .combo-item{padding:6px 12px;font-size:13px;color:#e2e8f0;cursor:pointer;display:flex;justify-content:space-between}
 .combo-item:hover{background:#334155}
 .combo-item .provider-hint{font-size:11px;color:#64748b}
+.log-panel{background:#0f172a;border:1px solid #334155;border-radius:8px;max-height:400px;overflow-y:auto;font-family:monospace;font-size:12px}
+.log-entry{padding:8px 12px;border-bottom:1px solid #1e293b;display:grid;grid-template-columns:160px 1fr;gap:8px;line-height:1.5}
+.log-entry:hover{background:#1e293b}
+.log-time{color:#64748b;white-space:nowrap}
+.log-detail{color:#e2e8f0}
+.log-status-ok{color:#4ade80}
+.log-status-err{color:#f87171}
+.log-model{color:#a78bfa}
+.log-provider{color:#22d3ee}
+.log-error{color:#f87171;margin-top:2px;font-size:11px}
+.log-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+.log-header h2{margin-bottom:0}
 .form-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 .form-grid .full{grid-column:1/-1}
 .form-group{display:flex;flex-direction:column;gap:4px}
@@ -142,6 +154,19 @@ button{border:none;border-radius:6px;padding:8px 16px;font-size:13px;font-weight
   <section>
     <h2>Providers <button class="btn-primary" onclick="openAddProvider()" style="margin-left:auto">+ Add</button></h2>
     <div id="providers-list"></div>
+  </section>
+
+  <section>
+    <div class="log-header">
+      <h2>Request Logs</h2>
+      <div style="display:flex;gap:8px">
+        <button class="btn-ghost btn-sm" onclick="loadLogs()">Refresh</button>
+        <button class="btn-ghost btn-sm" id="auto-refresh-btn" onclick="toggleAutoRefresh()">Auto: OFF</button>
+      </div>
+    </div>
+    <div class="log-panel" id="log-panel">
+      <div class="empty">No logs yet</div>
+    </div>
   </section>
 </main>
 
@@ -427,6 +452,50 @@ function toast(msg, isError) {
   setTimeout(() => el.className = 'toast', 2500);
 }
 
+let autoRefreshTimer = null;
+
+async function loadLogs() {
+  try {
+    const logs = await fetch('/api/logs').then(r => r.json());
+    const panel = document.getElementById('log-panel');
+    if (!logs || logs.length === 0) {
+      panel.innerHTML = '<div class="empty">No logs yet</div>';
+      return;
+    }
+    panel.innerHTML = logs.map(l => {
+      const statusClass = l.status >= 200 && l.status < 300 ? 'log-status-ok' : 'log-status-err';
+      const time = new Date(l.time).toLocaleTimeString();
+      const stream = l.stream ? ' [stream]' : '';
+      const errLine = l.error ? '<div class="log-error">Error: ' + esc(l.error) + '</div>' : '';
+      return '<div class="log-entry">' +
+        '<div class="log-time">' + esc(time) + '</div>' +
+        '<div class="log-detail">' +
+          '<span class="' + statusClass + '">' + l.status + '</span> ' +
+          '<span class="log-model">' + esc(l.originalModel) + '</span>' +
+          (l.originalModel !== l.resolvedModel ? ' \\u2192 <span class="log-model">' + esc(l.resolvedModel) + '</span>' : '') +
+          ' \\u2192 <span class="log-provider">' + esc(l.provider) + '</span>' +
+          ' [' + l.protocol + ']' + stream +
+          ' <span style="color:#64748b">' + l.durationMs + 'ms</span>' +
+          errLine +
+        '</div>' +
+      '</div>';
+    }).join('');
+  } catch(e) { /* ignore */ }
+}
+
+function toggleAutoRefresh() {
+  const btn = document.getElementById('auto-refresh-btn');
+  if (autoRefreshTimer) {
+    clearInterval(autoRefreshTimer);
+    autoRefreshTimer = null;
+    btn.textContent = 'Auto: OFF';
+  } else {
+    autoRefreshTimer = setInterval(loadLogs, 3000);
+    btn.textContent = 'Auto: ON';
+    loadLogs();
+  }
+}
+
 function initQuickStart() {
   const url = window.location.origin;
   document.getElementById('gateway-url').textContent = url;
@@ -447,6 +516,7 @@ function copyConfig() {
 
 initQuickStart();
 load();
+loadLogs();
 </script>
 </body>
 </html>`;
