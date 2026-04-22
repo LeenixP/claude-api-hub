@@ -545,6 +545,7 @@ button {
               <button class="btn-ghost btn-sm" onclick="setLogFilter('err', this)">Errors</button>
             </div>
             <button class="btn-ghost btn-sm" onclick="clearLogs()">Clear</button>
+                <button class="btn-ghost btn-sm" id="file-log-btn" onclick="toggleFileLog()">File Log: OFF</button>
           </div>
         </div>
         <div class="log-panel" id="log-panel"><div class="empty">No logs yet</div></div>
@@ -1107,6 +1108,31 @@ async function clearLogs() {
   }
 }
 
+async function toggleFileLog() {
+  try {
+    const res = await fetch('/api/logs/file-toggle', { method: 'PUT' }).then(r => r.json());
+    const btn = document.getElementById('file-log-btn');
+    btn.textContent = 'File Log: ' + (res.enabled ? 'ON' : 'OFF');
+    btn.style.background = res.enabled ? 'var(--success)' : '';
+    btn.style.color = res.enabled ? '#fff' : '';
+    btn.style.borderColor = res.enabled ? 'var(--success)' : '';
+    toast('File logging ' + (res.enabled ? 'enabled' : 'disabled'), 'success');
+  } catch (e) {
+    toast('Toggle failed', 'error');
+  }
+}
+
+async function loadFileLogStatus() {
+  try {
+    const res = await fetch('/api/logs/file-status').then(r => r.json());
+    const btn = document.getElementById('file-log-btn');
+    btn.textContent = 'File Log: ' + (res.enabled ? 'ON' : 'OFF') + (res.fileCount ? ' (' + res.fileCount + ')' : '');
+    btn.style.background = res.enabled ? 'var(--success)' : '';
+    btn.style.color = res.enabled ? '#fff' : '';
+    btn.style.borderColor = res.enabled ? 'var(--success)' : '';
+  } catch (e) {}
+}
+
 // ── Utilities ──
 function esc(s) {
   return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -1143,6 +1169,7 @@ function initQuickStart() {
 initQuickStart();
 load();
 loadLogs();
+loadFileLogStatus();
 setInterval(loadLogs, 2000);
 </script>
 </body>

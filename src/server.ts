@@ -8,7 +8,7 @@ import { ClaudeProvider } from './providers/claude.js';
 import { GenericOpenAIProvider } from './providers/generic.js';
 import { dashboardHtml } from './dashboard.js';
 import { getConfigPath, loadConfig } from './config.js';
-import { mkdirSync, appendFileSync } from 'fs';
+import { mkdirSync, appendFileSync, readdirSync, unlinkSync } from 'fs';
 import { homedir } from 'os';
 import { join } from 'path';
 
@@ -37,10 +37,25 @@ interface LogDetail {
 const requestLogs: LogEntry[] = [];
 const MAX_LOGS = 200;
 const LOG_DIR = join(homedir(), '.claude-api-hub', 'logs');
+const MAX_LOG_FILES = 4096;
+let logToFile = false;
+
 try { mkdirSync(LOG_DIR, { recursive: true }); } catch {}
 
+function cleanLogDir(): void {
+  try {
+    const files = readdirSync(LOG_DIR).filter(f => f.endsWith('.json'));
+    if (files.length >= MAX_LOG_FILES) {
+      for (const f of files) {
+        try { unlinkSync(join(LOG_DIR, f)); } catch {}
+      }
+    }
+  } catch {}
+}
+
 function addLog(entry: LogEntry, detail?: LogDetail): void {
-  if (detail) {
+  if (logToFile && detail) {
+    cleanLogDir();
     const filename = entry.requestId + '.json';
     const filepath = join(LOG_DIR, filename);
     try {
@@ -51,6 +66,7 @@ function addLog(entry: LogEntry, detail?: LogDetail): void {
   requestLogs.push(entry);
   if (requestLogs.length > MAX_LOGS) requestLogs.shift();
 }
+
 
 
 const CORS_HEADERS = {
@@ -353,6 +369,23 @@ export function createServer(router: ModelRouter, config: GatewayConfig): http.S
       sendJson(res, 200, { cleared: true });
       return;
     }
+
+    // GET /api/logs/file-status
+    if (req.method === 'GET' && pathname === '/api/logs/file-status') {
+      let fileCount = 0;
+      try { fileCount = readdirSync(LOG_DIR).filter(f => f.endsWith('.json')).length; } catch {}
+      sendJson(res, 200, { enabled: logToFile, fileCount, maxFiles: MAX_LOG_FILES, logDir: LOG_DIR });
+      return;
+    }
+
+    // PUT /api/logs/file-toggle
+    if (req.method === 'PUT' && pathname === '/api/logs/file-toggle') {
+      logToFile = !logToFile;
+      sendJson(res, 200, { enabled: logToFile });
+      return;
+    }
+
+
 
     // GET /api/health/providers — test connectivity to each provider
     if (req.method === 'GET' && pathname === '/api/health/providers') {
