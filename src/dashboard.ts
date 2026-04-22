@@ -16,7 +16,7 @@ main{max-width:960px;margin:0 auto;padding:24px}
 section{margin-bottom:32px}
 section h2{font-size:16px;font-weight:600;color:#f1f5f9;margin-bottom:16px;display:flex;align-items:center;gap:8px}
 .card{background:#1e293b;border:1px solid #334155;border-radius:8px;padding:16px;margin-bottom:12px}
-.alias-row{display:grid;grid-template-columns:100px 1fr 80px;gap:12px;align-items:center;padding:10px 0;border-bottom:1px solid #334155}
+.alias-row{display:grid;grid-template-columns:100px 1fr 100px;gap:12px;align-items:center;padding:10px 0;border-bottom:1px solid #334155}
 .alias-row:last-child{border-bottom:none}
 .alias-label{font-weight:600;font-size:15px;text-transform:capitalize}
 .alias-label.haiku{color:#22d3ee}
@@ -59,6 +59,15 @@ button{border:none;border-radius:6px;padding:8px 16px;font-size:13px;font-weight
 .key-warn{color:#fbbf24}
 .key-env{color:#7dd3fc}
 .help-text{font-size:11px;color:#64748b;margin-top:4px}
+.combo{position:relative}
+.combo input{width:100%;cursor:text}
+.combo-panel{display:none;position:absolute;top:100%;left:0;right:0;background:#1e293b;border:1px solid #475569;border-radius:6px;margin-top:4px;max-height:240px;overflow-y:auto;z-index:50;box-shadow:0 8px 24px rgba(0,0,0,.4)}
+.combo-panel.open{display:block}
+.combo-group{padding:4px 0}
+.combo-group-label{padding:4px 12px;font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px}
+.combo-item{padding:6px 12px;font-size:13px;color:#e2e8f0;cursor:pointer;display:flex;justify-content:space-between}
+.combo-item:hover{background:#334155}
+.combo-item .provider-hint{font-size:11px;color:#64748b}
 .form-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 .form-grid .full{grid-column:1/-1}
 .form-group{display:flex;flex-direction:column;gap:4px}
@@ -100,20 +109,28 @@ button{border:none;border-radius:6px;padding:8px 16px;font-size:13px;font-weight
   <section>
     <h2>Alias Mapping</h2>
     <div class="card" id="aliases-card">
-      <datalist id="all-models-list"></datalist>
       <div class="alias-row">
         <div class="alias-label haiku">Haiku</div>
-        <input type="text" id="alias-haiku" list="all-models-list" placeholder="Type or select a model...">
+        <div class="combo" id="combo-haiku">
+          <input type="text" id="alias-haiku" placeholder="Type or select a model..." autocomplete="off">
+          <div class="combo-panel" id="panel-haiku"></div>
+        </div>
         <span id="alias-haiku-provider" style="font-size:12px;color:#64748b"></span>
       </div>
       <div class="alias-row">
         <div class="alias-label sonnet">Sonnet</div>
-        <input type="text" id="alias-sonnet" list="all-models-list" placeholder="Type or select a model...">
+        <div class="combo" id="combo-sonnet">
+          <input type="text" id="alias-sonnet" placeholder="Type or select a model..." autocomplete="off">
+          <div class="combo-panel" id="panel-sonnet"></div>
+        </div>
         <span id="alias-sonnet-provider" style="font-size:12px;color:#64748b"></span>
       </div>
       <div class="alias-row">
         <div class="alias-label opus">Opus</div>
-        <input type="text" id="alias-opus" list="all-models-list" placeholder="Type or select a model...">
+        <div class="combo" id="combo-opus">
+          <input type="text" id="alias-opus" placeholder="Type or select a model..." autocomplete="off">
+          <div class="combo-panel" id="panel-opus"></div>
+        </div>
         <span id="alias-opus-provider" style="font-size:12px;color:#64748b"></span>
       </div>
       <div style="margin-top:12px;display:flex;justify-content:flex-end">
@@ -210,31 +227,47 @@ async function load() {
 
 function renderAliases() {
   const aliases = config.aliases || {};
-  // Build datalist from fetched provider models
-  const dl = document.getElementById('all-models-list');
-  const seen = new Set();
-  let opts = '';
-  Object.entries(fetchedModels).forEach(([provider, models]) => {
-    (models || []).forEach(id => {
-      if (!seen.has(id)) { seen.add(id); opts += '<option value="' + esc(id) + '">' + esc(provider) + '</option>'; }
-    });
-  });
-  dl.innerHTML = opts;
 
   ['haiku','sonnet','opus'].forEach(tier => {
     const input = document.getElementById('alias-' + tier);
+    const panel = document.getElementById('panel-' + tier);
     const provSpan = document.getElementById('alias-' + tier + '-provider');
     input.value = aliases[tier] || '';
-    const updateProvider = () => {
+
+    function buildPanel(filter) {
+      let html = '';
+      Object.entries(fetchedModels).forEach(([provider, models]) => {
+        const filtered = (models || []).filter(id => !filter || id.toLowerCase().includes(filter.toLowerCase()));
+        if (filtered.length === 0) return;
+        html += '<div class="combo-group"><div class="combo-group-label">' + esc(provider) + '</div>';
+        filtered.forEach(id => {
+          html += '<div class="combo-item" data-value="' + esc(id) + '">' + esc(id) + '<span class="provider-hint">' + esc(provider) + '</span></div>';
+        });
+        html += '</div>';
+      });
+      panel.innerHTML = html || '<div style="padding:8px 12px;color:#64748b;font-size:13px">No models found</div>';
+      panel.querySelectorAll('.combo-item').forEach(item => {
+        item.addEventListener('mousedown', (e) => {
+          e.preventDefault();
+          input.value = item.dataset.value;
+          panel.classList.remove('open');
+          updateProvider();
+        });
+      });
+    }
+
+    function updateProvider() {
       const v = input.value.trim();
       let found = '';
       Object.entries(fetchedModels).forEach(([provider, models]) => {
         if ((models || []).includes(v)) found = provider;
       });
       provSpan.textContent = found || (v ? 'custom' : '');
-    };
-    input.oninput = updateProvider;
-    input.onchange = updateProvider;
+    }
+
+    input.addEventListener('focus', () => { buildPanel(input.value); panel.classList.add('open'); });
+    input.addEventListener('input', () => { buildPanel(input.value); panel.classList.add('open'); updateProvider(); });
+    input.addEventListener('blur', () => { setTimeout(() => panel.classList.remove('open'), 150); });
     updateProvider();
   });
 }
@@ -248,7 +281,7 @@ function renderProviders() {
   }
   list.innerHTML = entries.map(([key, p]) => {
     const enableBadge = p.enabled ? '<span class="badge badge-on">ON</span>' : '<span class="badge badge-off">OFF</span>';
-    const formatBadge = p.passthrough
+    const formatBadge = (p.passthrough || key === 'claude')
       ? '<span class="badge badge-anthropic">Anthropic API</span>'
       : '<span class="badge badge-openai">OpenAI Compatible</span>';
     const models = (p.models||[]).map(m => '<span class="model-tag">' + esc(m) + '</span>').join('');
