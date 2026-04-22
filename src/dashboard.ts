@@ -154,6 +154,7 @@ button{border:none;border-radius:6px;padding:8px 16px;font-size:13px;font-weight
 <script>
 let config = null;
 let allModels = [];
+let fetchedModels = {};
 let editingProvider = null;
 
 async function load() {
@@ -164,8 +165,12 @@ async function load() {
     ]);
     config = cfgRes;
     allModels = modelsRes.data || [];
-    renderAliases();
     renderProviders();
+    // Fetch real models from provider APIs (may take a moment)
+    try {
+      fetchedModels = await fetch('/api/fetch-models').then(r => r.json());
+    } catch(e) { fetchedModels = {}; }
+    renderAliases();
   } catch(e) {
     toast('Failed to load config', true);
   }
@@ -173,18 +178,14 @@ async function load() {
 
 function renderAliases() {
   const aliases = config.aliases || {};
-  // Build datalist with all known models + defaultModels
+  // Build datalist from fetched provider models
   const dl = document.getElementById('all-models-list');
   const seen = new Set();
   let opts = '';
-  Object.entries(config.providers).forEach(([key, p]) => {
-    (p.models || []).forEach(id => {
-      if (!seen.has(id)) { seen.add(id); opts += '<option value="' + esc(id) + '">' + esc(p.name || key) + '</option>'; }
+  Object.entries(fetchedModels).forEach(([provider, models]) => {
+    (models || []).forEach(id => {
+      if (!seen.has(id)) { seen.add(id); opts += '<option value="' + esc(id) + '">' + esc(provider) + '</option>'; }
     });
-    if (p.defaultModel && !seen.has(p.defaultModel)) {
-      seen.add(p.defaultModel);
-      opts += '<option value="' + esc(p.defaultModel) + '">' + esc(p.name || key) + ' (default)</option>';
-    }
   });
   dl.innerHTML = opts;
 
@@ -194,8 +195,11 @@ function renderAliases() {
     input.value = aliases[tier] || '';
     const updateProvider = () => {
       const v = input.value.trim();
-      const m = allModels.find(x => x.id === v);
-      provSpan.textContent = m ? m.owned_by : (v ? 'custom' : '');
+      let found = '';
+      Object.entries(fetchedModels).forEach(([provider, models]) => {
+        if ((models || []).includes(v)) found = provider;
+      });
+      provSpan.textContent = found || (v ? 'custom' : '');
     };
     input.oninput = updateProvider;
     input.onchange = updateProvider;

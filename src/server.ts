@@ -77,6 +77,34 @@ function forwardRequest(
   });
 }
 
+function httpGet(
+  url: string,
+  headers: Record<string, string>,
+  timeoutMs = 5000,
+): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const parsed = new URL(url);
+    const isHttps = parsed.protocol === 'https:';
+    const lib = isHttps ? https : http;
+    const options: http.RequestOptions = {
+      hostname: parsed.hostname,
+      port: parsed.port || (isHttps ? 443 : 80),
+      path: parsed.pathname + parsed.search,
+      method: 'GET',
+      headers,
+      timeout: timeoutMs,
+    };
+    const req = lib.request(options, (res) => {
+      const chunks: Buffer[] = [];
+      res.on('data', (chunk: Buffer) => chunks.push(chunk));
+      res.on('end', () => resolve(Buffer.concat(chunks).toString('utf-8')));
+    });
+    req.on('timeout', () => { req.destroy(); reject(new Error('timeout')); });
+    req.on('error', reject);
+    req.end();
+  });
+}
+
 function forwardStream(
   url: string,
   headers: Record<string, string>,
@@ -157,6 +185,37 @@ export function createServer(router: ModelRouter, config: GatewayConfig): http.S
         ),
       };
       sendJson(res, 200, masked);
+      return;
+    }
+
+    // GET /api/fetch-models — fetch real model lists from provider APIs
+    if (req.method === 'GET' && pathname === '/api/fetch-models') {
+      const results: Record<string, string[]> = {};
+      const tasks = Object.entries(config.providers).map(async ([key, p]) => {
+        if (!p.enabled || !p.apiKey) {
+          results[p.name || key] = [...new Set([...(p.models || []), p.defaultModel].filter(Boolean))];
+          return;
+        }
+        try {
+          let url: string;
+          let headers: Record<string, string>;
+          if (p.passthrough || key === 'claude') {
+            url = `${p.baseUrl}/v1/models`;
+            headers = { 'x-api-key': p.apiKey, 'anthropic-version': '2023-06-01' };
+          } else {
+            url = `${p.baseUrl}/models`;
+            headers = { 'Authorization': `Bearer ${p.apiKey}` };
+          }
+          const body = await httpGet(url, headers);
+          const json = JSON.parse(body);
+          const fetched = (json.data || []).map((m: { id?: string }) => m.id).filter(Boolean) as string[];
+          results[p.name || key] = [...new Set([...fetched, ...(p.models || []), p.defaultModel].filter(Boolean))];
+        } catch {
+          results[p.name || key] = [...new Set([...(p.models || []), p.defaultModel].filter(Boolean))];
+        }
+      });
+      await Promise.all(tasks);
+      sendJson(res, 200, results);
       return;
     }
 
