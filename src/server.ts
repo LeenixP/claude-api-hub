@@ -380,6 +380,14 @@ export function createServer(router: ModelRouter, config: GatewayConfig): http.S
         sendError(res, 500, 'api_error', `Provider build error: ${(err as Error).message}`); return;
       }
 
+      // For passthrough providers, forward original Anthropic headers from Claude Code
+      if (provider.config.passthrough) {
+        const fwd = ['anthropic-version', 'anthropic-beta', 'anthropic-dangerous-direct-browser-access'];
+        for (const h of fwd) {
+          if (req.headers[h]) built.headers[h] = req.headers[h] as string;
+        }
+      }
+
       if (anthropicReq.stream) {
         res.writeHead(200, {
           'Content-Type': 'text/event-stream',
