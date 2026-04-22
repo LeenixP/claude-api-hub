@@ -40,7 +40,8 @@ body {
   background: var(--bg);
   color: var(--text);
   min-height: 100vh;
-  line-height: 1.5;
+  line-height: 1.6;
+  font-size: 14px;
 }
 
 /* ── Header ── */
@@ -56,8 +57,8 @@ header {
   z-index: 60;
   backdrop-filter: blur(8px);
 }
-header h1 { font-size: 17px; font-weight: 700; color: #f8fafc; letter-spacing: -0.3px; }
-.header-right { display: flex; align-items: center; gap: 16px; font-size: 12px; color: var(--text-dim); }
+header h1 { font-size: 20px; font-weight: 700; color: #f8fafc; letter-spacing: -0.3px; }
+.header-right { display: flex; align-items: center; gap: 18px; font-size: 13px; color: var(--text-dim); }
 .header-stat { display: flex; align-items: center; gap: 4px; }
 .header-stat b { color: var(--text); font-weight: 600; }
 
@@ -69,19 +70,23 @@ header h1 { font-size: 17px; font-weight: 700; color: #f8fafc; letter-spacing: -
 .dot-off { background: var(--text-muted); }
 
 /* ── Layout ── */
-main { max-width: 1000px; margin: 0 auto; padding: 20px 24px 48px; }
-@media (max-width: 640px) { main { padding: 12px 12px 32px; } }
-section { margin-bottom: 28px; }
-.section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
-.section-header h2 { font-size: 15px; font-weight: 600; color: #f1f5f9; }
+main { max-width: 1400px; margin: 0 auto; padding: 24px 32px 48px; }
+@media (max-width: 960px) { main { padding: 16px 16px 32px; } }
+.main-grid { display: grid; grid-template-columns: 1fr 420px; gap: 24px; }
+@media (max-width: 960px) { .main-grid { grid-template-columns: 1fr; } }
+.main-left { min-width: 0; }
+.main-right { min-width: 0; }
+section { margin-bottom: 24px; }
+.section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+.section-header h2 { font-size: 17px; font-weight: 600; color: #f1f5f9; }
 
 /* ── Cards ── */
 .card {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 16px;
-  margin-bottom: 10px;
+  padding: 20px;
+  margin-bottom: 12px;
   transition: border-color var(--transition), box-shadow var(--transition);
 }
 .card:hover { border-color: var(--border-hover); box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15); }
@@ -107,8 +112,8 @@ input:focus {
 button {
   border: none;
   border-radius: var(--radius-sm);
-  padding: 7px 14px;
-  font-size: 12px;
+  padding: 8px 14px;
+  font-size: 13px;
   font-weight: 500;
   cursor: pointer;
   transition: all var(--transition);
@@ -121,7 +126,7 @@ button {
 .btn-primary:active { transform: scale(0.97); }
 .btn-danger { background: var(--danger); color: #fff; }
 .btn-danger:hover { background: var(--danger-hover); }
-.btn-sm { padding: 4px 10px; font-size: 11px; }
+.btn-sm { padding: 5px 12px; font-size: 12px; }
 .btn-ghost { background: transparent; color: var(--text-dim); border: 1px solid var(--border); }
 .btn-ghost:hover { background: var(--border); color: var(--text); }
 
@@ -129,9 +134,9 @@ button {
 .badge {
   display: inline-flex;
   align-items: center;
-  padding: 2px 8px;
+  padding: 3px 9px;
   border-radius: 4px;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.3px;
   text-transform: uppercase;
@@ -153,15 +158,15 @@ button {
   padding: 16px;
   margin-bottom: 24px;
 }
-.info-card h3 { font-size: 13px; font-weight: 600; color: #f1f5f9; margin-bottom: 12px; }
-.setup-steps { display: flex; flex-direction: column; gap: 12px; }
-.setup-step { display: flex; gap: 12px; align-items: flex-start; }
-.step-num { width: 24px; height: 24px; border-radius: 50%; background: var(--primary); color: #fff; font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.info-card h3 { font-size: 15px; font-weight: 600; color: #f1f5f9; margin-bottom: 14px; }
+.setup-steps { display: flex; flex-direction: column; gap: 14px; }
+.setup-step { display: flex; gap: 14px; align-items: flex-start; }
+.step-num { width: 28px; height: 28px; border-radius: 50%; background: var(--primary); color: #fff; font-size: 13px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .step-content { flex: 1; min-width: 0; }
-.step-title { font-size: 12px; font-weight: 600; color: var(--text); margin-bottom: 4px; }
-.step-desc { font-size: 11px; color: var(--text-dim); margin-bottom: 4px; }
-.step-code { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 8px 12px; font-size: 11px; color: var(--text-dim); font-family: var(--mono); position: relative; white-space: pre; line-height: 1.6; overflow-x: auto; }
-.step-code .copy-btn { position: absolute; top: 4px; right: 4px; }
+.step-title { font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 4px; }
+.step-desc { font-size: 13px; color: var(--text-dim); margin-bottom: 6px; }
+.step-code { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 10px 14px; font-size: 13px; color: var(--text-dim); font-family: var(--mono); position: relative; white-space: pre; line-height: 1.6; overflow-x: auto; }
+.step-code .copy-btn { position: absolute; top: 6px; right: 6px; }
 .info-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; font-size: 12px; }
 .info-row .label { color: var(--text-dim); min-width: 120px; flex-shrink: 0; }
 .info-row code {
@@ -178,8 +183,8 @@ button {
   color: var(--text-dim);
   border: none;
   border-radius: 4px;
-  padding: 2px 8px;
-  font-size: 10px;
+  padding: 3px 10px;
+  font-size: 12px;
   cursor: pointer;
   transition: all var(--transition);
 }
@@ -209,7 +214,7 @@ button {
   border-bottom: 1px solid var(--border);
 }
 .alias-row:last-of-type { border-bottom: none; }
-.alias-label { font-weight: 700; font-size: 14px; }
+.alias-label { font-weight: 700; font-size: 16px; }
 .alias-label.haiku { color: var(--cyan); }
 .alias-label.sonnet { color: var(--violet); }
 .alias-label.opus { color: var(--orange); }
@@ -249,8 +254,8 @@ button {
   letter-spacing: 0.5px;
 }
 .combo-item {
-  padding: 7px 12px;
-  font-size: 12px;
+  padding: 8px 14px;
+  font-size: 13px;
   color: var(--text);
   cursor: pointer;
   display: flex;
@@ -265,7 +270,7 @@ button {
 .provider-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
 .provider-info { flex: 1; min-width: 0; }
 .provider-title { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-.provider-name { font-weight: 600; font-size: 14px; }
+.provider-name { font-weight: 600; font-size: 16px; }
 .provider-url {
   font-size: 11px;
   color: var(--text-muted);
@@ -280,15 +285,15 @@ button {
   flex-wrap: wrap;
   gap: 12px;
   margin-top: 8px;
-  font-size: 11px;
+  font-size: 13px;
   color: var(--text-muted);
 }
-.provider-meta span { display: flex; align-items: center; gap: 3px; }
+.provider-meta span { display: flex; align-items: center; gap: 4px; }
 .provider-meta code {
   background: var(--bg);
-  padding: 1px 6px;
+  padding: 2px 7px;
   border-radius: 3px;
-  font-size: 10px;
+  font-size: 12px;
   color: var(--text-dim);
   font-family: var(--mono);
 }
@@ -297,8 +302,8 @@ button {
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 4px;
-  padding: 2px 8px;
-  font-size: 11px;
+  padding: 3px 10px;
+  font-size: 12px;
   color: var(--text-dim);
 }
 .health-dot { margin-left: 4px; }
@@ -329,14 +334,14 @@ button {
   overflow-y: auto;
   box-shadow: var(--shadow-lg);
 }
-.modal h3 { font-size: 16px; font-weight: 600; margin-bottom: 16px; }
+.modal h3 { font-size: 18px; font-weight: 600; margin-bottom: 18px; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border); }
 .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 @media (max-width: 640px) { .form-grid { grid-template-columns: 1fr; } }
 .form-grid .full { grid-column: 1 / -1; }
 .form-group { display: flex; flex-direction: column; gap: 4px; }
-.form-group label { font-size: 11px; color: var(--text-dim); font-weight: 500; text-transform: uppercase; letter-spacing: 0.3px; }
-.form-check { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+.form-group label { font-size: 12px; color: var(--text-dim); font-weight: 500; text-transform: uppercase; letter-spacing: 0.3px; }
+.form-check { display: flex; align-items: center; gap: 8px; font-size: 13px; }
 .form-check input[type=checkbox] { width: auto; accent-color: var(--primary); }
 
 /* ── Log panel ── */
@@ -344,13 +349,14 @@ button {
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  max-height: 450px;
+  max-height: calc(100vh - 200px);
   overflow-y: auto;
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: 12px;
 }
+.main-right { position: sticky; top: 70px; align-self: start; }
 .log-entry {
-  padding: 8px 12px;
+  padding: 10px 14px;
   border-bottom: 1px solid rgba(51, 65, 85, 0.4);
   cursor: pointer;
   transition: background var(--transition);
@@ -389,7 +395,7 @@ button {
 }
 .log-error { color: #f87171; margin-top: 4px; }
 .log-filter { display: flex; gap: 4px; }
-.log-filter button { font-size: 10px; padding: 3px 8px; }
+.log-filter button { font-size: 12px; padding: 4px 10px; }
 .log-filter button.active { background: var(--primary); color: #fff; border-color: var(--primary); }
 
 /* ── Toast ── */
@@ -397,9 +403,9 @@ button {
   position: fixed;
   bottom: 20px;
   right: 20px;
-  padding: 10px 18px;
+  padding: 13px 18px;
   border-radius: 8px;
-  font-size: 12px;
+  font-size: 13px;
   opacity: 0;
   transition: all 0.3s;
   z-index: 200;
@@ -416,7 +422,7 @@ button {
 .toast.info { background: var(--surface); color: var(--text); border: 1px solid var(--border); }
 
 /* ── Utilities ── */
-.empty { text-align: center; color: var(--text-muted); padding: 24px; font-size: 13px; }
+.empty { text-align: center; color: var(--text-muted); padding: 28px; font-size: 14px; }
 .loading { text-align: center; color: var(--text-dim); padding: 20px; font-size: 12px; }
 .loading::after {
   content: "";
@@ -445,7 +451,6 @@ button {
 </header>
 
 <main>
-  <!-- Quick Start -->
   <div class="info-card">
     <h3>Quick Start</h3>
     <div class="setup-steps">
@@ -455,7 +460,7 @@ button {
           <div class="step-title">Gateway URL</div>
           <div class="step-desc">Your API Hub is running at:</div>
           <div style="display:flex;align-items:center;gap:8px">
-            <code id="gateway-url" style="background:var(--bg);border:1px solid var(--border);padding:4px 10px;border-radius:4px;font-family:var(--mono);font-size:12px"></code>
+            <code id="gateway-url" style="background:var(--bg);border:1px solid var(--border);padding:4px 10px;border-radius:4px;font-family:var(--mono);font-size:13px"></code>
             <button class="copy-btn" onclick="copyText(document.getElementById('gateway-url').textContent)">Copy</button>
           </div>
         </div>
@@ -464,7 +469,7 @@ button {
         <div class="step-num">2</div>
         <div class="step-content">
           <div class="step-title">Configure Claude Code</div>
-          <div class="step-desc">Add this to <code style="background:var(--bg);padding:1px 5px;border-radius:3px;font-size:11px">~/.claude/settings.json</code> (env section):</div>
+          <div class="step-desc">Add to <code style="background:var(--bg);padding:2px 6px;border-radius:3px;font-size:12px">~/.claude/settings.json</code> env section:</div>
           <div class="step-code" id="config-snippet"><button class="copy-btn" onclick="copyConfig()">Copy</button></div>
         </div>
       </div>
@@ -472,81 +477,85 @@ button {
         <div class="step-num">3</div>
         <div class="step-content">
           <div class="step-title">Restart Claude Code</div>
-          <div class="step-desc">Close and reopen Claude Code for the new settings to take effect. All requests will now route through this gateway.</div>
+          <div class="step-desc">Reopen Claude Code. All requests will route through this gateway.</div>
         </div>
       </div>
     </div>
   </div>
 
-
-
-  <!-- Alias Mapping -->
-  <section>
-    <div class="section-header"><h2>Alias Mapping</h2></div>
-    <div style="font-size:11px;color:var(--text-muted);margin:-10px 0 12px">Map Claude Code model tiers to any provider's model. When a request contains haiku/sonnet/opus, it routes to the mapped model.</div>
-    <div class="card" id="aliases-card">
-      <div class="alias-row">
-        <div class="alias-label haiku">Haiku</div>
-        <div class="combo">
-          <input type="text" id="alias-haiku" placeholder="Type or select a model..." autocomplete="off">
-          <div class="combo-panel" id="panel-haiku"></div>
+  <div class="main-grid">
+    <div class="main-left">
+      <!-- Alias Mapping -->
+      <section>
+        <div class="section-header"><h2>Alias Mapping</h2></div>
+        <div style="font-size:12px;color:var(--text-muted);margin:-12px 0 14px">Map haiku/sonnet/opus to any provider model.</div>
+        <div class="card" id="aliases-card">
+          <div class="alias-row">
+            <div class="alias-label haiku">Haiku</div>
+            <div class="combo">
+              <input type="text" id="alias-haiku" placeholder="Type or select a model..." autocomplete="off">
+              <div class="combo-panel" id="panel-haiku"></div>
+            </div>
+            <div class="alias-provider" id="alias-haiku-provider"></div>
+          </div>
+          <div class="alias-row">
+            <div class="alias-label sonnet">Sonnet</div>
+            <div class="combo">
+              <input type="text" id="alias-sonnet" placeholder="Type or select a model..." autocomplete="off">
+              <div class="combo-panel" id="panel-sonnet"></div>
+            </div>
+            <div class="alias-provider" id="alias-sonnet-provider"></div>
+          </div>
+          <div class="alias-row">
+            <div class="alias-label opus">Opus</div>
+            <div class="combo">
+              <input type="text" id="alias-opus" placeholder="Type or select a model..." autocomplete="off">
+              <div class="combo-panel" id="panel-opus"></div>
+            </div>
+            <div class="alias-provider" id="alias-opus-provider"></div>
+          </div>
+          <div style="margin-top: 12px; display: flex; justify-content: flex-end;">
+            <button class="btn-primary" onclick="saveAliases()">Save Aliases</button>
+          </div>
         </div>
-        <div class="alias-provider" id="alias-haiku-provider"></div>
-      </div>
-      <div class="alias-row">
-        <div class="alias-label sonnet">Sonnet</div>
-        <div class="combo">
-          <input type="text" id="alias-sonnet" placeholder="Type or select a model..." autocomplete="off">
-          <div class="combo-panel" id="panel-sonnet"></div>
-        </div>
-        <div class="alias-provider" id="alias-sonnet-provider"></div>
-      </div>
-      <div class="alias-row">
-        <div class="alias-label opus">Opus</div>
-        <div class="combo">
-          <input type="text" id="alias-opus" placeholder="Type or select a model..." autocomplete="off">
-          <div class="combo-panel" id="panel-opus"></div>
-        </div>
-        <div class="alias-provider" id="alias-opus-provider"></div>
-      </div>
+      </section>
 
-      <div style="margin-top: 12px; display: flex; justify-content: flex-end;">
-        <button class="btn-primary" onclick="saveAliases()">Save Aliases</button>
-      </div>
+      <!-- Providers -->
+      <section>
+        <div class="section-header">
+          <h2>Providers</h2>
+          <div style="display: flex; gap: 6px;">
+            <button class="btn-ghost btn-sm" onclick="testAllProviders()">Test All</button>
+            <button class="btn-primary btn-sm" onclick="openAddProvider()">+ Add</button>
+          </div>
+        </div>
+        <div id="providers-list"><div class="loading">Loading providers</div></div>
+      </section>
     </div>
-  </section>
 
-  <!-- Providers -->
-  <section>
-    <div class="section-header">
-      <h2>Providers</h2>
-      <div style="display: flex; gap: 6px;">
-        <button class="btn-ghost btn-sm" onclick="testAllProviders()">Test All</button>
-        <button class="btn-primary btn-sm" onclick="openAddProvider()">+ Add</button>
-      </div>
-    </div>
-    <div id="providers-list"><div class="loading">Loading providers</div></div>
-  </section>
-
-  <!-- Request Logs -->
-  <section>
-    <div class="section-header">
-      <h2>Request Logs</h2>
-      <div style="display: flex; gap: 6px; align-items: center;">
-        <div class="log-filter">
-          <button class="btn-ghost btn-sm active" onclick="setLogFilter('all', this)">All</button>
-          <button class="btn-ghost btn-sm" onclick="setLogFilter('ok', this)">OK</button>
-          <button class="btn-ghost btn-sm" onclick="setLogFilter('err', this)">Errors</button>
+    <div class="main-right">
+      <!-- Request Logs -->
+      <section>
+        <div class="section-header">
+          <h2>Request Logs</h2>
+          <div style="display: flex; gap: 6px; align-items: center;">
+            <div class="log-filter">
+              <button class="btn-ghost btn-sm active" onclick="setLogFilter('all', this)">All</button>
+              <button class="btn-ghost btn-sm" onclick="setLogFilter('ok', this)">OK</button>
+              <button class="btn-ghost btn-sm" onclick="setLogFilter('err', this)">Errors</button>
+            </div>
+            <button class="btn-ghost btn-sm" onclick="clearLogs()">Clear</button>
+          </div>
         </div>
-        <button class="btn-ghost btn-sm" onclick="clearLogs()">Clear</button>
-      </div>
+        <div class="log-panel" id="log-panel"><div class="empty">No logs yet</div></div>
+      </section>
     </div>
-    <div class="log-panel" id="log-panel"><div class="empty">No logs yet</div></div>
-  </section>
+  </div>
 </main>
 
-<footer style="text-align:center;padding:16px 24px;font-size:11px;color:var(--text-muted);border-top:1px solid var(--border)">
+<footer style="text-align:center;padding:16px 24px;font-size:12px;color:var(--text-muted);border-top:1px solid var(--border)">
   API Hub v\${version} &middot; <a href="https://github.com/LeenixP/claude-api-hub" target="_blank" style="color:var(--primary);text-decoration:none">GitHub</a>
+
 </footer>
 
 <!-- Provider Modal -->
