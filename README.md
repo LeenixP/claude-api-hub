@@ -15,16 +15,18 @@ Claude Code ──► ANTHROPIC_BASE_URL=http://127.0.0.1:9800
     (passthrough)  (translate)  (translate)    (translate)
 ```
 
-The gateway intercepts Anthropic Messages API requests from Claude Code, resolves model aliases, routes to the matching provider, and auto-translates between Anthropic and OpenAI protocols for non-Claude providers.
+The gateway intercepts Anthropic Messages API requests from Claude Code, resolves model aliases, routes to the matching provider, and auto-translates between Anthropic and OpenAI protocols as needed.
 
 ## Features
 
-- **Web Dashboard**: Manage providers, aliases, and monitor requests — no config editing needed
-- **Alias Mapping**: Map haiku / sonnet / opus to any provider's model, with auto-detection from provider APIs
-- **Protocol Selection**: Choose Anthropic (passthrough) or OpenAI (auto-translate) per provider
-- **Provider Health Check**: Test connectivity to each provider from the dashboard
-- **Request Logging**: Detailed logs with request ID, routing chain, timing, and full error details
-- **Hot Reload**: Add/edit/delete providers and aliases without restarting
+- **Web Dashboard**: Split-panel layout — providers & aliases on the left, live request logs on the right
+- **Alias Mapping**: Map haiku / sonnet / opus to any provider's model via combo dropdown with auto-detection from provider APIs
+- **Protocol Toggle**: Switch between Anthropic (passthrough) and OpenAI (auto-translate) per provider with one click
+- **Provider Health Check**: Test each provider with real `/v1/messages` requests, shows response text and latency
+- **Model Management**: Tag-based model editor — add, remove, or fetch models from provider APIs
+- **Request Logging**: Live auto-refreshing logs with tier detection (Haiku/Sonnet/Opus), expandable details, and filter by status
+- **File Logging**: Optional detailed logging to `~/.claude-api-hub/logs/` with 4096 file limit and auto-cleanup
+- **Hot Reload**: Add/edit/delete providers and aliases without restarting the gateway
 - **Streaming**: Full SSE event stream forwarding and translation
 - **Zero Runtime Deps**: Built on Node.js native `http` module (only `eventsource-parser` for SSE)
 
@@ -47,14 +49,20 @@ Point Claude Code at the gateway in `~/.claude/settings.json`:
 }
 ```
 
+Restart Claude Code and all requests will route through the gateway.
+
 ## Web Dashboard
 
-Access `http://localhost:9800` for:
+Access `http://localhost:9800` — split into two panels:
 
-- **Quick Start**: Shows gateway URL and copyable Claude Code config snippet
-- **Alias Mapping**: Map haiku/sonnet/opus to any model via combo dropdown (auto-detects models from provider APIs, also accepts custom model names)
-- **Providers**: Add/edit/delete providers, view API format/prefix/key status, test connectivity with latency display
-- **Request Logs**: Filter byAll/OK/Errors), click to expand details (request ID, target URL, upstream response body)
+**Left Panel:**
+- **Quick Start**: 3-step setup guide with copyable config snippet
+- **Alias Mapping**: Map haiku/sonnet/opus to any model. Combo dropdown auto-detects models from provider APIs, also accepts custom model names
+- **Providers**: Cards showing name, protocol badge (click to toggle Anthropic/OpenAI), models (merged from API + config), prefix, default model, key status. Test/Edit/Delete buttons on each card
+
+**Right Panel:**
+- **Request Logs**: Auto-refreshes every 2s, preserves expanded state. Filter by All/OK/Errors. Each entry shows `claudeModel → resolvedModel → provider` with duration. Click to expand details (request ID, target URL, error info, log file path)
+- **File Log Toggle**: Enable/disable detailed file logging to disk
 
 ## Alias Mapping
 
@@ -70,7 +78,7 @@ Map Claude Code's three model tiers to any provider's model:
 }
 ```
 
-When a request model contains `haiku`, `sonnet`, or `opus`, it's replaced with the alias target and the request body is updated accordingly.
+When a request model contains `haiku`, `sonnet`, or `opus`, it's replaced with the alias target. Logs show the tier name (Haiku/Sonnet/Opus) alongside the resolved model for easy debugging.
 
 ## Adding Providers
 
@@ -84,7 +92,8 @@ Via the Web dashboard (recommended) or config file at `~/.claude-api-hub/provide
   "models": ["deepseek-chat"],
   "defaultModel": "deepseek-chat",
   "enabled": true,
-  "prefix": "deepseek-"
+  "prefix": "deepseek-",
+  "passthrough": false
 }
 ```
 
@@ -97,9 +106,16 @@ Via the Web dashboard (recommended) or config file at `~/.claude-api-hub/provide
 | `apiKey` | API key (supports `${ENV_VAR}` syntax) |
 | `models` | List of available model IDs |
 | `defaultModel` | Default model for this provider |
-| `prefix` | Routing prefix (string or array),  `"kimi-"` |
+| `prefix` | Routing prefix (string or array), e.g. `"kimi-"` |
 | `passthrough` | `true` = Anthropic Messages API (direct forward), `false` = OpenAI Chat Completions API (auto-translate) |
 | `enabled` | `true` / `false` to enable/disable |
+
+### Protocol Selection
+
+Each provider can use either protocol — toggle via the badge on the provider card:
+
+- **Anthropic API** (passthrough): Request forwarded as-is via `x-api-key`. Use for Anthropic official API or compatible proxies (e.g. MiniMax Anthropic endpoint)
+- **OpenAI Compatible** (auto-translate): Request auto-translated from Anthropic to OpenAI format. Auth via `Bearer` token. Use for Kimi, GLM, DeepSeek, and any OpenAI-compatible API
 
 ## API Endpoints
 
@@ -110,19 +126,27 @@ Via the Web dashboard (recommended) or config file at `~/.claude-api-hub/provide
 | `/v1/models` | GET | List all available models |
 | `/health` | GET | Gateway health check |
 | `/api/config` | GET | Current config (API keys masked) |
-| `/api/config/providers` | POST | Add provider |
-| `/api/config/providers/:name` | PUT | Update provider |
-| `/api/config/providers/:name` | DELETE | Delete provider |
+| `/api/config/providers` | POST | Add provider (hot-reloads router) |
+| `/api/config/providers/:name` | PUT/DELETE | Update or delete provider (hot-reloads router) |
 | `/api/config/reload` | POST | Reload config from disk |
 | `/api/aliases` | GET/PUT | Get or update alias mapping |
 | `/api/fetch-models` | GET | Fetch real model lists from provider APIs |
 | `/api/health/providers` | GET | Test connectivity to all providers |
-| `/api/logs` | GET | Request logs (last 200) |
+| `/api/logs` | GET | Request logs (last 200, lightweight) |
 | `/api/logs/clear` | POST | Clear log buffer |
+| `/api/logs/file-status` | GET | File logging status and file count |
+| `/api/logs/file-toggle` | PUT | Toggle file logging on/off |
+
+## Logging
+
+Two-tier logging system:
+
+- **Memory logs** (always on): Lightweight summaries in RAM, shown in dashboard. Last 200 entries with claudeModel tier, resolvedModel, provider, status, duration, error message
+- **File logs** (opt-in): Detailed JSON files at `~/.claude-api-hub/logs/` including original request body, translated request body, forwarded headers, upstream response. Toggle via dashboard. Auto-cleans at 4096 files
 
 ## Routing Rules
 
-1. **Alias resolution**: Model name containing haiku/sonnet/opus → replace target
+1. **Alias resolution**: Model name containing haiku/sonnet/opus → replaced with alias target
 2. **Prefix match**: Route by provider's `prefix` config
 3. **Model list match**: Check provider's `models` array
 4. **Fallback**: Use `defaultProvider`
