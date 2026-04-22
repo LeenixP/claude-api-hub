@@ -362,7 +362,7 @@ button {
   transition: background var(--transition);
 }
 .log-entry:hover { background: var(--surface); }
-.log-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.log-row { display: flex; align-items: center; gap: 8px; overflow: hidden; white-space: nowrap; }
 .log-time { color: var(--text-muted); flex-shrink: 0; width: 72px; }
 .log-status { font-weight: 700; width: 30px; text-align: center; }
 .log-ok { color: var(--success); }
@@ -1028,6 +1028,8 @@ async function deleteProvider(key) {
 }
 
 // ── Request Logs ──
+let openLogIds = new Set();
+
 async function loadLogs() {
   try {
     const logs = await fetch('/api/logs').then(r => r.json());
@@ -1046,28 +1048,25 @@ async function loadLogs() {
     panel.innerHTML = filtered.map((l, i) => {
       const ok = l.status >= 200 && l.status < 300;
       const time = new Date(l.time).toLocaleTimeString();
-      const stream = l.stream ? ' [stream]' : '';
-      const arrow = l.originalModel !== l.resolvedModel
-        ? ' <span class="log-arrow">\\u2192</span> <span class="log-model">' + esc(l.resolvedModel) + '</span>'
-        : '';
-      const detail = '<div class="log-detail" id="log-d-' + i + '">'
+      const isOpen = openLogIds.has(l.requestId);
+      const model = l.originalModel !== l.resolvedModel
+        ? esc(l.originalModel) + ' \\u2192 ' + esc(l.resolvedModel)
+        : esc(l.originalModel);
+      const detail = '<div class="log-detail' + (isOpen ? ' open' : '') + '" id="log-d-' + i + '">'
         + '<div><b>Request ID:</b> ' + esc(l.requestId || '-') + '</div>'
         + '<div><b>Target URL:</b> ' + esc(l.targetUrl || '-') + '</div>'
         + '<div><b>Provider:</b> ' + esc(l.provider) + ' [' + esc(l.protocol) + ']</div>'
-        + '<div><b>Model:</b> ' + esc(l.originalModel)
-          + (l.originalModel !== l.resolvedModel ? ' \\u2192 ' + esc(l.resolvedModel) : '') + '</div>'
+        + '<div><b>Model:</b> ' + model + '</div>'
         + '<div><b>Stream:</b> ' + (l.stream ? 'Yes' : 'No') + ' | <b>Duration:</b> ' + l.durationMs + 'ms</div>'
         + (l.error ? '<div class="log-error"><b>Error:</b> ' + esc(l.error) + '</div>' : '')
-        + (l.upstreamBody ? '<div><b>Upstream response:</b><pre>' + esc(l.upstreamBody) + '</pre></div>' : '')
-        + (l.requestBody ? '<div><b>Request body:</b><pre>' + esc(l.requestBody) + '</pre></div>' : '')
+        + (l.upstreamBody ? '<div><b>Upstream:</b><pre>' + esc(l.upstreamBody) + '</pre></div>' : '')
+        + (l.requestBody ? '<div><b>Request:</b><pre>' + esc(l.requestBody) + '</pre></div>' : '')
         + '</div>';
-      return '<div class="log-entry" onclick="toggleLogDetail(' + i + ')">'
+      return '<div class="log-entry" data-rid="' + esc(l.requestId || '') + '" onclick="toggleLogDetail(' + i + ',this)">'
         + '<div class="log-row">'
-          + '<span class="log-time">' + esc(time) + '</span>'
           + '<span class="log-status ' + (ok ? 'log-ok' : 'log-err') + '">' + l.status + '</span>'
-          + '<span class="log-model">' + esc(l.originalModel) + '</span>' + arrow
-          + ' <span class="log-arrow">\\u2192</span> <span class="log-provider">' + esc(l.provider) + '</span>'
-          + ' <span class="log-proto">[' + l.protocol + ']' + stream + '</span>'
+          + '<span class="log-model" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:180px" title="' + model + '">' + model + '</span>'
+          + '<span class="log-arrow">\\u2192</span><span class="log-provider">' + esc(l.provider) + '</span>'
           + '<span class="log-dur">' + l.durationMs + 'ms</span>'
         + '</div>'
         + detail
@@ -1076,13 +1075,20 @@ async function loadLogs() {
   } catch (e) { /* ignore */ }
 }
 
-function toggleLogDetail(i) {
+function toggleLogDetail(i, entry) {
   const el = document.getElementById('log-d-' + i);
-  if (el) el.classList.toggle('open');
+  if (!el) return;
+  el.classList.toggle('open');
+  const rid = entry ? entry.dataset.rid : '';
+  if (rid) {
+    if (el.classList.contains('open')) openLogIds.add(rid);
+    else openLogIds.delete(rid);
+  }
 }
 
 function setLogFilter(f, btn) {
   logFilter = f;
+
   document.querySelectorAll('.log-filter button').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
   loadLogs();
