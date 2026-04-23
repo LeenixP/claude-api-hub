@@ -389,6 +389,7 @@ button {
   border-bottom: 1px solid var(--border);
 }
 .alias-row:last-of-type { border-bottom: none; }
+.alias-header { padding: 6px 0 2px; border-bottom: 1px solid var(--border); }
 .timeout-input {
   width: 70px;
   padding: 6px 8px;
@@ -684,12 +685,23 @@ button {
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
       <h2 style="font-size:15px;font-weight:600;color:var(--text)">Request Trend</h2>
       <div class="log-filter" id="chart-range">
-        <button class="btn-ghost btn-sm active" onclick="setChartRange('1h',this)">1H</button>
-        <button class="btn-ghost btn-sm" onclick="setChartRange('6h',this)">6H</button>
-        <button class="btn-ghost btn-sm" onclick="setChartRange('24h',this)">24H</button>
+        <button class="btn-ghost btn-sm active" onclick="setChartRange(1,this)">1H</button>
+        <button class="btn-ghost btn-sm" onclick="setChartRange(6,this)">6H</button>
+        <button class="btn-ghost btn-sm" onclick="setChartRange(24,this)">24H</button>
       </div>
     </div>
-    <canvas id="trend-chart" height="100" style="width:100%;display:block"></canvas>
+    <div style="position:relative">
+      <canvas id="trend-chart" height="130" style="width:100%;display:block"></canvas>
+      <div id="chart-tooltip" style="display:none;position:absolute;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:8px 12px;font-size:11px;pointer-events:none;z-index:10;box-shadow:var(--shadow)"></div>
+    </div>
+  </section>
+
+  <section class="card" style="padding:16px;margin-bottom:24px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+      <h2 style="font-size:15px;font-weight:600;color:var(--text)">Token Usage</h2>
+      <div style="font-size:11px;color:var(--text-muted)" id="token-total"></div>
+    </div>
+    <canvas id="token-chart" height="100" style="width:100%;display:block"></canvas>
   </section>
 
   <div class="info-card">
@@ -729,8 +741,14 @@ button {
       <!-- Alias Mapping -->
       <section>
         <div class="section-header"><h2>Alias Mapping</h2></div>
-        <div style="font-size:12px;color:var(--text-muted);margin:-12px 0 14px">Map haiku/sonnet/opus to any provider model.</div>
+        <div style="font-size:12px;color:var(--text-muted);margin:-12px 0 14px">Map haiku/sonnet/opus to any provider model. Set per-tier request timeout.</div>
         <div class="card" id="aliases-card">
+          <div class="alias-row alias-header">
+            <div style="font-size:11px;color:var(--text-muted);font-weight:600">Tier</div>
+            <div style="font-size:11px;color:var(--text-muted);font-weight:600">Target Model</div>
+            <div style="font-size:11px;color:var(--text-muted);font-weight:600;text-align:center">Timeout</div>
+            <div style="font-size:11px;color:var(--text-muted);font-weight:600">Provider</div>
+          </div>
           <div class="alias-row">
             <div class="alias-label haiku">Haiku</div>
             <div class="combo">
@@ -917,12 +935,41 @@ function updateStats(logs) {
   if (el('stat-error-count')) animateValue(el('stat-error-count'), total - ok);
 }
 
-// ── Trend Chart ──
+// ── Charts ──
 let chartRangeHours = 1;
-function setChartRange(range, btn) {
-  chartRangeHours = parseInt(range);
+let chartBuckets = [];
+let chartErrBuckets = [];
+let chartBucketMs = 0;
+let chartCutoff = 0;
+
+function setChartRange(hours, btn) {
+  chartRangeHours = hours;
   document.querySelectorAll('#chart-range button').forEach(b => b.classList.remove('active'));
   if (btn) btn.classList.add('active');
+}
+
+function setupChartTooltip(canvas, tooltip) {
+  if (!canvas || !tooltip) return;
+  canvas.addEventListener('mousemove', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const pad = 30;
+    const plotW = rect.width - pad - 8;
+    const idx = Math.floor(((x - pad) / plotW) * chartBuckets.length);
+    if (idx < 0 || idx >= chartBuckets.length) { tooltip.style.display = 'none'; return; }
+    const time = new Date(chartCutoff + idx * chartBucketMs);
+    const timeStr = time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const ok = chartBuckets[idx] - chartErrBuckets[idx];
+    tooltip.innerHTML = '<div style="color:var(--text);font-weight:600;margin-bottom:4px">' + timeStr + '</div>'
+      + '<div style="color:var(--success)">OK: ' + ok + '</div>'
+      + '<div style="color:var(--danger)">Errors: ' + chartErrBuckets[idx] + '</div>'
+      + '<div style="color:var(--text-dim)">Total: ' + chartBuckets[idx] + '</div>';
+    tooltip.style.display = 'block';
+    const tx = Math.min(x + 12, rect.width - 130);
+    tooltip.style.left = tx + 'px';
+    tooltip.style.top = '8px';
+  });
+  canvas.addEventListener('mouseleave', () => { tooltip.style.display = 'none'; });
 }
 
 function drawTrendChart(logs) {
@@ -938,58 +985,208 @@ function drawTrendChart(logs) {
 
   const now = Date.now();
   const rangeMs = chartRangeHours * 3600000;
-  const cutoff = now - rangeMs;
-  const bucketCount = Math.min(60, chartRangeHours * 6);
-  const bucketMs = rangeMs / bucketCount;
-  const buckets = new Array(bucketCount).fill(0);
-  const errBuckets = new Array(bucketCount).fill(0);
+  chartCutoff = now - rangeMs;
+  const bucketCount = Math.min(60, chartRangeHours * 12);
+  chartBucketMs = rangeMs / bucketCount;
+  chartBuckets = new Array(bucketCount).fill(0);
+  chartErrBuckets = new Array(bucketCount).fill(0);
 
+  for (const l of logs) {
+    const t = new Date(l.time).getTime();
+    if (t < chartCutoff) continue;
+    const idx = Math.min(Math.floor((t - chartCutoff) / chartBucketMs), bucketCount - 1);
+    chartBuckets[idx]++;
+    if (l.status >= 300) chartErrBuckets[idx]++;
+  }
+
+  const max = Math.max(...chartBuckets, 1);
+  const padL = 30, padR = 8, padT = 10, padB = 20;
+  const plotW = w - padL - padR;
+  const plotH = h - padT - padB;
+  const stepX = plotW / (bucketCount - 1 || 1);
+
+  ctx.clearRect(0, 0, w, h);
+  const style = getComputedStyle(document.documentElement);
+  const gridColor = style.getPropertyValue('--border').trim();
+  const textMuted = style.getPropertyValue('--text-muted').trim();
+
+  // Y-axis grid + labels
+  ctx.font = '10px -apple-system, sans-serif';
+  ctx.textAlign = 'right';
+  for (let i = 0; i <= 3; i++) {
+    const y = padT + (plotH / 3) * i;
+    ctx.strokeStyle = gridColor;
+    ctx.lineWidth = 0.5;
+    ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(w - padR, y); ctx.stroke();
+    ctx.fillStyle = textMuted;
+    ctx.fillText(Math.round(max - (max / 3) * i).toString(), padL - 6, y + 3);
+  }
+
+  // X-axis time labels
+  ctx.textAlign = 'center';
+  const labelCount = Math.min(6, bucketCount);
+  const labelStep = Math.floor(bucketCount / labelCount);
+  for (let i = 0; i < bucketCount; i += labelStep) {
+    const x = padL + i * stepX;
+    const time = new Date(chartCutoff + i * chartBucketMs);
+    ctx.fillStyle = textMuted;
+    ctx.fillText(time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), x, h - 4);
+  }
+
+  // Area chart - success (blue gradient)
+  ctx.beginPath();
+  ctx.moveTo(padL, padT + plotH);
+  for (let i = 0; i < bucketCount; i++) {
+    const x = padL + i * stepX;
+    const y = padT + plotH - (chartBuckets[i] / max) * plotH;
+    if (i === 0) ctx.lineTo(x, y); else ctx.lineTo(x, y);
+  }
+  ctx.lineTo(padL + (bucketCount - 1) * stepX, padT + plotH);
+  ctx.closePath();
+  const grad = ctx.createLinearGradient(0, padT, 0, padT + plotH);
+  grad.addColorStop(0, 'rgba(59, 130, 246, 0.35)');
+  grad.addColorStop(1, 'rgba(59, 130, 246, 0.02)');
+  ctx.fillStyle = grad;
+  ctx.fill();
+
+  // Line on top
+  ctx.beginPath();
+  for (let i = 0; i < bucketCount; i++) {
+    const x = padL + i * stepX;
+    const y = padT + plotH - (chartBuckets[i] / max) * plotH;
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  }
+  ctx.strokeStyle = '#3B82F6';
+  ctx.lineWidth = 2;
+  ctx.lineJoin = 'round';
+  ctx.stroke();
+
+  // Error area (red gradient)
+  const hasErrors = chartErrBuckets.some(v => v > 0);
+  if (hasErrors) {
+    ctx.beginPath();
+    ctx.moveTo(padL, padT + plotH);
+    for (let i = 0; i < bucketCount; i++) {
+      const x = padL + i * stepX;
+      const y = padT + plotH - (chartErrBuckets[i] / max) * plotH;
+      ctx.lineTo(x, y);
+    }
+    ctx.lineTo(padL + (bucketCount - 1) * stepX, padT + plotH);
+    ctx.closePath();
+    const errGrad = ctx.createLinearGradient(0, padT, 0, padT + plotH);
+    errGrad.addColorStop(0, 'rgba(239, 68, 68, 0.4)');
+    errGrad.addColorStop(1, 'rgba(239, 68, 68, 0.02)');
+    ctx.fillStyle = errGrad;
+    ctx.fill();
+
+    ctx.beginPath();
+    for (let i = 0; i < bucketCount; i++) {
+      const x = padL + i * stepX;
+      const y = padT + plotH - (chartErrBuckets[i] / max) * plotH;
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.strokeStyle = '#EF4444';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+  }
+
+  // Dots on data points
+  for (let i = 0; i < bucketCount; i++) {
+    if (chartBuckets[i] === 0) continue;
+    const x = padL + i * stepX;
+    const y = padT + plotH - (chartBuckets[i] / max) * plotH;
+    ctx.beginPath();
+    ctx.arc(x, y, 2.5, 0, Math.PI * 2);
+    ctx.fillStyle = '#3B82F6';
+    ctx.fill();
+  }
+}
+
+// ── Token Chart ──
+function drawTokenChart(logs) {
+  const canvas = document.getElementById('token-chart');
+  const totalEl = document.getElementById('token-total');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = rect.width * dpr;
+  canvas.height = rect.height * dpr;
+  ctx.scale(dpr, dpr);
+  const w = rect.width, h = rect.height;
+
+  const now = Date.now();
+  const style = getComputedStyle(document.documentElement);
+  const rangeMs = chartRangeHours * 3600000;
+  const cutoff = now - rangeMs;
+  const bucketCount = Math.min(30, chartRangeHours * 6);
+  const bucketMs = rangeMs / bucketCount;
+  const inputTokens = new Array(bucketCount).fill(0);
+  const outputTokens = new Array(bucketCount).fill(0);
+
+  // Token data is not in logs by default, use durationMs as proxy if no token data
+  let hasTokenData = false;
   for (const l of logs) {
     const t = new Date(l.time).getTime();
     if (t < cutoff) continue;
     const idx = Math.min(Math.floor((t - cutoff) / bucketMs), bucketCount - 1);
-    buckets[idx]++;
-    if (l.status >= 300) errBuckets[idx]++;
+    if (l.inputTokens) { inputTokens[idx] += l.inputTokens; hasTokenData = true; }
+    if (l.outputTokens) { outputTokens[idx] += l.outputTokens; hasTokenData = true; }
+    if (!hasTokenData) {
+      inputTokens[idx] += Math.round(l.durationMs / 10);
+      outputTokens[idx] += Math.round(l.durationMs / 5);
+    }
   }
 
-  const max = Math.max(...buckets, 1);
-  const pad = 8;
-  const barW = (w - 2 * pad) / bucketCount;
+  const totalIn = inputTokens.reduce((a, b) => a + b, 0);
+  const totalOut = outputTokens.reduce((a, b) => a + b, 0);
+  if (totalEl) {
+    totalEl.textContent = hasTokenData
+      ? 'In: ' + totalIn.toLocaleString() + ' / Out: ' + totalOut.toLocaleString()
+      : 'Estimated from latency';
+  }
+
+  const maxVal = Math.max(...inputTokens.map((v, i) => v + outputTokens[i]), 1);
+  const padL = 8, padR = 8, padT = 6, padB = 6;
+  const plotW = w - padL - padR;
+  const plotH = h - padT - padB;
+  const barW = plotW / bucketCount;
 
   ctx.clearRect(0, 0, w, h);
 
-  const style = getComputedStyle(document.documentElement);
-  const gridColor = style.getPropertyValue('--border').trim();
-  const primaryColor = style.getPropertyValue('--primary').trim();
-  const dangerColor = style.getPropertyValue('--danger').trim();
-
-  ctx.strokeStyle = gridColor;
-  ctx.lineWidth = 0.5;
-  for (let i = 0; i < 3; i++) {
-    const y = pad + ((h - 2 * pad) / 2) * i;
-    ctx.beginPath(); ctx.moveTo(pad, y); ctx.lineTo(w - pad, y); ctx.stroke();
-  }
-
   for (let i = 0; i < bucketCount; i++) {
-    const barH = (buckets[i] / max) * (h - 2 * pad);
-    const x = pad + i * barW;
-    const y = h - pad - barH;
-    ctx.fillStyle = primaryColor;
-    ctx.globalAlpha = 0.6;
+    const x = padL + i * barW;
+    const inH = (inputTokens[i] / maxVal) * plotH;
+    const outH = (outputTokens[i] / maxVal) * plotH;
+
+    // Output tokens (top, violet)
+    ctx.fillStyle = 'rgba(168, 85, 250, 0.65)';
     ctx.beginPath();
-    ctx.roundRect(x + 1, y, Math.max(barW - 2, 1), barH, 2);
+    ctx.roundRect(x + 2, padT + plotH - inH - outH, Math.max(barW - 4, 2), outH, 2);
     ctx.fill();
-    if (errBuckets[i] > 0) {
-      const errH = (errBuckets[i] / max) * (h - 2 * pad);
-      ctx.fillStyle = dangerColor;
-      ctx.globalAlpha = 0.85;
-      ctx.beginPath();
-      ctx.roundRect(x + 1, h - pad - errH, Math.max(barW - 2, 1), errH, 2);
-      ctx.fill();
-    }
+
+    // Input tokens (bottom, cyan)
+    ctx.fillStyle = 'rgba(34, 211, 238, 0.65)';
+    ctx.beginPath();
+    ctx.roundRect(x + 2, padT + plotH - inH, Math.max(barW - 4, 2), inH, 2);
+    ctx.fill();
   }
-  ctx.globalAlpha = 1;
+
+  // Legend
+  ctx.font = '10px -apple-system, sans-serif';
+  const legendX = w - padR - 120;
+  ctx.fillStyle = 'rgba(34, 211, 238, 0.8)';
+  ctx.fillRect(legendX, padT + 2, 8, 8);
+  ctx.fillStyle = style.getPropertyValue('--text-muted').trim();
+  ctx.textAlign = 'left';
+  ctx.fillText('Input', legendX + 12, padT + 10);
+  ctx.fillStyle = 'rgba(168, 85, 250, 0.8)';
+  ctx.fillRect(legendX + 55, padT + 2, 8, 8);
+  ctx.fillStyle = style.getPropertyValue('--text-muted').trim();
+  ctx.fillText('Output', legendX + 70, padT + 10);
 }
+
+let chartInitialized = false;
 
 // ── State ──
 let config = null;
@@ -1434,6 +1631,11 @@ async function loadLogs() {
     const logs = await fetch('/api/logs').then(r => r.json());
     updateStats(logs || []);
     drawTrendChart(logs || []);
+    drawTokenChart(logs || []);
+    if (!chartInitialized) {
+      chartInitialized = true;
+      setupChartTooltip(document.getElementById('trend-chart'), document.getElementById('chart-tooltip'));
+    }
     const panel = document.getElementById('log-panel');
     if (!logs || logs.length === 0) {
       panel.innerHTML = '<div class="empty">No logs yet</div>';
