@@ -214,7 +214,7 @@ claude-api-hub
 ```bash
 npm run dev      # 开发模式（热重载）
 npm run build    # 编译
-npm test         # 测试（60 个测试用例）
+npm test         # 测试（77 个测试用例）
 ```
 
 ## 贡献

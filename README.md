@@ -81,7 +81,7 @@ The gateway intercepts Anthropic Messages API requests from Claude Code, resolve
 
 ### Prerequisites
 
-- Node.js >= 18
+- Node.js >= 22
 
 ### Install & Run
 
@@ -240,7 +240,7 @@ See [SECURITY.md](SECURITY.md) for vulnerability reporting.
 ```bash
 npm run dev      # Dev mode (hot reload)
 npm run build    # Compile TypeScript
-npm test         # Run tests (60 tests)
+npm test         # Run tests (77 tests)
 ```
 
 ## Contributing

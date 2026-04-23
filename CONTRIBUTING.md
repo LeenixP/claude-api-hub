@@ -73,7 +73,7 @@ We use [Conventional Commits](https://www.conventionalcommits.org/):
 ## Code Style
 
 - TypeScript strict mode
-- No semicolons (project convention)
+- Semicolons required
 - 2-space indentation
 - Minimal comments — code should be self-documenting
 
