@@ -204,9 +204,9 @@ describe('server with admin auth', () => {
     expect(res.status).toBe(401);
   });
 
-  it('GET /api/logs does not require auth', async () => {
+  it('GET /api/logs requires auth', async () => {
     const res = await request(server, { method: 'GET', path: '/api/logs' });
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(401);
   });
 
   it('POST mutation without token returns 401', async () => {

@@ -7,7 +7,11 @@ import { sendError } from '../utils/http.js';
 
 export class PerIpRateLimiter {
   private windows = new Map<string, { count: number; resetAt: number }>();
-  constructor(private rpm: number, private windowMs = 60000) {}
+  private cleanupTimer: NodeJS.Timeout;
+  constructor(private rpm: number, private windowMs = 60000) {
+    this.cleanupTimer = setInterval(() => this.cleanup(Date.now()), 60000);
+    this.cleanupTimer.unref();
+  }
 
   tryConsume(ip: string): { allowed: boolean; remaining: number; retryAfter: number } {
     const now = Date.now();
@@ -17,12 +21,16 @@ export class PerIpRateLimiter {
       this.windows.set(ip, entry);
     }
     entry.count++;
-    if (this.windows.size > 10000) this.cleanup(now);
     return {
       allowed: entry.count <= this.rpm,
       remaining: Math.max(0, this.rpm - entry.count),
       retryAfter: Math.ceil((entry.resetAt - now) / 1000),
     };
+  }
+
+  destroy(): void {
+    clearInterval(this.cleanupTimer);
+    this.windows.clear();
   }
 
   private cleanup(now: number): void {
@@ -62,4 +70,6 @@ export function setSecurityHeaders(res: http.ServerResponse): void {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'DENY');
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('Content-Security-Policy',
+    "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'");
 }

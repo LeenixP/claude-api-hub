@@ -35,6 +35,7 @@ export interface GatewayConfig {
   streamTimeoutMs?: number;
   streamIdleTimeoutMs?: number;
   maxResponseBytes?: number;
+  trustProxy?: boolean;
 }
 
 // ─── Anthropic API Types (incoming from Claude Code) ───

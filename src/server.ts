@@ -1,6 +1,6 @@
 import http from 'http';
 import crypto from 'crypto';
-import { writeFileSync } from 'fs';
+import { writeFileSync, renameSync } from 'fs';
 import { ModelRouter } from './router.js';
 import { AnthropicRequest, GatewayConfig, ProviderConfig } from './providers/types.js';
 import { ClaudeProvider } from './providers/claude.js';
@@ -15,7 +15,10 @@ import type { LogEntry, LogDetail } from './services/log-manager.js';
 import { forwardRequest, forwardStream, httpGet } from './services/forwarder.js';
 
 function saveConfig(config: GatewayConfig): void {
-  writeFileSync(getConfigPath(), JSON.stringify(config, null, 2), 'utf-8');
+  const configPath = getConfigPath();
+  const tmpPath = configPath + '.tmp';
+  writeFileSync(tmpPath, JSON.stringify(config, null, 2), 'utf-8');
+  renameSync(tmpPath, configPath);
 }
 
 function rebuildProviders(router: ModelRouter, config: GatewayConfig): void {
@@ -76,11 +79,8 @@ export function createServer(router: ModelRouter, config: GatewayConfig, logMana
 
     // ─── Admin Auth Gate ───
 
-    const isAdminEndpoint = pathname.startsWith('/api/') && pathname !== '/api/logs';
-    const isAdminMutation = pathname.startsWith('/api/') && (
-      req.method === 'POST' || req.method === 'PUT' || req.method === 'DELETE'
-    );
-    if (isAdminEndpoint || isAdminMutation) {
+    const isAdminEndpoint = pathname.startsWith('/api/');
+    if (isAdminEndpoint) {
       if (!requireAdmin(req, res, config)) return;
     }
 
@@ -328,8 +328,9 @@ export function createServer(router: ModelRouter, config: GatewayConfig, logMana
 
     if (req.method === 'POST' && pathname === '/v1/messages') {
       if (rateLimiter) {
-        const clientIp = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim()
-          || req.socket.remoteAddress || 'unknown';
+        const clientIp = config.trustProxy
+          ? ((req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.socket.remoteAddress || 'unknown')
+          : (req.socket.remoteAddress || 'unknown');
         const rl = rateLimiter.tryConsume(clientIp);
         res.setHeader('X-RateLimit-Remaining', rl.remaining.toString());
         if (!rl.allowed) {
@@ -412,16 +413,15 @@ export function createServer(router: ModelRouter, config: GatewayConfig, logMana
             if (!trimmed.startsWith('data:')) continue;
             const json = trimmed.slice(5).trim();
             if (json === '[DONE]') continue;
+            if (!json.includes('usage') && !json.includes('message_start')) continue;
             try {
               const parsed = JSON.parse(json);
-              // Anthropic format
               if (parsed.type === 'message_start' && parsed.message?.usage) {
                 streamInputTokens = parsed.message.usage.input_tokens || 0;
               }
               if (parsed.type === 'message_delta' && parsed.usage) {
                 streamOutputTokens = parsed.usage.output_tokens || 0;
               }
-              // OpenAI format
               if (parsed.usage) {
                 if (parsed.usage.prompt_tokens) streamInputTokens = parsed.usage.prompt_tokens;
                 if (parsed.usage.completion_tokens) streamOutputTokens = parsed.usage.completion_tokens;

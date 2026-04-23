@@ -2,6 +2,7 @@ import { mkdirSync, appendFileSync, readdirSync } from 'fs';
 import { readdir, unlink } from 'fs/promises';
 import { homedir } from 'os';
 import { join } from 'path';
+import { logger } from '../logger.js';
 import { DatabaseSync } from 'node:sqlite';
 
 export interface LogEntry {
@@ -55,6 +56,9 @@ export class LogManager {
     this.db = new DatabaseSync(resolvedDbPath);
     this.db.exec('PRAGMA journal_mode=WAL');
     this.db.exec('PRAGMA busy_timeout=3000');
+    this.db.exec('PRAGMA synchronous=NORMAL');
+    this.db.exec('PRAGMA cache_size=-8000');
+    this.db.exec('PRAGMA temp_store=MEMORY');
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS request_logs (
         id             INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -132,14 +136,14 @@ export class LogManager {
         entry.error ?? null, entry.logFile ?? null
       );
       this.trimLogs();
-    } catch {}
+    } catch (err) { logger.warn('Failed to write log to database', { error: (err as Error).message }); }
   }
 
   getLogs(limit = 200): LogEntry[] {
     try {
       const rows = this.stmtGetLogs.all(limit) as Record<string, unknown>[];
       return rows.map(r => this.rowToLogEntry(r));
-    } catch { return []; }
+    } catch (err) { logger.warn('Failed to read logs', { error: (err as Error).message }); return []; }
   }
 
   clearLogs(): void {

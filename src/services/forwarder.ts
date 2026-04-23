@@ -76,6 +76,7 @@ export function httpGet(
   url: string,
   headers: Record<string, string>,
   timeoutMs = 5000,
+  maxResponseBytes = 5 * 1024 * 1024,
 ): Promise<string> {
   return new Promise((resolve, reject) => {
     const parsed = new URL(url);
@@ -92,7 +93,12 @@ export function httpGet(
     };
     const req = lib.request(options, (res) => {
       const chunks: Buffer[] = [];
-      res.on('data', (chunk: Buffer) => chunks.push(chunk));
+      let size = 0;
+      res.on('data', (chunk: Buffer) => {
+        size += chunk.length;
+        if (size > maxResponseBytes) { res.destroy(); reject(new Error(`Response exceeds ${maxResponseBytes} bytes`)); return; }
+        chunks.push(chunk);
+      });
       res.on('end', () => resolve(Buffer.concat(chunks).toString('utf-8')));
       res.on('error', reject);
     });

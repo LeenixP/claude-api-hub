@@ -58,14 +58,17 @@ async function main(): Promise<void> {
 
   function gracefulShutdown(signal: string): void {
     logger.info(`Received ${signal}, shutting down gracefully...`);
-    destroyAgents();
-    logManager.close();
     server.close(() => {
-      logger.info('All connections closed, exiting.');
+      logger.info('All connections closed.');
+      destroyAgents();
+      logManager.close();
+      logger.info('Cleanup complete, exiting.');
       process.exit(0);
     });
     setTimeout(() => {
       logger.warn('Graceful shutdown timed out after 30s, forcing exit.');
+      destroyAgents();
+      logManager.close();
       process.exit(1);
     }, 30000).unref();
   }

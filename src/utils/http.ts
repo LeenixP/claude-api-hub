@@ -3,19 +3,24 @@ import type { GatewayConfig } from '../providers/types.js';
 
 export function getCorsHeaders(config: GatewayConfig, reqOrigin?: string): Record<string, string> {
   const origins = config.corsOrigins;
-  let origin: string;
-  if (origins && origins.length > 0) {
-    origin = (reqOrigin && origins.includes(reqOrigin)) ? reqOrigin : origins[0];
-  } else {
-    const defaultOrigin = `http://${config.host === '0.0.0.0' ? 'localhost' : config.host}:${config.port}`;
-    origin = (reqOrigin && reqOrigin === defaultOrigin) ? reqOrigin : defaultOrigin;
-  }
-  return {
-    'Access-Control-Allow-Origin': origin,
+  const headers: Record<string, string> = {
     'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-api-key, x-admin-token, anthropic-version, anthropic-beta',
     'Vary': 'Origin',
   };
+  if (origins && origins.length > 0) {
+    if (reqOrigin && origins.includes(reqOrigin)) {
+      headers['Access-Control-Allow-Origin'] = reqOrigin;
+    } else {
+      headers['Access-Control-Allow-Origin'] = origins[0];
+    }
+  } else {
+    const defaultOrigin = `http://${config.host === '0.0.0.0' ? 'localhost' : config.host}:${config.port}`;
+    if (!reqOrigin || reqOrigin === defaultOrigin) {
+      headers['Access-Control-Allow-Origin'] = defaultOrigin;
+    }
+  }
+  return headers;
 }
 
 export function sendJson(res: http.ServerResponse, status: number, body: unknown, config?: GatewayConfig, origin?: string): void {
