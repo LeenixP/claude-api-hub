@@ -241,7 +241,7 @@ html.theme-transition *::after {
 .log-search::placeholder { color: var(--text-muted); }
 
 /* ── Responsive ── */
-@media (max-width: 960px) { .stats-grid { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 960px) { .stats-grid { grid-template-columns: repeat(2, 1fr); } .chart-grid { grid-template-columns: 1fr; } }
 @media (max-width: 640px) {
   header { flex-direction: column; gap: 8px; padding: 12px 16px; }
   .header-right { flex-wrap: wrap; justify-content: center; }
@@ -683,27 +683,28 @@ button {
     </div>
   </section>
 
-  <section class="card" style="padding:16px;margin-bottom:24px">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
-      <h2 style="font-size:15px;font-weight:600;color:var(--text)">Request Trend</h2>
-      <div class="log-filter" id="chart-range">
-        <button class="btn-ghost btn-sm active" onclick="setChartRange(1,this)">1H</button>
-        <button class="btn-ghost btn-sm" onclick="setChartRange(6,this)">6H</button>
-        <button class="btn-ghost btn-sm" onclick="setChartRange(24,this)">24H</button>
+  <section class="chart-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px">
+    <div class="card" style="padding:14px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <h2 style="font-size:14px;font-weight:600;color:var(--text)">Request Trend</h2>
+        <div class="log-filter" id="chart-range">
+          <button class="btn-ghost btn-sm active" onclick="setChartRange(1,this)">1H</button>
+          <button class="btn-ghost btn-sm" onclick="setChartRange(6,this)">6H</button>
+          <button class="btn-ghost btn-sm" onclick="setChartRange(24,this)">24H</button>
+        </div>
+      </div>
+      <div style="position:relative">
+        <canvas id="trend-chart" height="100" style="width:100%;display:block"></canvas>
+        <div id="chart-tooltip" style="display:none;position:absolute;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:8px 12px;font-size:11px;pointer-events:none;z-index:10;box-shadow:var(--shadow)"></div>
       </div>
     </div>
-    <div style="position:relative">
-      <canvas id="trend-chart" height="130" style="width:100%;display:block"></canvas>
-      <div id="chart-tooltip" style="display:none;position:absolute;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:8px 12px;font-size:11px;pointer-events:none;z-index:10;box-shadow:var(--shadow)"></div>
+    <div class="card" style="padding:14px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <h2 style="font-size:14px;font-weight:600;color:var(--text)">Token Usage</h2>
+        <div style="font-size:11px;color:var(--text-muted)" id="token-total"></div>
+      </div>
+      <canvas id="token-chart" height="100" style="width:100%;display:block"></canvas>
     </div>
-  </section>
-
-  <section class="card" style="padding:16px;margin-bottom:24px">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
-      <h2 style="font-size:15px;font-weight:600;color:var(--text)">Token Usage</h2>
-      <div style="font-size:11px;color:var(--text-muted)" id="token-total"></div>
-    </div>
-    <canvas id="token-chart" height="100" style="width:100%;display:block"></canvas>
   </section>
 
   <div class="info-card">
@@ -1160,32 +1161,38 @@ function drawTokenChart(logs) {
     const x = padL + i * barW;
     const inH = (inputTokens[i] / maxVal) * plotH;
     const outH = (outputTokens[i] / maxVal) * plotH;
+    const bw = Math.max(Math.min(barW * 0.5, 8), 2);
+    const bx = x + (barW - bw) / 2;
 
     // Output tokens (top, violet)
-    ctx.fillStyle = 'rgba(168, 85, 250, 0.65)';
-    ctx.beginPath();
-    ctx.roundRect(x + 2, padT + plotH - inH - outH, Math.max(barW - 4, 2), outH, 2);
-    ctx.fill();
+    if (outH > 0) {
+      ctx.fillStyle = 'rgba(168, 85, 250, 0.7)';
+      ctx.beginPath();
+      ctx.roundRect(bx, padT + plotH - inH - outH, bw, outH, 1.5);
+      ctx.fill();
+    }
 
     // Input tokens (bottom, cyan)
-    ctx.fillStyle = 'rgba(34, 211, 238, 0.65)';
-    ctx.beginPath();
-    ctx.roundRect(x + 2, padT + plotH - inH, Math.max(barW - 4, 2), inH, 2);
-    ctx.fill();
+    if (inH > 0) {
+      ctx.fillStyle = 'rgba(34, 211, 238, 0.7)';
+      ctx.beginPath();
+      ctx.roundRect(bx, padT + plotH - inH, bw, inH, 1.5);
+      ctx.fill();
+    }
   }
 
-  // Legend
-  ctx.font = '10px -apple-system, sans-serif';
-  const legendX = w - padR - 120;
-  ctx.fillStyle = 'rgba(34, 211, 238, 0.8)';
-  ctx.fillRect(legendX, padT + 2, 8, 8);
-  ctx.fillStyle = style.getPropertyValue('--text-muted').trim();
+  // Legend dots inline
+  ctx.font = '9px -apple-system, sans-serif';
   ctx.textAlign = 'left';
-  ctx.fillText('Input', legendX + 12, padT + 10);
-  ctx.fillStyle = 'rgba(168, 85, 250, 0.8)';
-  ctx.fillRect(legendX + 55, padT + 2, 8, 8);
+  const ly = padT + 4;
+  ctx.fillStyle = 'rgba(34, 211, 238, 0.9)';
+  ctx.beginPath(); ctx.arc(padL + 4, ly, 3, 0, Math.PI * 2); ctx.fill();
   ctx.fillStyle = style.getPropertyValue('--text-muted').trim();
-  ctx.fillText('Output', legendX + 70, padT + 10);
+  ctx.fillText('Input', padL + 11, ly + 3);
+  ctx.fillStyle = 'rgba(168, 85, 250, 0.9)';
+  ctx.beginPath(); ctx.arc(padL + 48, ly, 3, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = style.getPropertyValue('--text-muted').trim();
+  ctx.fillText('Output', padL + 55, ly + 3);
 }
 
 let chartInitialized = false;
