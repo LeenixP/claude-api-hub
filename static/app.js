@@ -488,6 +488,7 @@ function showLoginPage() {
       if (res.ok && data.success) {
         adminToken = data.token;
         localStorage.setItem('adminToken', data.token);
+        localStorage.setItem('adminTokenTime', Date.now().toString());
         authRequired = false;
         overlay.remove();
         startDashboard();
@@ -1369,36 +1370,43 @@ function toggleFaq(btn) {
 }
 
 // ── Boot ──
+const SESSION_DURATION = 30 * 60 * 1000; // 30 minutes
+
 async function boot() {
+  // Check if password is required
+  let required = false;
   try {
-    const checkRes = await fetch('/api/auth/check').catch(() => null);
-    if (checkRes && checkRes.ok) {
-      const checkData = await checkRes.json();
-      if (checkData.required) {
-        const saved = localStorage.getItem('adminToken');
-        if (saved) {
-          adminToken = saved;
-          const verifyRes = await apiFetch('/api/config');
-          if (verifyRes.ok) {
-            startDashboard();
-            return;
-          }
-          adminToken = '';
-          localStorage.removeItem('adminToken');
-        }
-        showLoginPage();
-        return;
-      }
-    }
+    const res = await fetch('/api/auth/check');
+    const data = await res.json();
+    required = data.required === true;
+  } catch { /* no auth check = no password */ }
+
+  if (!required) {
     startDashboard();
-  } catch (e) {
-    startDashboard();
+    return;
   }
+
+  // Check saved session
+  const savedToken = localStorage.getItem('adminToken');
+  const savedTime = parseInt(localStorage.getItem('adminTokenTime') || '0');
+  if (savedToken && (Date.now() - savedTime < SESSION_DURATION)) {
+    adminToken = savedToken;
+    startDashboard();
+    return;
+  }
+
+  // Clear expired session
+  localStorage.removeItem('adminToken');
+  localStorage.removeItem('adminTokenTime');
+  adminToken = '';
+
+  // Show login page
+  showLoginPage();
 }
 
-
 function startDashboard() {
-  document.querySelectorAll('header, main, footer').forEach(el => el.style.display = '');
+  const overlay = document.getElementById('login-overlay');
+  if (overlay) overlay.remove();
   initQuickStart();
   initRouter();
   load();
@@ -1406,6 +1414,15 @@ function startDashboard() {
   loadFileLogStatus();
   loadStats();
   initSSE();
+
+  // Auto-expire session after 30 min
+  setTimeout(() => {
+    localStorage.removeItem('adminToken');
+    localStorage.removeItem('adminTokenTime');
+    adminToken = '';
+    authRequired = true;
+    showLoginPage();
+  }, SESSION_DURATION);
 }
 
 boot();
