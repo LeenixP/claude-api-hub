@@ -401,11 +401,48 @@ export function createServer(router: ModelRouter, config: GatewayConfig): http.S
 
       if (anthropicReq.stream) {
         let headersSent = false;
+        let streamInputTokens = 0;
+        let streamOutputTokens = 0;
+        let chunkBuf = '';
+
+        function sniffTokens(raw: string): void {
+          chunkBuf += raw;
+          const lines = chunkBuf.split('\n');
+          chunkBuf = lines.pop() || '';
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed.startsWith('data:')) continue;
+            const json = trimmed.slice(5).trim();
+            if (json === '[DONE]') continue;
+            try {
+              const parsed = JSON.parse(json);
+              // Anthropic format
+              if (parsed.type === 'message_start' && parsed.message?.usage) {
+                streamInputTokens = parsed.message.usage.input_tokens || 0;
+              }
+              if (parsed.type === 'message_delta' && parsed.usage) {
+                streamOutputTokens = parsed.usage.output_tokens || 0;
+              }
+              // OpenAI format
+              if (parsed.usage) {
+                if (parsed.usage.prompt_tokens) streamInputTokens = parsed.usage.prompt_tokens;
+                if (parsed.usage.completion_tokens) streamOutputTokens = parsed.usage.completion_tokens;
+              }
+            } catch {}
+          }
+        }
+
         forwardStream(
           built.url, built.headers, built.body,
-          (chunk) => { if (headersSent) res.write(chunk); },
+          (chunk) => {
+            sniffTokens(chunk);
+            if (headersSent) res.write(chunk);
+          },
           () => {
-            logManager.addLog({ ...logBase, status: 200, durationMs: Date.now() - startTime }, logDetail);
+            logManager.addLog({
+              ...logBase, status: 200, durationMs: Date.now() - startTime,
+              inputTokens: streamInputTokens, outputTokens: streamOutputTokens,
+            }, logDetail);
             res.end();
           },
           (err) => {
