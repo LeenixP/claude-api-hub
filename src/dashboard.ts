@@ -86,7 +86,7 @@ header {
   z-index: 60;
   backdrop-filter: blur(8px);
 }
-header h1 { font-size: 20px; font-weight: 700; color: #f8fafc; letter-spacing: -0.3px; }
+header h1 { font-size: 20px; font-weight: 700; color: var(--text); letter-spacing: -0.3px; }
 .header-right { display: flex; align-items: center; gap: 18px; font-size: 13px; color: var(--text-dim); }
 .header-stat { display: flex; align-items: center; gap: 4px; }
 .header-stat b { color: var(--text); font-weight: 600; }
@@ -114,6 +114,44 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   outline-offset: 2px;
 }
 
+/* ── Theme Transition ── */
+html.theme-transition,
+html.theme-transition *,
+html.theme-transition *::before,
+html.theme-transition *::after {
+  transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease !important;
+}
+
+/* ── Skeleton Shimmer ── */
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.skeleton {
+  background: linear-gradient(90deg, var(--border) 25%, var(--surface-hover) 50%, var(--border) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+  border-radius: var(--radius-sm);
+}
+.skeleton-card { height: 80px; border-radius: var(--radius); margin-bottom: 12px; }
+.skeleton-value { height: 26px; width: 60px; border-radius: 4px; }
+
+/* ── Log Entry Animation ── */
+@keyframes fadeInSlide {
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.log-entry-new { animation: fadeInSlide 0.3s ease-out; }
+
+/* ── Empty State ── */
+.empty-state {
+  text-align: center;
+  padding: 48px 24px;
+}
+.empty-state svg { margin: 0 auto 12px; display: block; opacity: 0.4; }
+.empty-state .empty-title { font-size: 15px; font-weight: 600; color: var(--text-dim); margin-bottom: 6px; }
+.empty-state .empty-desc { font-size: 13px; color: var(--text-muted); margin-bottom: 16px; }
+
 /* ── Stats Grid ── */
 .stats-grid {
   display: grid;
@@ -129,9 +167,29 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   display: flex;
   align-items: center;
   gap: 14px;
-  transition: border-color var(--transition), box-shadow var(--transition);
+  transition: border-color var(--transition), box-shadow var(--transition), transform var(--transition);
+  position: relative;
+  overflow: hidden;
 }
-.stat-card:hover { border-color: var(--border-hover); box-shadow: 0 2px 8px rgba(0,0,0,0.15); }
+.stat-card::after {
+  content: '';
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, transparent, var(--stat-accent, var(--primary)), transparent);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+.stat-card:hover {
+  border-color: var(--border-hover);
+  box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+  transform: translateY(-2px);
+}
+.stat-card:hover::after { opacity: 1; }
+.stat-card:nth-child(1) { --stat-accent: var(--primary); }
+.stat-card:nth-child(2) { --stat-accent: var(--success); }
+.stat-card:nth-child(3) { --stat-accent: var(--violet); }
+.stat-card:nth-child(4) { --stat-accent: var(--danger); }
 .stat-icon {
   width: 42px; height: 42px;
   border-radius: 10px;
@@ -184,7 +242,7 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   main { padding: 8px 10px 24px; }
   .stats-grid { grid-template-columns: 1fr; }
 }
-.section-header h2 { font-size: 17px; font-weight: 600; color: #f1f5f9; }
+.section-header h2 { font-size: 17px; font-weight: 600; color: var(--text); }
 
 /* ── Cards ── */
 .card {
@@ -264,7 +322,7 @@ button {
   padding: 16px;
   margin-bottom: 24px;
 }
-.info-card h3 { font-size: 15px; font-weight: 600; color: #f1f5f9; margin-bottom: 14px; }
+.info-card h3 { font-size: 15px; font-weight: 600; color: var(--text); margin-bottom: 14px; }
 .setup-steps { display: flex; flex-direction: column; gap: 14px; }
 .setup-step { display: flex; gap: 14px; align-items: flex-start; }
 .step-num { width: 28px; height: 28px; border-radius: 50%; background: var(--primary); color: #fff; font-size: 13px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
@@ -585,6 +643,18 @@ button {
     </div>
   </section>
 
+  <section class="card" style="padding:16px;margin-bottom:24px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+      <h2 style="font-size:15px;font-weight:600;color:var(--text)">Request Trend</h2>
+      <div class="log-filter" id="chart-range">
+        <button class="btn-ghost btn-sm active" onclick="setChartRange('1h',this)">1H</button>
+        <button class="btn-ghost btn-sm" onclick="setChartRange('6h',this)">6H</button>
+        <button class="btn-ghost btn-sm" onclick="setChartRange('24h',this)">24H</button>
+      </div>
+    </div>
+    <canvas id="trend-chart" height="100" style="width:100%;display:block"></canvas>
+  </section>
+
   <div class="info-card">
     <h3>Quick Start</h3>
     <div class="setup-steps">
@@ -671,7 +741,7 @@ button {
       <!-- Request Logs -->
       <section>
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-          <h2 style="font-size:17px;font-weight:600;color:#f1f5f9">Request Logs</h2>
+          <h2 style="font-size:17px;font-weight:600;color:var(--text)">Request Logs</h2>
           <button class="btn-ghost btn-sm" id="file-log-btn" onclick="toggleFileLog()">File Log: OFF</button>
         </div>
         <div style="display:flex;gap:6px;align-items:center;margin-bottom:12px">
@@ -680,7 +750,7 @@ button {
             <button class="btn-ghost btn-sm" onclick="setLogFilter('ok', this)">OK</button>
             <button class="btn-ghost btn-sm" onclick="setLogFilter('err', this)">Errors</button>
           </div>
-          <input type="text" id="log-search" class="log-search" placeholder="Filter by model, provider..." oninput="loadLogs()">
+          <input type="text" id="log-search" class="log-search" placeholder="Filter by model, provider..." oninput="debouncedLoadLogs()">
           <button class="btn-ghost btn-sm" onclick="clearLogs()">Clear</button>
         </div>
         <div class="log-panel" id="log-panel"><div class="empty">No logs yet</div></div>
@@ -755,11 +825,13 @@ button {
 // ── Theme ──
 function toggleTheme() {
   const html = document.documentElement;
+  html.classList.add('theme-transition');
   const current = html.getAttribute('data-theme');
   const next = current === 'dark' ? 'light' : 'dark';
   html.setAttribute('data-theme', next);
   localStorage.setItem('theme', next);
   document.querySelector('.theme-toggle').textContent = next === 'dark' ? '\\u263E' : '\\u2600';
+  setTimeout(() => html.classList.remove('theme-transition'), 350);
 }
 (function initTheme() {
   const saved = localStorage.getItem('theme');
@@ -770,6 +842,28 @@ function toggleTheme() {
   }
 })();
 
+// ── Debounce ──
+function debounce(fn, ms) {
+  let timer;
+  return (...args) => { clearTimeout(timer); timer = setTimeout(() => fn(...args), ms); };
+}
+const debouncedLoadLogs = debounce(loadLogs, 300);
+
+// ── Stat Animation ──
+function animateValue(el, end) {
+  const start = parseInt(el.textContent) || 0;
+  if (start === end) { el.textContent = end; return; }
+  const range = end - start;
+  const startTime = performance.now();
+  function step(now) {
+    const progress = Math.min((now - startTime) / 400, 1);
+    const eased = 1 - Math.pow(1 - progress, 3);
+    el.textContent = Math.round(start + range * eased);
+    if (progress < 1) requestAnimationFrame(step);
+  }
+  requestAnimationFrame(step);
+}
+
 // ── Stats ──
 function updateStats(logs) {
   const total = logs.length;
@@ -777,10 +871,84 @@ function updateStats(logs) {
   const rate = total > 0 ? ((ok / total) * 100).toFixed(1) + '%' : '-';
   const avgMs = total > 0 ? Math.round(logs.reduce((s, l) => s + (l.durationMs || 0), 0) / total) + 'ms' : '-';
   const el = (id) => document.getElementById(id);
-  if (el('stat-total-req')) el('stat-total-req').textContent = total;
+  if (el('stat-total-req')) animateValue(el('stat-total-req'), total);
   if (el('stat-success-rate')) el('stat-success-rate').textContent = rate;
   if (el('stat-avg-latency')) el('stat-avg-latency').textContent = avgMs;
-  if (el('stat-error-count')) el('stat-error-count').textContent = total - ok;
+  if (el('stat-error-count')) animateValue(el('stat-error-count'), total - ok);
+}
+
+// ── Trend Chart ──
+let chartRangeHours = 1;
+function setChartRange(range, btn) {
+  chartRangeHours = parseInt(range);
+  document.querySelectorAll('#chart-range button').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+}
+
+function drawTrendChart(logs) {
+  const canvas = document.getElementById('trend-chart');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = rect.width * dpr;
+  canvas.height = rect.height * dpr;
+  ctx.scale(dpr, dpr);
+  const w = rect.width, h = rect.height;
+
+  const now = Date.now();
+  const rangeMs = chartRangeHours * 3600000;
+  const cutoff = now - rangeMs;
+  const bucketCount = Math.min(60, chartRangeHours * 6);
+  const bucketMs = rangeMs / bucketCount;
+  const buckets = new Array(bucketCount).fill(0);
+  const errBuckets = new Array(bucketCount).fill(0);
+
+  for (const l of logs) {
+    const t = new Date(l.time).getTime();
+    if (t < cutoff) continue;
+    const idx = Math.min(Math.floor((t - cutoff) / bucketMs), bucketCount - 1);
+    buckets[idx]++;
+    if (l.status >= 300) errBuckets[idx]++;
+  }
+
+  const max = Math.max(...buckets, 1);
+  const pad = 8;
+  const barW = (w - 2 * pad) / bucketCount;
+
+  ctx.clearRect(0, 0, w, h);
+
+  const style = getComputedStyle(document.documentElement);
+  const gridColor = style.getPropertyValue('--border').trim();
+  const primaryColor = style.getPropertyValue('--primary').trim();
+  const dangerColor = style.getPropertyValue('--danger').trim();
+
+  ctx.strokeStyle = gridColor;
+  ctx.lineWidth = 0.5;
+  for (let i = 0; i < 3; i++) {
+    const y = pad + ((h - 2 * pad) / 2) * i;
+    ctx.beginPath(); ctx.moveTo(pad, y); ctx.lineTo(w - pad, y); ctx.stroke();
+  }
+
+  for (let i = 0; i < bucketCount; i++) {
+    const barH = (buckets[i] / max) * (h - 2 * pad);
+    const x = pad + i * barW;
+    const y = h - pad - barH;
+    ctx.fillStyle = primaryColor;
+    ctx.globalAlpha = 0.6;
+    ctx.beginPath();
+    ctx.roundRect(x + 1, y, Math.max(barW - 2, 1), barH, 2);
+    ctx.fill();
+    if (errBuckets[i] > 0) {
+      const errH = (errBuckets[i] / max) * (h - 2 * pad);
+      ctx.fillStyle = dangerColor;
+      ctx.globalAlpha = 0.85;
+      ctx.beginPath();
+      ctx.roundRect(x + 1, h - pad - errH, Math.max(barW - 2, 1), errH, 2);
+      ctx.fill();
+    }
+  }
+  ctx.globalAlpha = 1;
 }
 
 // ── State ──
@@ -1201,6 +1369,7 @@ async function loadLogs() {
   try {
     const logs = await fetch('/api/logs').then(r => r.json());
     updateStats(logs || []);
+    drawTrendChart(logs || []);
     const panel = document.getElementById('log-panel');
     if (!logs || logs.length === 0) {
       panel.innerHTML = '<div class="empty">No logs yet</div>';
