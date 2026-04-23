@@ -1360,12 +1360,8 @@ function renderAliases() {
     const timeoutInput = document.getElementById('timeout-' + tier);
     input.value = aliases[tier] || '';
     if (timeoutInput) {
-      timeoutInput.placeholder = defaultTimeout;
-      if (timeouts[tier] && timeouts[tier].timeoutMs) {
-        timeoutInput.value = Math.round(timeouts[tier].timeoutMs / 1000);
-      } else {
-        timeoutInput.value = '';
-      }
+      const tierVal = timeouts[tier]?.timeoutMs;
+      timeoutInput.value = Math.round((tierVal || config.streamTimeoutMs || 300000) / 1000);
     }
 
     function buildPanel(filter) {
