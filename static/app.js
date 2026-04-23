@@ -1194,8 +1194,164 @@ async function loadStats() {
   } catch (e) { /* ignore */ }
 }
 
+// ── Page Navigation ──
+function switchPage(page) {
+  document.querySelectorAll('.page-section').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+  const section = document.getElementById('page-' + page);
+  const tab = document.querySelector('.nav-tab[data-page="' + page + '"]');
+  if (section) section.classList.add('active');
+  if (tab) tab.classList.add('active');
+  window.location.hash = page;
+  if (page === 'config') loadConfigEditor();
+}
+
+function initRouter() {
+  const hash = window.location.hash.replace('#', '') || 'dashboard';
+  const valid = ['dashboard', 'config', 'guide'];
+  switchPage(valid.includes(hash) ? hash : 'dashboard');
+}
+
+window.addEventListener('hashchange', () => {
+  const hash = window.location.hash.replace('#', '');
+  const valid = ['dashboard', 'config', 'guide'];
+  if (valid.includes(hash)) switchPage(hash);
+});
+
+// ── Config Editor ──
+let configEditorCache = '';
+
+async function loadConfigEditor() {
+  const editor = document.getElementById('config-editor');
+  const status = document.getElementById('config-status');
+  if (!editor) return;
+  try {
+    const res = await apiFetch('/api/config');
+    if (!res.ok) { status.textContent = 'Failed to load'; return; }
+    const data = await res.json();
+    const json = JSON.stringify(data, null, 2);
+    editor.value = json;
+    configEditorCache = json;
+    status.textContent = 'Loaded from server';
+    status.style.color = 'var(--text-muted)';
+    editor.style.borderColor = 'var(--success)';
+    setTimeout(() => { editor.style.borderColor = 'var(--border)'; }, 1500);
+  } catch (e) {
+    status.textContent = 'Load error: ' + e.message;
+    status.style.color = 'var(--danger)';
+  }
+}
+
+function validateJson() {
+  const editor = document.getElementById('config-editor');
+  const status = document.getElementById('config-status');
+  if (!editor) return;
+  const val = editor.value.trim();
+  if (!val) {
+    editor.style.borderColor = 'var(--border)';
+    status.textContent = 'Empty';
+    status.style.color = 'var(--text-muted)';
+    return false;
+  }
+  try {
+    JSON.parse(val);
+    editor.style.borderColor = 'var(--success)';
+    status.textContent = 'Valid JSON';
+    status.style.color = 'var(--success)';
+    return true;
+  } catch (e) {
+    editor.style.borderColor = 'var(--danger)';
+    status.textContent = 'Invalid JSON: ' + e.message.replace('JSON.parse: ', '');
+    status.style.color = 'var(--danger)';
+    return false;
+  }
+}
+
+async function saveConfigEditor() {
+  if (!validateJson()) {
+    toast('Fix JSON errors before saving', 'error');
+    return;
+  }
+  const editor = document.getElementById('config-editor');
+  try {
+    const body = JSON.parse(editor.value);
+    const res = await apiFetch('/api/config/import', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      toast('Save failed: ' + (err.error?.message || res.status), 'error');
+      return;
+    }
+    configEditorCache = editor.value;
+    toast('Configuration saved & reloaded', 'success');
+    load();
+  } catch (e) {
+    toast('Save failed: ' + e.message, 'error');
+  }
+}
+
+function resetConfigEditor() {
+  const editor = document.getElementById('config-editor');
+  if (!editor) return;
+  if (configEditorCache) {
+    editor.value = configEditorCache;
+    validateJson();
+    toast('Reset to server config', 'info');
+  } else {
+    loadConfigEditor();
+  }
+}
+
+function exportConfig() {
+  const editor = document.getElementById('config-editor');
+  if (!editor || !editor.value.trim()) { toast('Nothing to export', 'error'); return; }
+  const blob = new Blob([editor.value], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'api-hub-config-' + new Date().toISOString().slice(0, 10) + '.json';
+  a.click();
+  URL.revokeObjectURL(url);
+  toast('Config exported', 'success');
+}
+
+function importConfig(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    const editor = document.getElementById('config-editor');
+    if (!editor) return;
+    try {
+      const parsed = JSON.parse(e.target.result);
+      editor.value = JSON.stringify(parsed, null, 2);
+      validateJson();
+      toast('File imported — review and click Save', 'info');
+    } catch (err) {
+      toast('Invalid JSON file', 'error');
+    }
+  };
+  reader.readAsText(file);
+  input.value = '';
+}
+
+// ── Guide Page ──
+function copyGuideCode(btn) {
+  const pre = btn.closest('.guide-code-block').querySelector('.guide-code');
+  if (pre) copyText(pre.textContent);
+}
+
+function toggleFaq(btn) {
+  const item = btn.closest('.faq-item');
+  item.classList.toggle('open');
+}
+
 // ── Boot ──
 initQuickStart();
+initRouter();
 load();
 loadLogs();
 loadFileLogStatus();

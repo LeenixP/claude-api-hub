@@ -384,6 +384,32 @@ export function createServer(router: ModelRouter, config: GatewayConfig, logMana
       return;
     }
 
+    // ─── Config Import (full replace) ───
+
+    if (req.method === 'POST' && pathname === '/api/config/import') {
+      let bodyStr: string;
+      try { bodyStr = await readBody(req); } catch {
+        sendError(res, 400, 'invalid_request_error', 'Failed to read request body', config, origin); return;
+      }
+      let newConfig: GatewayConfig;
+      try { newConfig = JSON.parse(bodyStr); } catch {
+        sendError(res, 400, 'invalid_request_error', 'Invalid JSON body', config, origin); return;
+      }
+      if (!newConfig.providers || typeof newConfig.providers !== 'object') {
+        sendError(res, 400, 'invalid_request_error', 'Config must contain a providers object', config, origin); return;
+      }
+      try {
+        Object.assign(config, newConfig);
+        saveConfig(config);
+        router.setAliases(config.aliases ?? {});
+        rebuildProviders(router, config);
+        sendJson(res, 200, { imported: true }, config, origin);
+      } catch (err) {
+        sendError(res, 500, 'api_error', `Import failed: ${(err as Error).message}`, config, origin);
+      }
+      return;
+    }
+
     // ─── Config Reload ───
 
     if (req.method === 'POST' && pathname === '/api/config/reload') {
