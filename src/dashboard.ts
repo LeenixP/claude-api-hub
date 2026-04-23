@@ -1353,16 +1353,16 @@ async function apiFetch(url, options) {
 // ── Init ──
 async function load() {
   try {
-    const [cfgRes, modelsRes] = await Promise.all([
-      apiFetch('/api/config').then(r => r.json()),
-      fetch('/v1/models').then(r => r.json())
-    ]);
-    config = cfgRes;
-    allModels = modelsRes.data || [];
+    const cfgRes = await apiFetch('/api/config');
+    if (!cfgRes.ok) return;
+    config = await cfgRes.json();
+    const modelsRes = await fetch('/v1/models');
+    allModels = modelsRes.ok ? (await modelsRes.json()).data || [] : [];
     updateHeaderStats();
     renderProviders();
     try {
-      fetchedModels = await apiFetch('/api/fetch-models').then(r => r.json());
+      const fmRes = await apiFetch('/api/fetch-models');
+      fetchedModels = fmRes.ok ? await fmRes.json() : {};
     } catch (e) {
       fetchedModels = {};
     }
