@@ -17,18 +17,16 @@ export interface StreamState {
   model: string;
   inputTokens: number;
   outputTokens: number;
-  // Current text block index
   textBlockIndex: number;
   textStarted: boolean;
-  // Tool call accumulation: index → partial tool call
   toolCalls: Map<number, {
     id: string;
     name: string;
     argumentsJson: string;
     blockIndex: number;
   }>;
-  // Next content block index to assign
   nextBlockIndex: number;
+  initialized: boolean;
   finished: boolean;
 }
 
@@ -42,6 +40,7 @@ export function createStreamState(model: string): StreamState {
     textStarted: false,
     toolCalls: new Map(),
     nextBlockIndex: 0,
+    initialized: false,
     finished: false,
   };
 }
@@ -54,6 +53,7 @@ function mapFinishReason(
   if (reason === 'stop') return 'end_turn';
   if (reason === 'length') return 'max_tokens';
   if (reason === 'tool_calls') return 'tool_use';
+  if (reason === 'content_filter') return 'end_turn';
   return 'end_turn';
 }
 
@@ -61,6 +61,22 @@ export function translateResponse(
   res: OpenAIResponse,
   originalModel: string
 ): AnthropicResponse {
+  if (!res.choices || res.choices.length === 0) {
+    return {
+      id: res.id,
+      type: 'message',
+      role: 'assistant',
+      content: [{ type: 'text', text: '' }],
+      model: originalModel,
+      stop_reason: 'end_turn',
+      stop_sequence: null,
+      usage: {
+        input_tokens: res.usage?.prompt_tokens ?? 0,
+        output_tokens: res.usage?.completion_tokens ?? 0,
+      },
+    };
+  }
+
   const choice = res.choices[0];
   const content: AnthropicContentBlock[] = [];
 
@@ -87,8 +103,8 @@ export function translateResponse(
   }
 
   const usage: AnthropicUsage = {
-    input_tokens: res.usage.prompt_tokens,
-    output_tokens: res.usage.completion_tokens,
+    input_tokens: res.usage?.prompt_tokens ?? 0,
+    output_tokens: res.usage?.completion_tokens ?? 0,
   };
 
   return {
@@ -112,13 +128,13 @@ export function translateStreamChunk(
 ): AnthropicStreamEvent[] {
   const events: AnthropicStreamEvent[] = [];
 
-  // Update state model/id on first chunk
-  if (state.messageId === `msg_${state.inputTokens}` || state.nextBlockIndex === 0) {
+  if (!state.initialized) {
+    state.initialized = true;
     state.messageId = chunk.id;
     state.model = originalModel;
   }
 
-  const choice = chunk.choices[0];
+  const choice = chunk.choices?.[0];
 
   // First chunk: emit message_start
   if (state.nextBlockIndex === 0 && !state.textStarted && state.toolCalls.size === 0) {
@@ -194,9 +210,9 @@ export function translateStreamChunk(
 
       const entry = state.toolCalls.get(idx)!;
 
-      // Update id/name if provided in later chunks
       if (tc.id) entry.id = tc.id;
-      if (tc.function?.name) entry.name += tc.function.name;
+      // name: overwrite instead of append
+      if (tc.function?.name) entry.name = tc.function.name;
 
       if (tc.function?.arguments) {
         entry.argumentsJson += tc.function.arguments;
@@ -213,12 +229,10 @@ export function translateStreamChunk(
   if (choice.finish_reason && !state.finished) {
     state.finished = true;
 
-    // Close text block if open
     if (state.textStarted) {
       events.push({ type: 'content_block_stop', index: state.textBlockIndex });
     }
 
-    // Close tool call blocks
     for (const [, entry] of state.toolCalls) {
       events.push({ type: 'content_block_stop', index: entry.blockIndex });
     }

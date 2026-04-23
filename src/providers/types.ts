@@ -45,6 +45,7 @@ export interface AnthropicRequest {
   tools?: AnthropicTool[];
   tool_choice?: AnthropicToolChoice;
   metadata?: Record<string, unknown>;
+  thinking?: { type: 'enabled'; budget_tokens: number };
 }
 
 export interface AnthropicMessage {

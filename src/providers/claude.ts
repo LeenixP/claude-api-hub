@@ -47,8 +47,7 @@ export class ClaudeProvider implements Provider {
     if (req.tools && req.tools.length > 0) clean.tools = req.tools;
     if (req.tool_choice) clean.tool_choice = req.tool_choice;
     if (req.metadata) clean.metadata = req.metadata;
-    const rawReq = req as unknown as Record<string, unknown>;
-    if (rawReq.thinking) clean.thinking = rawReq.thinking;
+    if (req.thinking) clean.thinking = req.thinking;
 
     return {
       url: `${this.config.baseUrl}/v1/messages`,

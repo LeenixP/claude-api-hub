@@ -105,6 +105,9 @@ function convertMessage(msg: AnthropicMessage): OpenAIMessage[] {
             .map((b) => (b as { type: 'text'; text: string }).text)
             .join('\n');
         }
+        if (resultBlock.is_error) {
+          content = `[ERROR] ${content}`;
+        }
         toolResultMessages.push({
           role: 'tool',
           content,
