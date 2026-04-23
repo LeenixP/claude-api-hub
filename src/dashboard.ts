@@ -582,6 +582,8 @@ button {
   border-top: 1px dashed var(--border);
   margin-top: 6px;
   line-height: 1.7;
+  user-select: text;
+  cursor: text;
 }
 .log-detail.open { display: block; }
 .log-detail pre {
@@ -1667,7 +1669,7 @@ async function loadLogs() {
         ? esc(cm) + ' \\u2192 ' + esc(l.resolvedModel)
         : esc(cm);
 
-      const detail = '<div class="log-detail' + (isOpen ? ' open' : '') + '" id="log-d-' + i + '">'
+      const detail = '<div class="log-detail' + (isOpen ? ' open' : '') + '" id="log-d-' + i + '" onclick="event.stopPropagation()">'
         + '<div><b>Request ID:</b> ' + esc(l.requestId || '-') + '</div>'
         + '<div><b>Time:</b> ' + new Date(l.time).toLocaleString() + '</div>'
         + '<div><b>Target:</b> ' + esc(l.targetUrl || '-') + '</div>'
@@ -1692,6 +1694,8 @@ async function loadLogs() {
 }
 
 function toggleLogDetail(i, entry) {
+  const sel = window.getSelection();
+  if (sel && sel.toString().length > 0) return;
   const el = document.getElementById('log-d-' + i);
   if (!el) return;
   el.classList.toggle('open');
