@@ -726,7 +726,7 @@ button {
               <input type="text" id="alias-haiku" placeholder="Type or select a model..." autocomplete="off">
               <div class="combo-panel" id="panel-haiku"></div>
             </div>
-            <div class="timeout-wrap"><input type="number" id="timeout-haiku" class="timeout-input" placeholder="120" min="1">s</div>
+            <div class="timeout-wrap"><input type="number" id="timeout-haiku" class="timeout-input" placeholder="--" min="1">s</div>
             <div class="alias-provider" id="alias-haiku-provider"></div>
           </div>
           <div class="alias-row">
@@ -735,7 +735,7 @@ button {
               <input type="text" id="alias-sonnet" placeholder="Type or select a model..." autocomplete="off">
               <div class="combo-panel" id="panel-sonnet"></div>
             </div>
-            <div class="timeout-wrap"><input type="number" id="timeout-sonnet" class="timeout-input" placeholder="120" min="1">s</div>
+            <div class="timeout-wrap"><input type="number" id="timeout-sonnet" class="timeout-input" placeholder="--" min="1">s</div>
             <div class="alias-provider" id="alias-sonnet-provider"></div>
           </div>
           <div class="alias-row">
@@ -744,7 +744,7 @@ button {
               <input type="text" id="alias-opus" placeholder="Type or select a model..." autocomplete="off">
               <div class="combo-panel" id="panel-opus"></div>
             </div>
-            <div class="timeout-wrap"><input type="number" id="timeout-opus" class="timeout-input" placeholder="300" min="1">s</div>
+            <div class="timeout-wrap"><input type="number" id="timeout-opus" class="timeout-input" placeholder="--" min="1">s</div>
             <div class="alias-provider" id="alias-opus-provider"></div>
           </div>
           <div style="margin-top: 12px; display: flex; justify-content: flex-end;">
@@ -1034,6 +1034,7 @@ function getProviderModels() {
 function renderAliases() {
   const aliases = config.aliases || {};
   const timeouts = config.tierTimeouts || {};
+  const defaultTimeout = Math.round((config.streamTimeoutMs || 300000) / 1000);
   const providerModels = getProviderModels();
   ['haiku', 'sonnet', 'opus'].forEach(tier => {
     const input = document.getElementById('alias-' + tier);
@@ -1041,10 +1042,13 @@ function renderAliases() {
     const provSpan = document.getElementById('alias-' + tier + '-provider');
     const timeoutInput = document.getElementById('timeout-' + tier);
     input.value = aliases[tier] || '';
-    if (timeoutInput && timeouts[tier]) {
-      timeoutInput.value = Math.round((timeouts[tier].timeoutMs || 120000) / 1000);
-    } else if (timeoutInput) {
-      timeoutInput.value = '';
+    if (timeoutInput) {
+      timeoutInput.placeholder = defaultTimeout;
+      if (timeouts[tier] && timeouts[tier].timeoutMs) {
+        timeoutInput.value = Math.round(timeouts[tier].timeoutMs / 1000);
+      } else {
+        timeoutInput.value = '';
+      }
     }
 
     function buildPanel(filter) {
