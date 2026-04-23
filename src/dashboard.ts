@@ -1,6 +1,6 @@
 export function dashboardHtml(version: string = ''): string {
   return `<!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -33,15 +33,44 @@ export function dashboardHtml(version: string = ''): string {
   --transition: 0.15s ease;
 }
 
+[data-theme="light"] {
+  --bg: #f8fafc;
+  --surface: #ffffff;
+  --surface-hover: #f1f5f9;
+  --border: #e2e8f0;
+  --border-hover: #cbd5e1;
+  --text: #1e293b;
+  --text-dim: #475569;
+  --text-muted: #94a3b8;
+  --shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+  --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.12);
+}
+
+@media (prefers-color-scheme: light) {
+  html:not([data-theme="dark"]) {
+    --bg: #f8fafc;
+    --surface: #ffffff;
+    --surface-hover: #f1f5f9;
+    --border: #e2e8f0;
+    --border-hover: #cbd5e1;
+    --text: #1e293b;
+    --text-dim: #475569;
+    --text-muted: #94a3b8;
+    --shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+    --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.12);
+  }
+}
+
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   background: var(--bg);
   color: var(--text);
   min-height: 100vh;
   line-height: 1.6;
   font-size: 14px;
+  -webkit-font-smoothing: antialiased;
 }
 
 /* ── Header ── */
@@ -78,6 +107,83 @@ main { max-width: 1400px; margin: 0 auto; padding: 24px 32px 48px; }
 .main-right { min-width: 0; }
 section { margin-bottom: 24px; }
 .section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+
+/* ── Focus & A11y ── */
+button:focus-visible, input:focus-visible, select:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+/* ── Stats Grid ── */
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  margin-bottom: 24px;
+}
+.stat-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 18px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  transition: border-color var(--transition), box-shadow var(--transition);
+}
+.stat-card:hover { border-color: var(--border-hover); box-shadow: 0 2px 8px rgba(0,0,0,0.15); }
+.stat-icon {
+  width: 42px; height: 42px;
+  border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.stat-value { font-size: 22px; font-weight: 700; color: var(--text); line-height: 1.2; }
+.stat-label { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+
+/* ── Theme Toggle ── */
+.theme-toggle {
+  background: var(--surface-hover);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-dim);
+  cursor: pointer;
+  padding: 4px 10px;
+  font-size: 16px;
+  line-height: 1;
+  transition: background var(--transition), border-color var(--transition);
+}
+.theme-toggle:hover { background: var(--border); border-color: var(--border-hover); }
+
+/* ── Log Search ── */
+.log-search {
+  flex: 1;
+  max-width: 200px;
+  padding: 5px 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-size: 12px;
+  outline: none;
+  transition: border-color var(--transition);
+}
+.log-search:focus { border-color: var(--primary); }
+.log-search::placeholder { color: var(--text-muted); }
+
+/* ── Responsive ── */
+@media (max-width: 960px) { .stats-grid { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 640px) {
+  header { flex-direction: column; gap: 8px; padding: 12px 16px; }
+  .header-right { flex-wrap: wrap; justify-content: center; }
+  .stats-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .stat-card { padding: 14px; }
+  .stat-value { font-size: 18px; }
+}
+@media (max-width: 480px) {
+  main { padding: 8px 10px 24px; }
+  .stats-grid { grid-template-columns: 1fr; }
+}
 .section-header h2 { font-size: 17px; font-weight: 600; color: #f1f5f9; }
 
 /* ── Cards ── */
@@ -447,10 +553,38 @@ button {
     <div class="header-stat" id="stat-providers"></div>
     <div class="header-stat" id="stat-models"></div>
     <div class="header-stat"><span class="dot dot-ok"></span>Running</div>
+    <button class="theme-toggle" onclick="toggleTheme()" aria-label="Toggle theme" title="Toggle theme">&#9790;</button>
   </div>
 </header>
 
 <main>
+  <section class="stats-grid">
+    <div class="stat-card">
+      <div class="stat-icon" style="background:var(--primary-glow);color:var(--primary)">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+      </div>
+      <div><div class="stat-value" id="stat-total-req">0</div><div class="stat-label">Total Requests</div></div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon" style="background:rgba(34,197,94,0.12);color:var(--success)">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+      </div>
+      <div><div class="stat-value" id="stat-success-rate">-</div><div class="stat-label">Success Rate</div></div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon" style="background:rgba(168,85,247,0.12);color:var(--violet)">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+      </div>
+      <div><div class="stat-value" id="stat-avg-latency">-</div><div class="stat-label">Avg Latency</div></div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon" style="background:rgba(239,68,68,0.12);color:var(--danger)">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+      </div>
+      <div><div class="stat-value" id="stat-error-count">0</div><div class="stat-label">Errors</div></div>
+    </div>
+  </section>
+
   <div class="info-card">
     <h3>Quick Start</h3>
     <div class="setup-steps">
@@ -546,6 +680,7 @@ button {
             <button class="btn-ghost btn-sm" onclick="setLogFilter('ok', this)">OK</button>
             <button class="btn-ghost btn-sm" onclick="setLogFilter('err', this)">Errors</button>
           </div>
+          <input type="text" id="log-search" class="log-search" placeholder="Filter by model, provider..." oninput="loadLogs()">
           <button class="btn-ghost btn-sm" onclick="clearLogs()">Clear</button>
         </div>
         <div class="log-panel" id="log-panel"><div class="empty">No logs yet</div></div>
@@ -617,6 +752,37 @@ button {
 
 
 <script>
+// ── Theme ──
+function toggleTheme() {
+  const html = document.documentElement;
+  const current = html.getAttribute('data-theme');
+  const next = current === 'dark' ? 'light' : 'dark';
+  html.setAttribute('data-theme', next);
+  localStorage.setItem('theme', next);
+  document.querySelector('.theme-toggle').textContent = next === 'dark' ? '\\u263E' : '\\u2600';
+}
+(function initTheme() {
+  const saved = localStorage.getItem('theme');
+  if (saved) {
+    document.documentElement.setAttribute('data-theme', saved);
+    const btn = document.querySelector('.theme-toggle');
+    if (btn) btn.textContent = saved === 'dark' ? '\\u263E' : '\\u2600';
+  }
+})();
+
+// ── Stats ──
+function updateStats(logs) {
+  const total = logs.length;
+  const ok = logs.filter(l => l.status >= 200 && l.status < 300).length;
+  const rate = total > 0 ? ((ok / total) * 100).toFixed(1) + '%' : '-';
+  const avgMs = total > 0 ? Math.round(logs.reduce((s, l) => s + (l.durationMs || 0), 0) / total) + 'ms' : '-';
+  const el = (id) => document.getElementById(id);
+  if (el('stat-total-req')) el('stat-total-req').textContent = total;
+  if (el('stat-success-rate')) el('stat-success-rate').textContent = rate;
+  if (el('stat-avg-latency')) el('stat-avg-latency').textContent = avgMs;
+  if (el('stat-error-count')) el('stat-error-count').textContent = total - ok;
+}
+
 // ── State ──
 let config = null;
 let allModels = [];
@@ -1034,14 +1200,25 @@ let openLogIds = new Set();
 async function loadLogs() {
   try {
     const logs = await fetch('/api/logs').then(r => r.json());
+    updateStats(logs || []);
     const panel = document.getElementById('log-panel');
     if (!logs || logs.length === 0) {
       panel.innerHTML = '<div class="empty">No logs yet</div>';
       return;
     }
-    const filtered = logFilter === 'all' ? logs
+    const searchEl = document.getElementById('log-search');
+    const search = searchEl ? searchEl.value.toLowerCase() : '';
+    let filtered = logFilter === 'all' ? logs
       : logFilter === 'ok' ? logs.filter(l => l.status >= 200 && l.status < 300)
       : logs.filter(l => l.status >= 300);
+    if (search) {
+      filtered = filtered.filter(l =>
+        (l.provider || '').toLowerCase().includes(search)
+        || (l.claudeModel || '').toLowerCase().includes(search)
+        || (l.resolvedModel || '').toLowerCase().includes(search)
+        || (l.requestId || '').toLowerCase().includes(search)
+      );
+    }
     if (filtered.length === 0) {
       panel.innerHTML = '<div class="empty">No matching logs</div>';
       return;
