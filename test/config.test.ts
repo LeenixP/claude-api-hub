@@ -47,20 +47,29 @@ describe('config', () => {
   });
 
   it('interpolates environment variables', () => {
-    process.env.__TEST_API_KEY = 'secret-key-123';
-    const cfg = { ...validConfig, providers: { test: { ...validConfig.providers.test, apiKey: '${__TEST_API_KEY}' } } };
+    process.env.ANTHROPIC_TEST_KEY = 'secret-key-123';
+    const cfg = { ...validConfig, providers: { test: { ...validConfig.providers.test, apiKey: '${ANTHROPIC_TEST_KEY}' } } };
     const path = writeTestConfig(cfg);
     const config = loadConfig(path);
     expect(config.providers.test.apiKey).toBe('secret-key-123');
-    delete process.env.__TEST_API_KEY;
+    delete process.env.ANTHROPIC_TEST_KEY;
   });
 
   it('replaces missing env vars with empty string', () => {
-    delete process.env.__NONEXISTENT_VAR;
-    const cfg = { ...validConfig, providers: { test: { ...validConfig.providers.test, apiKey: '${__NONEXISTENT_VAR}' } } };
+    delete process.env.ANTHROPIC_NONEXISTENT_VAR;
+    const cfg = { ...validConfig, providers: { test: { ...validConfig.providers.test, apiKey: '${ANTHROPIC_NONEXISTENT_VAR}' } } };
     const path = writeTestConfig(cfg);
     const config = loadConfig(path);
     expect(config.providers.test.apiKey).toBe('');
+  });
+
+  it('blocks non-whitelisted env var interpolation', () => {
+    process.env.__BLOCKED_VAR = 'should-not-appear';
+    const cfg = { ...validConfig, providers: { test: { ...validConfig.providers.test, apiKey: '${__BLOCKED_VAR}' } } };
+    const path = writeTestConfig(cfg);
+    const config = loadConfig(path);
+    expect(config.providers.test.apiKey).toBe('');
+    delete process.env.__BLOCKED_VAR;
   });
 
   it('throws on missing config file', () => {

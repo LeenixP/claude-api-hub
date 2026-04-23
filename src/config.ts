@@ -6,8 +6,17 @@ import { GatewayConfig, ProviderConfig } from './providers/types.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
+const ALLOWED_ENV_PREFIXES = [
+  'ANTHROPIC_', 'MOONSHOT_', 'MINIMAX_', 'ZHIPUAI_',
+  'OPENAI_', 'DEEPSEEK_', 'ADMIN_', 'API_HUB_',
+];
+
 function interpolateEnvVars(value: string): string {
-  return value.replace(/\$\{([^}]+)\}/g, (_, varName) => {
+  return value.replace(/\$\{([^}]+)\}/g, (_, varName: string) => {
+    if (!ALLOWED_ENV_PREFIXES.some(p => varName.startsWith(p))) {
+      console.warn(`[warn] Blocked env var interpolation: ${varName} (not in allowed prefixes)`);
+      return '';
+    }
     return process.env[varName] ?? '';
   });
 }

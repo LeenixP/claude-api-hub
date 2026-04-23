@@ -87,51 +87,76 @@ function addLog(entry: LogEntry, detail?: LogDetail): void {
 
 
 
-// ─── Rate Limiter ───
+// ─── Per-IP Rate Limiter ───
 
-class RateLimiter {
-  private tokens: number;
-  private lastRefill: number;
-  constructor(private maxTokens: number, private refillPerMinute: number) {
-    this.tokens = maxTokens;
-    this.lastRefill = Date.now();
-  }
-  tryConsume(): boolean {
+class PerIpRateLimiter {
+  private windows = new Map<string, { count: number; resetAt: number }>();
+  constructor(private rpm: number, private windowMs = 60000) {}
+
+  tryConsume(ip: string): { allowed: boolean; remaining: number; retryAfter: number } {
     const now = Date.now();
-    const elapsed = (now - this.lastRefill) / 60000;
-    this.tokens = Math.min(this.maxTokens, this.tokens + elapsed * this.refillPerMinute);
-    this.lastRefill = now;
-    if (this.tokens >= 1) { this.tokens--; return true; }
-    return false;
+    let entry = this.windows.get(ip);
+    if (!entry || now >= entry.resetAt) {
+      entry = { count: 0, resetAt: now + this.windowMs };
+      this.windows.set(ip, entry);
+    }
+    entry.count++;
+    if (this.windows.size > 10000) this.cleanup(now);
+    return {
+      allowed: entry.count <= this.rpm,
+      remaining: Math.max(0, this.rpm - entry.count),
+      retryAfter: Math.ceil((entry.resetAt - now) / 1000),
+    };
+  }
+
+  private cleanup(now: number): void {
+    for (const [key, entry] of this.windows) {
+      if (now >= entry.resetAt) this.windows.delete(key);
+    }
   }
 }
 
-let rateLimiter: RateLimiter | null = null;
+let rateLimiter: PerIpRateLimiter | null = null;
 
 // ─── CORS ───
 
 function getCorsHeaders(config: GatewayConfig, reqOrigin?: string): Record<string, string> {
   const origins = config.corsOrigins;
-  let origin = '*';
+  let origin: string;
   if (origins && origins.length > 0) {
     origin = (reqOrigin && origins.includes(reqOrigin)) ? reqOrigin : origins[0];
+  } else {
+    const defaultOrigin = `http://${config.host === '0.0.0.0' ? 'localhost' : config.host}:${config.port}`;
+    origin = (reqOrigin && reqOrigin === defaultOrigin) ? reqOrigin : defaultOrigin;
   }
   return {
     'Access-Control-Allow-Origin': origin,
     'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-api-key, x-admin-token, anthropic-version, anthropic-beta',
-    ...(origins && origins.length > 0 ? { 'Vary': 'Origin' } : {}),
+    'Vary': 'Origin',
   };
 }
 
 // ─── Admin Auth ───
+
+function timingSafeCompare(a: string, b: string): boolean {
+  const bufA = Buffer.from(a, 'utf-8');
+  const bufB = Buffer.from(b, 'utf-8');
+  if (bufA.length !== bufB.length) {
+    const padded = Buffer.alloc(bufA.length);
+    bufB.copy(padded);
+    crypto.timingSafeEqual(bufA, padded);
+    return false;
+  }
+  return crypto.timingSafeEqual(bufA, bufB);
+}
 
 function requireAdmin(req: http.IncomingMessage, res: http.ServerResponse, config: GatewayConfig): boolean {
   const adminToken = config.adminToken || process.env.ADMIN_TOKEN;
   if (!adminToken) return true;
   const token = req.headers['authorization']?.replace('Bearer ', '')
     || req.headers['x-admin-token'] as string;
-  if (token === adminToken) return true;
+  if (token && timingSafeCompare(token, adminToken)) return true;
   sendError(res, 401, 'authentication_error', 'Invalid or missing admin token', config, req.headers['origin'] as string);
   return false;
 }
@@ -330,7 +355,7 @@ function forwardStream(
 
 export function createServer(router: ModelRouter, config: GatewayConfig): http.Server {
   if (config.rateLimitRpm && config.rateLimitRpm > 0) {
-    rateLimiter = new RateLimiter(config.rateLimitRpm, config.rateLimitRpm);
+    rateLimiter = new PerIpRateLimiter(config.rateLimitRpm);
   }
   if (!config.adminToken && !process.env.ADMIN_TOKEN) {
     logger.warn('No adminToken configured — management API is unprotected. Set adminToken in config or ADMIN_TOKEN env var.');
@@ -375,14 +400,20 @@ export function createServer(router: ModelRouter, config: GatewayConfig): http.S
       return;
     }
 
-    // ─── Admin API (mutating endpoints require authentication) ───
+    // ─── Admin API (authentication required for sensitive endpoints) ───
 
+    const isAdminEndpoint = pathname.startsWith('/api/') && pathname !== '/api/logs';
     const isAdminMutation = pathname.startsWith('/api/') && (
       req.method === 'POST' || req.method === 'PUT' || req.method === 'DELETE'
     );
-    if (isAdminMutation) {
+    if (isAdminEndpoint || isAdminMutation) {
       if (!requireAdmin(req, res, config)) return;
     }
+
+    // Security headers
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
 
     // GET /api/config
     if (req.method === 'GET' && pathname === '/api/config') {
@@ -616,9 +647,16 @@ export function createServer(router: ModelRouter, config: GatewayConfig): http.S
 
     // Messages endpoint
     if (req.method === 'POST' && pathname === '/v1/messages') {
-      if (rateLimiter && !rateLimiter.tryConsume()) {
-        sendError(res, 429, 'rate_limit_error', 'Too many requests. Please slow down.', config, origin);
-        return;
+      if (rateLimiter) {
+        const clientIp = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim()
+          || req.socket.remoteAddress || 'unknown';
+        const rl = rateLimiter.tryConsume(clientIp);
+        res.setHeader('X-RateLimit-Remaining', rl.remaining.toString());
+        if (!rl.allowed) {
+          res.setHeader('Retry-After', rl.retryAfter.toString());
+          sendError(res, 429, 'rate_limit_error', 'Too many requests. Please slow down.', config, origin);
+          return;
+        }
       }
       const startTime = Date.now();
       const requestId = `req_${crypto.randomUUID()}`;
