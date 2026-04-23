@@ -951,7 +951,8 @@ let openLogIds = new Set();
 async function loadLogs() {
   try {
     const logs = await apiFetch('/api/logs').then(r => r.json());
-    updateStats(logs || []);
+    cachedLogs = logs || [];
+    updateStats(cachedLogs);
     drawTrendChart(logs || []);
     drawTokenChart(logs || []);
     if (!chartInitialized) {
@@ -1102,9 +1103,103 @@ function initQuickStart() {
   snippet.insertBefore(document.createTextNode(json), snippet.firstChild);
 }
 
+// ── SSE Real-time Updates ──
+let sseSource = null;
+let sseConnected = false;
+let cachedLogs = [];
+
+function initSSE() {
+  if (sseSource) sseSource.close();
+  sseSource = new EventSource('/api/events');
+  sseSource.addEventListener('log', (e) => {
+    try {
+      const entry = JSON.parse(e.data);
+      cachedLogs.unshift(entry);
+      if (cachedLogs.length > 200) cachedLogs.length = 200;
+      sseConnected = true;
+      renderIncrementalLog(entry);
+      updateStats(cachedLogs);
+      drawTrendChart(cachedLogs);
+      drawTokenChart(cachedLogs);
+    } catch {}
+  });
+  sseSource.onerror = () => { sseConnected = false; };
+}
+
+function renderIncrementalLog(entry) {
+  const panel = document.getElementById('log-panel');
+  if (!panel) return;
+  const empty = panel.querySelector('.empty');
+  if (empty) panel.innerHTML = '';
+
+  const searchEl = document.getElementById('log-search');
+  const search = searchEl ? searchEl.value.toLowerCase() : '';
+  if (search) {
+    const match = (entry.provider || '').toLowerCase().includes(search)
+      || (entry.claudeModel || '').toLowerCase().includes(search)
+      || (entry.resolvedModel || '').toLowerCase().includes(search)
+      || (entry.requestId || '').toLowerCase().includes(search);
+    if (!match) return;
+  }
+  if (logFilter === 'ok' && entry.status >= 300) return;
+  if (logFilter === 'err' && entry.status < 300) return;
+
+  const ok = entry.status >= 200 && entry.status < 300;
+  const cm = entry.claudeModel || '';
+  const model = cm !== entry.resolvedModel
+    ? esc(cm) + ' → ' + esc(entry.resolvedModel)
+    : esc(cm);
+  const uid = 'sse-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
+
+  const div = document.createElement('div');
+  div.className = 'log-entry';
+  div.dataset.rid = entry.requestId || '';
+  div.onclick = function() {
+    const sel = window.getSelection();
+    if (sel && sel.toString().length > 0) return;
+    const el = document.getElementById('log-d-' + uid);
+    if (!el) return;
+    el.classList.toggle('open');
+    if (entry.requestId) {
+      if (el.classList.contains('open')) openLogIds.add(entry.requestId);
+      else openLogIds.delete(entry.requestId);
+    }
+  };
+  div.innerHTML = '<div class="log-row">'
+    + '<span class="log-status ' + (ok ? 'log-ok' : 'log-err') + '">' + entry.status + '</span>'
+    + '<span class="log-model" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:180px" title="' + model + '">' + model + '</span>'
+    + '<span class="log-arrow">→</span><span class="log-provider">' + esc(entry.provider) + '</span>'
+    + '<span class="log-dur">' + entry.durationMs + 'ms</span>'
+    + '</div>'
+    + '<div class="log-detail" id="log-d-' + uid + '" onclick="event.stopPropagation()">'
+      + '<div><b>Request ID:</b> ' + esc(entry.requestId || '-') + '</div>'
+      + '<div><b>Time:</b> ' + new Date(entry.time).toLocaleString() + '</div>'
+      + '<div><b>Provider:</b> ' + esc(entry.provider) + ' [' + esc(entry.protocol) + ']</div>'
+      + '<div><b>Model:</b> ' + model + '</div>'
+      + '<div><b>Stream:</b> ' + (entry.stream ? 'Yes' : 'No') + ' | <b>Duration:</b> ' + entry.durationMs + 'ms</div>'
+      + (entry.error ? '<div class="log-error"><b>Error:</b> ' + esc(entry.error) + '</div>' : '')
+    + '</div>';
+  panel.insertBefore(div, panel.firstChild);
+  while (panel.children.length > 200) panel.removeChild(panel.lastChild);
+}
+
+// ── QPS Stats ──
+async function loadStats() {
+  try {
+    const res = await apiFetch('/api/stats');
+    if (!res.ok) return;
+    const stats = await res.json();
+    const el = document.getElementById('stat-qps');
+    if (el) el.textContent = stats.qps > 0 ? stats.qps.toFixed(1) : '-';
+  } catch (e) { /* ignore */ }
+}
+
 // ── Boot ──
 initQuickStart();
 load();
 loadLogs();
 loadFileLogStatus();
-setInterval(loadLogs, 2000);
+loadStats();
+initSSE();
+setInterval(() => { if (!sseConnected) loadLogs(); }, 5000);
+setInterval(loadStats, 3000);

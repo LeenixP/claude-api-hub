@@ -12,6 +12,8 @@ import { PerIpRateLimiter, requireAdmin, setSecurityHeaders } from './middleware
 import { LogManager } from './services/log-manager.js';
 import type { LogEntry, LogDetail } from './services/log-manager.js';
 import { forwardRequest, forwardStream, httpGet } from './services/forwarder.js';
+import type { EventBus } from './services/event-bus.js';
+import type { RateTracker } from './services/rate-tracker.js';
 
 function saveConfig(config: GatewayConfig): void {
   const configPath = getConfigPath();
@@ -27,7 +29,7 @@ function rebuildProviders(router: ModelRouter, config: GatewayConfig): void {
   router.replaceAll(providers);
 }
 
-export function createServer(router: ModelRouter, config: GatewayConfig, logManager: LogManager): http.Server {
+export function createServer(router: ModelRouter, config: GatewayConfig, logManager: LogManager, eventBus?: EventBus, rateTracker?: RateTracker): http.Server {
   let rateLimiter: PerIpRateLimiter | null = null;
   if (config.rateLimitRpm && config.rateLimitRpm > 0) {
     rateLimiter = new PerIpRateLimiter(config.rateLimitRpm);
@@ -90,6 +92,22 @@ export function createServer(router: ModelRouter, config: GatewayConfig, logMana
       } else {
         sendJson(res, 401, { success: false, message: 'Incorrect password' }, config, origin);
       }
+      return;
+    }
+
+    if (req.method === 'GET' && pathname === '/api/events' && eventBus) {
+      res.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+        ...cors,
+      });
+      res.write(':\n\n');
+      const onEvent = (event: { type: string; data: unknown }) => {
+        res.write(`event: ${event.type}\ndata: ${JSON.stringify(event.data)}\n\n`);
+      };
+      eventBus.subscribe(onEvent);
+      req.on('close', () => eventBus.unsubscribe(onEvent));
       return;
     }
 
@@ -240,6 +258,13 @@ export function createServer(router: ModelRouter, config: GatewayConfig, logMana
       rebuildProviders(router, config);
       const updated = config.providers[providerName];
       sendJson(res, 200, { ...updated, apiKey: maskKey(updated.apiKey) }, config, origin);
+      return;
+    }
+
+    // ─── Stats ───
+
+    if (req.method === 'GET' && pathname === '/api/stats' && rateTracker) {
+      sendJson(res, 200, { qps: rateTracker.getQPS(), rpm: rateTracker.getRPM(), tps: rateTracker.getTPS() }, config, origin);
       return;
     }
 
@@ -429,6 +454,7 @@ export function createServer(router: ModelRouter, config: GatewayConfig, logMana
       }
 
       const { provider, resolvedModel } = routeResult;
+      const poolable = provider as { reportSuccess?(): void; reportError?(): void };
       anthropicReq.model = resolvedModel;
       const protocol = provider.config.passthrough ? 'Anthropic' : 'OpenAI';
       let built: { url: string; headers: Record<string, string>; body: string };
@@ -493,6 +519,8 @@ export function createServer(router: ModelRouter, config: GatewayConfig, logMana
             if (headersSent) res.write(chunk);
           },
           () => {
+            poolable.reportSuccess?.();
+            rateTracker?.record(streamInputTokens + streamOutputTokens || undefined);
             logManager.addLog({
               ...logBase, status: 200, durationMs: Date.now() - startTime,
               inputTokens: streamInputTokens, outputTokens: streamOutputTokens,
@@ -500,6 +528,7 @@ export function createServer(router: ModelRouter, config: GatewayConfig, logMana
             res.end();
           },
           (err) => {
+            poolable.reportError?.();
             if (!headersSent) {
               logManager.addLog({ ...logBase, status: 502, durationMs: Date.now() - startTime, error: err.message }, logDetail);
               sendError(res, 502, 'api_error', `Upstream stream error: ${err.message}`, config, origin);
@@ -533,11 +562,13 @@ export function createServer(router: ModelRouter, config: GatewayConfig, logMana
 
       let upstream;
       try { upstream = await forwardRequest(built.url, built.headers, built.body, reqTimeoutMs, config.maxResponseBytes); } catch (err) {
+        poolable.reportError?.();
         logManager.addLog({ ...logBase, status: 502, durationMs: Date.now() - startTime, error: (err as Error).message }, logDetail);
         sendError(res, 502, 'api_error', `Upstream request failed: ${(err as Error).message}`, config, origin); return;
       }
 
       if (upstream.status !== 200) {
+        poolable.reportError?.();
         let errMsg = '';
         try { const j = JSON.parse(upstream.body); errMsg = j.error?.message || j.message || upstream.body.slice(0, 200); } catch { errMsg = upstream.body.slice(0, 200); }
         logManager.addLog({ ...logBase, status: upstream.status, durationMs: Date.now() - startTime, error: errMsg }, { ...logDetail, upstreamBody: upstream.body });
@@ -559,6 +590,8 @@ export function createServer(router: ModelRouter, config: GatewayConfig, logMana
       }
 
       const usage = anthropicResp.usage || (upstreamJson.usage ? { input_tokens: upstreamJson.usage.prompt_tokens, output_tokens: upstreamJson.usage.completion_tokens } : null);
+      poolable.reportSuccess?.();
+      rateTracker?.record((usage?.input_tokens ?? 0) + (usage?.output_tokens ?? 0) || undefined);
       logManager.addLog({
         ...logBase, status: 200, durationMs: Date.now() - startTime,
         inputTokens: usage?.input_tokens ?? 0,

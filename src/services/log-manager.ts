@@ -4,6 +4,7 @@ import { homedir } from 'os';
 import { join } from 'path';
 import { logger } from '../logger.js';
 import { DatabaseSync } from 'node:sqlite';
+import type { EventBus } from './event-bus.js';
 
 export interface LogEntry {
   time: string;
@@ -42,7 +43,10 @@ export class LogManager {
   private stmtGetSetting: ReturnType<InstanceType<typeof DatabaseSync>['prepare']>;
   private stmtSetSetting: ReturnType<InstanceType<typeof DatabaseSync>['prepare']>;
 
-  constructor(maxLogs = 10000, maxLogFiles = 4096, dbPath?: string) {
+  private eventBus?: EventBus;
+
+  constructor(maxLogs = 10000, maxLogFiles = 4096, dbPath?: string, eventBus?: EventBus) {
+    this.eventBus = eventBus;
     this.maxLogs = maxLogs;
     this.maxLogFiles = maxLogFiles;
     this.logDir = join(homedir(), '.claude-api-hub', 'logs');
@@ -135,6 +139,7 @@ export class LogManager {
         entry.error ?? null, entry.logFile ?? null
       );
       this.trimLogs();
+      this.eventBus?.emit('log', entry);
     } catch (err) { logger.warn('Failed to write log to database', { error: (err as Error).message }); }
   }
 

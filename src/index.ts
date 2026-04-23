@@ -9,6 +9,8 @@ import { createProvider } from './providers/factory.js';
 import { logger, setLogLevel } from './logger.js';
 import { destroyAgents } from './services/forwarder.js';
 import { LogManager } from './services/log-manager.js';
+import { EventBus } from './services/event-bus.js';
+import { RateTracker } from './services/rate-tracker.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -65,9 +67,11 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  const router = createRouter(providers, config.defaultProvider, config.aliases ?? {});
-  const logManager = new LogManager();
-  const server = createServer(router, config, logManager);
+  const router = createRouter(providers, config.defaultProvider, config.aliases ?? {}, config.fallbackChain ?? {});
+  const eventBus = new EventBus();
+  const rateTracker = new RateTracker();
+  const logManager = new LogManager(undefined, undefined, undefined, eventBus);
+  const server = createServer(router, config, logManager, eventBus, rateTracker);
 
   server.on('error', (err: NodeJS.ErrnoException) => {
     if (err.code === 'EADDRINUSE') {
@@ -100,12 +104,14 @@ async function main(): Promise<void> {
     logger.info(`Received ${signal}, shutting down gracefully...`);
     server.close(() => {
       destroyAgents();
+      rateTracker.destroy();
       logManager.close();
       process.exit(0);
     });
     setTimeout(() => {
       logger.warn('Graceful shutdown timed out after 10s, forcing exit.');
       destroyAgents();
+      rateTracker.destroy();
       logManager.close();
       process.exit(1);
     }, 10000).unref();

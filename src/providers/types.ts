@@ -10,6 +10,7 @@ export interface ProviderConfig {
   models: string[];
   defaultModel: string;
   enabled: boolean;
+  apiKeys?: string[];
   prefix?: string | string[];
   passthrough?: boolean;
   kiroRegion?: string;
@@ -39,6 +40,7 @@ export interface GatewayConfig {
   streamIdleTimeoutMs?: number;
   maxResponseBytes?: number;
   trustProxy?: boolean;
+  fallbackChain?: Record<string, string>;
 }
 
 // ─── Anthropic API Types (incoming from Claude Code) ───
@@ -267,6 +269,7 @@ export interface Provider {
   parseResponse(raw: OpenAIResponse, originalModel: string): AnthropicResponse;
   createStreamContext(originalModel: string): StreamContext;
   parseStreamChunk(chunk: OpenAIStreamChunk, originalModel: string, ctx: StreamContext): AnthropicStreamEvent[];
+  isHealthy?(): boolean;
 }
 
 // ─── Router Types ───
