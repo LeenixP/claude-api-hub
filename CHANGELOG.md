@@ -7,7 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-04-23
+
 ### Added
+- SSE real-time push via `/api/events` endpoint (EventBus)
+- Multi-key pool with round-robin rotation and auto-recovery (KeyPool)
+- Fallback chain: auto-route to backup provider when primary is unhealthy
+- Rate tracker with QPS/RPM/TPS metrics via `/api/stats` endpoint
+- Management panel navigation tabs (Dashboard, Config Editor, Setup Guide)
+- JSON config editor with validation and import/export (`/api/config/import`)
+- Per-tier timeout configuration via `/api/tier-timeouts`
+- Password login portal with auth banner (`/api/auth/login`)
+- Kiro Provider: use Kiro OAuth to call Claude via AWS CodeWhisperer
 - Admin token authentication for management API endpoints
 - Configurable CORS origins (replaces wildcard `*`)
 - Rate limiting with configurable RPM (requests per minute)

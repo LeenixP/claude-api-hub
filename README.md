@@ -30,6 +30,8 @@ A local API gateway that lets Claude Code route requests to any LLM provider via
 - [Alias Mapping](#alias-mapping)
 - [Adding Providers](#adding-providers)
 - [Kiro Provider](#kiro-provider)
+- [Multi-Key Configuration](#multi-key-configuration)
+- [Fallback Chain](#fallback-chain)
 - [API Endpoints](#api-endpoints)
 - [Security](#security)
 - [Logging](#logging)
@@ -56,6 +58,13 @@ The gateway intercepts Anthropic Messages API requests from Claude Code, resolve
 ## Features
 
 - **Web Dashboard**: Split-panel layout — providers & aliases on the left, live request logs on the right
+- **Navigation Tabs**: Dashboard, Config Editor, and Setup Guide tabs in the management panel
+- **SSE Real-Time Push**: Live event stream via `/api/events` for real-time dashboard updates
+- **Multi-Key Pool**: Round-robin key rotation with automatic health tracking and recovery per provider
+- **Fallback Chain**: Auto-route to backup provider when primary is unhealthy, with cycle detection
+- **Rate Tracker**: Real-time QPS/RPM/TPS metrics via `/api/stats` endpoint
+- **Config Editor**: JSON config editor with validation, import/export support
+- **Setup Guide**: Interactive setup guide in the management panel
 - **Alias Mapping**: Map haiku / sonnet / opus to any provider's model via combo dropdown with auto-detection from provider APIs
 - **Protocol Toggle**: Switch between Anthropic (passthrough) and OpenAI (auto-translate) per provider with one click
 - **Provider Health Check**: Test each provider with real `/v1/messages` requests, shows response text and latency
@@ -64,8 +73,9 @@ The gateway intercepts Anthropic Messages API requests from Claude Code, resolve
 - **File Logging**: Optional detailed logging to `~/.claude-api-hub/logs/` with 4096 file limit and auto-cleanup
 - **Hot Reload**: Add/edit/delete providers and aliases without restarting the gateway
 - **Streaming**: Full SSE event stream forwarding and translation
+- **Per-Tier Timeouts**: Configure timeout/stream-timeout/idle-timeout per model tier (haiku/sonnet/opus)
 - **Zero Runtime Deps**: Built on Node.js native `http` module — no Express, no Axios, no dependencies
-- **Security**: Admin token auth, per-IP rate limiting, CORS restriction, timing-safe comparison
+- **Security**: Password login portal, admin token auth, per-IP rate limiting, CORS restriction, timing-safe comparison
 
 ## Supported Providers
 
@@ -252,17 +262,21 @@ Tokens are automatically refreshed when expired.
 | `/v1/messages` | POST | Anthropic Messages API proxy (main endpoint) |
 | `/v1/models` | GET | List all available models |
 | `/health` | GET | Gateway health check |
+| `/api/events` | GET | SSE real-time event stream |
+| `/api/stats` | GET | Rate tracker stats (QPS, RPM, TPS) |
+| `/api/auth/login` | POST | Password login (returns auth token) |
 | `/api/config` | GET | Current config (API keys masked) |
 | `/api/config/providers` | POST | Add provider (hot-reloads router) |
 | `/api/config/providers/:name` | PUT/DELETE | Update or delete provider (hot-reloads router) |
+| `/api/config/import` | POST | Import full config (replace and reload) |
 | `/api/config/reload` | POST | Reload config from disk |
+| `/api/tier-timeouts` | GET/PUT | Get or update per-tier timeout config |
 | `/api/aliases` | GET/PUT | Get or update alias mapping |
 | `/api/fetch-models` | GET | Fetch real model lists from provider APIs |
 | `/api/health/providers` | GET | Test connectivity to all providers |
 | `/api/logs` | GET | Request logs (last 200, lightweight) |
 | `/api/logs/clear` | POST | Clear log buffer |
 | `/api/logs/file-status` | GET | File logging status and file count |
-| `/api/auth/login` | POST | Password login (returns auth token) |
 | `/api/logs/file-toggle` | PUT | Toggle file logging on/off |
 
 ## Logging
@@ -271,6 +285,40 @@ Two-tier logging system:
 
 - **Memory logs** (always on): Lightweight summaries in RAM, shown in dashboard. Last 200 entries with claudeModel tier, resolvedModel, provider, status, duration, error message
 - **File logs** (opt-in): Detailed JSON files at `~/.claude-api-hub/logs/` including original request body, translated request body, forwarded headers, upstream response. Toggle via dashboard. Auto-cleans at 4096 files
+
+## Multi-Key Configuration
+
+Each provider supports multiple API keys via the `apiKey` field. Separate keys with commas:
+
+```json
+"deepseek": {
+  "apiKey": "${DEEPSEEK_KEY_1},${DEEPSEEK_KEY_2},${DEEPSEEK_KEY_3}",
+  ...
+}
+```
+
+The gateway manages keys through a `KeyPool`:
+- **Round-robin rotation**: Requests are distributed evenly across healthy keys
+- **Auto-disable**: After 5 consecutive errors, a key is marked unhealthy and skipped
+- **Auto-recovery**: Unhealthy keys are re-enabled after 60 seconds
+- **Success reset**: A successful request resets the error counter immediately
+
+Key health status is visible in the provider cards on the dashboard.
+
+## Fallback Chain
+
+Configure automatic failover between providers when the primary is unhealthy:
+
+```json
+{
+  "fallbackChain": {
+    "kimi": "deepseek",
+    "deepseek": "glm"
+  }
+}
+```
+
+When a provider is unhealthy (all keys exhausted), the router follows the fallback chain to find a healthy alternative. Cycle detection prevents infinite loops.
 
 ## Routing Rules
 
@@ -296,7 +344,7 @@ See [SECURITY.md](SECURITY.md) for vulnerability reporting.
 ```bash
 npm run dev      # Dev mode (hot reload)
 npm run build    # Compile TypeScript
-npm test         # Run tests (77 tests)
+npm test         # Run tests (100+ tests)
 ```
 
 ## Contributing

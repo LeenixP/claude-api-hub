@@ -1,10 +1,16 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import http from 'http';
+import { writeFileSync, mkdtempSync, rmSync } from 'fs';
+import { join } from 'path';
+import { tmpdir } from 'os';
 import { createServer } from '../src/server.js';
 import { createRouter } from '../src/router.js';
 import { ClaudeProvider } from '../src/providers/claude.js';
 import { GenericOpenAIProvider } from '../src/providers/generic.js';
 import { LogManager } from '../src/services/log-manager.js';
+import { EventBus } from '../src/services/event-bus.js';
+import { RateTracker } from '../src/services/rate-tracker.js';
+import { loadConfig } from '../src/config.js';
 import type { GatewayConfig, ProviderConfig } from '../src/providers/types.js';
 
 const testProviderConfig: ProviderConfig = {
@@ -268,5 +274,253 @@ describe('server with rate limiting', () => {
     const r3 = await request(server, { method: 'POST', path: '/v1/messages', headers, body });
     expect(r3.status).toBe(429);
     expect(r3.headers['retry-after']).toBeDefined();
+  });
+});
+
+describe('server SSE /api/events', () => {
+  let server: http.Server;
+  let eventBus: EventBus;
+
+  beforeAll(async () => {
+    eventBus = new EventBus();
+    const config = makeConfig();
+    const providers = [new GenericOpenAIProvider(testProviderConfig)];
+    const router = createRouter(providers, 'test', {});
+    server = createServer(router, config, new LogManager(200, 100, ':memory:'), eventBus);
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', () => resolve()));
+  });
+
+  afterAll(async () => {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  });
+
+  it('GET /api/events returns SSE stream headers', async () => {
+    const addr = server.address() as { port: number };
+    const res = await new Promise<http.IncomingMessage>((resolve) => {
+      const req = http.get({ hostname: '127.0.0.1', port: addr.port, path: '/api/events' }, resolve);
+      req.end();
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.headers['content-type']).toBe('text/event-stream');
+    expect(res.headers['cache-control']).toBe('no-cache');
+    res.destroy();
+  });
+
+  it('GET /api/events receives emitted events', async () => {
+    const addr = server.address() as { port: number };
+    const received = await new Promise<string>((resolve, reject) => {
+      const req = http.get({ hostname: '127.0.0.1', port: addr.port, path: '/api/events' }, (res) => {
+        let buf = '';
+        res.on('data', (chunk: Buffer) => {
+          buf += chunk.toString();
+          if (buf.includes('event: test_event')) {
+            res.destroy();
+            resolve(buf);
+          }
+        });
+        res.on('error', () => {});
+        setTimeout(() => eventBus.emit('test_event', { hello: 'world' }), 50);
+      });
+      req.on('error', reject);
+      setTimeout(() => reject(new Error('timeout')), 3000);
+    });
+    expect(received).toContain('event: test_event');
+    expect(received).toContain('"hello":"world"');
+  });
+});
+
+describe('server /api/stats', () => {
+  let server: http.Server;
+  let rateTracker: RateTracker;
+
+  beforeAll(async () => {
+    rateTracker = new RateTracker();
+    const config = makeConfig();
+    const providers = [new GenericOpenAIProvider(testProviderConfig)];
+    const router = createRouter(providers, 'test', {});
+    server = createServer(router, config, new LogManager(200, 100, ':memory:'), undefined, rateTracker);
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', () => resolve()));
+  });
+
+  afterAll(async () => {
+    rateTracker.destroy();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  });
+
+  it('GET /api/stats returns qps, rpm, tps', async () => {
+    rateTracker.record(100);
+    const res = await request(server, { method: 'GET', path: '/api/stats' });
+    expect(res.status).toBe(200);
+    const json = JSON.parse(res.body);
+    expect(typeof json.qps).toBe('number');
+    expect(typeof json.rpm).toBe('number');
+    expect(typeof json.tps).toBe('number');
+    expect(json.qps).toBeGreaterThan(0);
+  });
+});
+
+describe('server /api/config/import', () => {
+  let server: http.Server;
+  let tmpDir: string;
+
+  beforeAll(async () => {
+    tmpDir = mkdtempSync(join(tmpdir(), 'api-hub-test-'));
+    const seedConfig = makeConfig({ adminToken: 'import-token', port: 9999 });
+    const tmpConfigPath = join(tmpDir, 'providers.json');
+    writeFileSync(tmpConfigPath, JSON.stringify(seedConfig, null, 2));
+    loadConfig(tmpConfigPath);
+    const config = makeConfig({ adminToken: 'import-token' });
+    const providers = [new GenericOpenAIProvider(testProviderConfig)];
+    const router = createRouter(providers, 'test', {});
+    server = createServer(router, config, new LogManager(200, 100, ':memory:'));
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', () => resolve()));
+  });
+
+  afterAll(async () => {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    try { rmSync(tmpDir, { recursive: true }); } catch {}
+  });
+
+  it('POST /api/config/import without auth returns 401', async () => {
+    const res = await request(server, {
+      method: 'POST',
+      path: '/api/config/import',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ providers: {} }),
+    });
+    expect(res.status).toBe(401);
+  });
+
+  it('POST /api/config/import with invalid JSON returns 400', async () => {
+    const res = await request(server, {
+      method: 'POST',
+      path: '/api/config/import',
+      headers: { 'Content-Type': 'application/json', 'x-admin-token': 'import-token' },
+      body: '{bad json',
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('POST /api/config/import without providers returns 400', async () => {
+    const res = await request(server, {
+      method: 'POST',
+      path: '/api/config/import',
+      headers: { 'Content-Type': 'application/json', 'x-admin-token': 'import-token' },
+      body: JSON.stringify({ defaultProvider: 'test' }),
+    });
+    expect(res.status).toBe(400);
+    const json = JSON.parse(res.body);
+    expect(json.error.message).toContain('providers');
+  });
+
+  it('POST /api/config/import with valid config returns 200', async () => {
+    const newConfig = {
+      providers: {
+        test: testProviderConfig,
+        extra: { ...testProviderConfig, name: 'extra', prefix: 'extra-' },
+      },
+      defaultProvider: 'test',
+    };
+    const res = await request(server, {
+      method: 'POST',
+      path: '/api/config/import',
+      headers: { 'Content-Type': 'application/json', 'x-admin-token': 'import-token' },
+      body: JSON.stringify(newConfig),
+    });
+    expect(res.status).toBe(200);
+    const json = JSON.parse(res.body);
+    expect(json.imported).toBe(true);
+  });
+});
+
+describe('server /api/auth/login', () => {
+  let server: http.Server;
+
+  beforeAll(async () => {
+    const config = makeConfig({ adminToken: 'login-secret' });
+    const providers = [new GenericOpenAIProvider(testProviderConfig)];
+    const router = createRouter(providers, 'test', {});
+    server = createServer(router, config, new LogManager(200, 100, ':memory:'));
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', () => resolve()));
+  });
+
+  afterAll(async () => {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  });
+
+  it('POST /api/auth/login with correct password returns token', async () => {
+    const res = await request(server, {
+      method: 'POST',
+      path: '/api/auth/login',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: 'login-secret' }),
+    });
+    expect(res.status).toBe(200);
+    const json = JSON.parse(res.body);
+    expect(json.success).toBe(true);
+    expect(json.token).toBe('login-secret');
+  });
+
+  it('POST /api/auth/login with wrong password returns 401', async () => {
+    const res = await request(server, {
+      method: 'POST',
+      path: '/api/auth/login',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: 'wrong-password' }),
+    });
+    expect(res.status).toBe(401);
+    const json = JSON.parse(res.body);
+    expect(json.success).toBe(false);
+  });
+
+  it('POST /api/auth/login without password returns 401', async () => {
+    const res = await request(server, {
+      method: 'POST',
+      path: '/api/auth/login',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    expect(res.status).toBe(401);
+    const json = JSON.parse(res.body);
+    expect(json.success).toBe(false);
+  });
+
+  it('POST /api/auth/login with invalid JSON returns 400', async () => {
+    const res = await request(server, {
+      method: 'POST',
+      path: '/api/auth/login',
+      headers: { 'Content-Type': 'application/json' },
+      body: 'not json',
+    });
+    expect(res.status).toBe(400);
+  });
+});
+
+describe('server /api/auth/login without adminToken', () => {
+  let server: http.Server;
+
+  beforeAll(async () => {
+    const config = makeConfig();
+    const providers = [new GenericOpenAIProvider(testProviderConfig)];
+    const router = createRouter(providers, 'test', {});
+    server = createServer(router, config, new LogManager(200, 100, ':memory:'));
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', () => resolve()));
+  });
+
+  afterAll(async () => {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  });
+
+  it('POST /api/auth/login without adminToken configured returns success with empty token', async () => {
+    const res = await request(server, {
+      method: 'POST',
+      path: '/api/auth/login',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: 'anything' }),
+    });
+    expect(res.status).toBe(200);
+    const json = JSON.parse(res.body);
+    expect(json.success).toBe(true);
+    expect(json.token).toBe('');
   });
 });

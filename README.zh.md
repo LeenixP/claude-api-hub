@@ -29,6 +29,8 @@
 - [支持的厂商](#支持的厂商)
 - [别名映射](#别名映射)
 - [添加 Provider](#添加-provider)
+- [多 Key 配置](#多-key-配置)
+- [Fallback 链](#fallback-链)
 - [API 端点](#api-端点)
 - [安全性](#安全性)
 - [日志系统](#日志系统)
@@ -55,6 +57,13 @@ Claude Code ──► ANTHROPIC_BASE_URL=http://127.0.0.1:9800
 ## 核心特性
 
 - **Web 管理面板**：左右分栏布局 — 左侧 Provider 管理和别名映射，右侧实时请求日志
+- **导航标签页**：Dashboard、配置编辑器、使用指南三个标签页
+- **SSE 实时推送**：通过 `/api/events` 端点实时推送事件，驱动面板实时更新
+- **多 Key 池**：Round-Robin 轮询分配请求，自动健康检测与恢复
+- **Fallback 链**：主 Provider 不健康时自动路由到备用 Provider，支持循环检测
+- **速率追踪**：通过 `/api/stats` 端点实时查看 QPS/RPM/TPS 指标
+- **配置编辑器**：JSON 配置编辑器，支持校验、导入/导出
+- **使用指南**：管理面板内置交互式使用指南
 - **别名映射**：将 haiku / sonnet / opus 映射到任意厂商模型，下拉框自动从 Provider API 检测可用模型，也支持自定义输入
 - **协议一键切换**：每个 Provider 卡片上点击 badge 即可切换 Anthropic（透传）或 OpenAI（自动翻译）
 - **健康检查**：通过真实的 `/v1/messages` 请求测试各 Provider，显示响应内容和延迟
@@ -63,8 +72,9 @@ Claude Code ──► ANTHROPIC_BASE_URL=http://127.0.0.1:9800
 - **文件日志**：可选的详细日志记录到 `~/.claude-api-hub/logs/`，4096 文件上限自动清理
 - **热重载**：增删改 Provider 和别名无需重启网关
 - **流式支持**：完整的 SSE 事件流转发和转换
+- **分层超时**：按模型层级（haiku/sonnet/opus）配置超时/流超时/空闲超时
 - **零运行时依赖**：基于 Node.js 原生 `http` 模块 — 无 Express、无 Axios、无任何依赖
-- **安全防护**：Admin Token 认证、Per-IP 速率限制、CORS 限制、时序安全比较
+- **安全防护**：密码登录门户、Admin Token 认证、Per-IP 速率限制、CORS 限制、时序安全比较
 
 ## 支持的厂商
 
@@ -172,10 +182,15 @@ claude-api-hub
 | `/v1/messages` | POST | Anthropic Messages API 代理（主端点） |
 | `/v1/models` | GET | 列出所有可用模型 |
 | `/health` | GET | 网关健康检查 |
+| `/api/events` | GET | SSE 实时事件流 |
+| `/api/stats` | GET | 速率追踪统计（QPS、RPM、TPS） |
+| `/api/auth/login` | POST | 密码登录（返回认证 token） |
 | `/api/config` | GET | 当前配置（API Key 已脱敏） |
 | `/api/config/providers` | POST | 添加 Provider（热重载路由） |
 | `/api/config/providers/:name` | PUT/DELETE | 更新或删除 Provider（热重载路由） |
+| `/api/config/import` | POST | 导入完整配置（替换并重载） |
 | `/api/config/reload` | POST | 从磁盘重载配置 |
+| `/api/tier-timeouts` | GET/PUT | 获取或更新分层超时配置 |
 | `/api/aliases` | GET/PUT | 获取或更新别名映射 |
 | `/api/fetch-models` | GET | 从各 Provider API 拉取真实模型列表 |
 | `/api/health/providers` | GET | 测试所有 Provider 连通性 |
@@ -190,6 +205,40 @@ claude-api-hub
 
 - **内存日志**（始终开启）：轻量级摘要存储在内存中，显示在面板。最近 200 条，包含 claudeModel 层级、resolvedModel、provider、状态码、耗时、错误信息
 - **文件日志**（可选）：详细 JSON 文件存储在 `~/.claude-api-hub/logs/`，包含原始请求体、转换后请求体、转发头、上游响应体。通过面板开关控制。达到 4096 个文件时自动清空
+
+## 多 Key 配置
+
+每个 Provider 支持多个 API Key，用逗号分隔：
+
+```json
+"deepseek": {
+  "apiKey": "${DEEPSEEK_KEY_1},${DEEPSEEK_KEY_2},${DEEPSEEK_KEY_3}",
+  ...
+}
+```
+
+网关通过 `KeyPool` 管理多 Key：
+- **Round-Robin 轮询**：请求均匀分配到健康的 Key
+- **自动禁用**：连续 5 次错误后，Key 被标记为不健康并跳过
+- **自动恢复**：不健康的 Key 在 60 秒后自动重新启用
+- **成功重置**：一次成功请求立即重置错误计数
+
+Key 健康状态可在面板的 Provider 卡片中查看。
+
+## Fallback 链
+
+配置 Provider 之间的自动故障转移：
+
+```json
+{
+  "fallbackChain": {
+    "kimi": "deepseek",
+    "deepseek": "glm"
+  }
+}
+```
+
+当 Provider 不健康（所有 Key 耗尽）时，路由器沿 Fallback 链查找健康的替代 Provider。内置循环检测防止无限循环。
 
 ## 路由规则
 
@@ -214,7 +263,7 @@ claude-api-hub
 ```bash
 npm run dev      # 开发模式（热重载）
 npm run build    # 编译
-npm test         # 测试（77 个测试用例）
+npm test         # 测试（100+ 个测试用例）
 ```
 
 ## 贡献

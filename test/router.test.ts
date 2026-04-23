@@ -158,3 +158,74 @@ describe('ModelRouter', () => {
     expect(result.originalModel).toBe('claude-opus-4-7');
   });
 });
+
+describe('ModelRouter fallbackChain', () => {
+  function makeProviderWithHealth(name: string, prefix: string, healthy: boolean): Provider {
+    const p = makeProvider(name, prefix);
+    (p as Provider & { isHealthy: () => boolean }).isHealthy = () => healthy;
+    return p;
+  }
+
+  it('falls back to next provider when primary is unhealthy', () => {
+    const claude = makeProviderWithHealth('claude', 'claude-', false);
+    const kimi = makeProviderWithHealth('kimi', 'kimi-', true);
+    const router = createRouter([claude, kimi], 'claude', {}, { claude: 'kimi' });
+    const result = router.route('claude-opus-4-7');
+    expect(result.provider.name).toBe('kimi');
+  });
+
+  it('uses primary provider when healthy despite fallback configured', () => {
+    const claude = makeProviderWithHealth('claude', 'claude-', true);
+    const kimi = makeProviderWithHealth('kimi', 'kimi-', true);
+    const router = createRouter([claude, kimi], 'claude', {}, { claude: 'kimi' });
+    const result = router.route('claude-opus-4-7');
+    expect(result.provider.name).toBe('claude');
+  });
+
+  it('chains through multiple fallbacks', () => {
+    const a = makeProviderWithHealth('a', 'a-', false);
+    const b = makeProviderWithHealth('b', 'b-', false);
+    const c = makeProviderWithHealth('c', 'c-', true);
+    const router = createRouter([a, b, c], 'a', {}, { a: 'b', b: 'c' });
+    const result = router.route('a-model');
+    expect(result.provider.name).toBe('c');
+  });
+
+  it('returns primary if all fallbacks are also unhealthy', () => {
+    const a = makeProviderWithHealth('a', 'a-', false);
+    const b = makeProviderWithHealth('b', 'b-', false);
+    const router = createRouter([a, b], 'a', {}, { a: 'b' });
+    const result = router.route('a-model');
+    expect(result.provider.name).toBe('a');
+  });
+
+  it('avoids circular fallback loops', () => {
+    const a = makeProviderWithHealth('a', 'a-', false);
+    const b = makeProviderWithHealth('b', 'b-', false);
+    const router = createRouter([a, b], 'a', {}, { a: 'b', b: 'a' });
+    const result = router.route('a-model');
+    expect(result.provider.name).toBe('a');
+  });
+
+  it('falls back default provider when it is unhealthy', () => {
+    const claude = makeProviderWithHealth('claude', 'claude-', false);
+    const kimi = makeProviderWithHealth('kimi', 'kimi-', true);
+    const router = createRouter([claude, kimi], 'claude', {}, { claude: 'kimi' });
+    const result = router.route('unknown-model');
+    expect(result.provider.name).toBe('kimi');
+  });
+
+  it('setFallbackChain updates chain at runtime', () => {
+    const claude = makeProviderWithHealth('claude', 'claude-', false);
+    const kimi = makeProviderWithHealth('kimi', 'kimi-', true);
+    const glm = makeProviderWithHealth('glm', 'glm-', true);
+    const router = createRouter([claude, kimi, glm], 'claude', {}, { claude: 'kimi' });
+
+    let result = router.route('claude-opus-4-7');
+    expect(result.provider.name).toBe('kimi');
+
+    router.setFallbackChain({ claude: 'glm' });
+    result = router.route('claude-opus-4-7');
+    expect(result.provider.name).toBe('glm');
+  });
+});
