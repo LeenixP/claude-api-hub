@@ -1456,8 +1456,8 @@ function renderProviders() {
         + (h.latencyMs ? '<span class="health-ms">' + h.latencyMs + 'ms</span>' : '')
       : '';
     const enableBadge = p.enabled
-      ? '<span class="badge badge-on">ON</span>'
-      : '<span class="badge badge-off">OFF</span>';
+      ? '<button class="badge badge-on" onclick="event.stopPropagation();toggleEnabled(\\'' + esc(key) + '\\')" title="Click to disable">ON</button>'
+      : '<button class="badge badge-off" onclick="event.stopPropagation();toggleEnabled(\\'' + esc(key) + '\\')" title="Click to enable">OFF</button>';
     const formatBadge = '<button class="badge ' + (p.passthrough ? 'badge-anthropic' : 'badge-openai')
       + '" onclick="event.stopPropagation();toggleProtocol(\\'' + esc(key) + '\\')" title="Click to switch">'
       + (p.passthrough ? 'Anthropic' : 'OpenAI') + '</button>';
@@ -1561,6 +1561,22 @@ async function toggleProtocol(key) {
   }
 }
 
+async function toggleEnabled(key) {
+  const p = config.providers[key];
+  const newVal = !p.enabled;
+  try {
+    await fetch('/api/config/providers/' + encodeURIComponent(key), {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled: newVal })
+    });
+    toast(p.name + ': ' + (newVal ? 'Enabled' : 'Disabled'), 'success');
+    load();
+  } catch (e) {
+    toast('Toggle failed', 'error');
+  }
+}
+
 // ── Model Tags ──
 let modalModels = [];
 
@@ -1593,29 +1609,28 @@ function removeModelTag(i) {
 async function fetchAndAddModels() {
   const baseUrl = document.getElementById('f-url').value.trim();
   const apiKey = document.getElementById('f-key-val').value.trim();
-  const key = document.getElementById('f-key').value.trim();
   if (!baseUrl) { toast('Enter Base URL first', 'error'); return; }
   const existingProvider = editingProvider ? config.providers[editingProvider] : null;
   const realKey = apiKey || (existingProvider ? existingProvider.apiKey : '');
   if (!realKey || realKey === '***') { toast('Enter API Key first', 'error'); return; }
+  const isPassthrough = existingProvider ? existingProvider.passthrough : false;
   toast('Fetching models...', 'info');
   try {
-    const isPassthrough = existingProvider ? existingProvider.passthrough : false;
-    let url, headers;
-    if (isPassthrough) {
-      url = baseUrl + '/v1/models';
-      headers = { 'x-api-key': realKey, 'anthropic-version': '2023-06-01' };
-    } else {
-      url = baseUrl + '/models';
-      headers = { 'Authorization': 'Bearer ' + realKey };
-    }
-    const res = await fetch('/api/health/providers').then(r => r.json());
-    const name = existingProvider ? (existingProvider.name || key) : key;
-    if (fetchedModels[name]) {
-      fetchedModels[name].forEach(m => { if (!modalModels.includes(m)) modalModels.push(m); });
-    }
+    const res = await fetch('/api/probe-models', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ baseUrl, apiKey: realKey, passthrough: isPassthrough })
+    });
+    if (!res.ok) { toast('Fetch failed: HTTP ' + res.status, 'error'); return; }
+    const json = await res.json();
+    const models = json.models || [];
+    if (models.length === 0) { toast('No models found', 'error'); return; }
+    let added = 0;
+    models.forEach(m => {
+      if (!modalModels.includes(m)) { modalModels.push(m); added++; }
+    });
     renderModelTags();
-    toast('Models fetched', 'success');
+    toast('Added ' + added + ' models (total: ' + modalModels.length + ')', 'success');
   } catch (e) {
     toast('Fetch failed: ' + e.message, 'error');
   }

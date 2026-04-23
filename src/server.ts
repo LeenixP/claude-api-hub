@@ -122,6 +122,34 @@ export function createServer(router: ModelRouter, config: GatewayConfig, logMana
       return;
     }
 
+    // POST /api/probe-models — fetch models from arbitrary URL/key
+    if (req.method === 'POST' && pathname === '/api/probe-models') {
+      let bodyStr: string;
+      try { bodyStr = await readBody(req); } catch {
+        sendError(res, 400, 'invalid_request_error', 'Failed to read request body', config, origin); return;
+      }
+      let body: { baseUrl?: string; apiKey?: string; passthrough?: boolean };
+      try { body = JSON.parse(bodyStr); } catch {
+        sendError(res, 400, 'invalid_request_error', 'Invalid JSON body', config, origin); return;
+      }
+      if (!body.baseUrl || !body.apiKey) {
+        sendError(res, 400, 'invalid_request_error', 'Missing baseUrl or apiKey', config, origin); return;
+      }
+      try {
+        const url = body.passthrough ? `${body.baseUrl}/v1/models` : `${body.baseUrl}/models`;
+        const hdrs: Record<string, string> = body.passthrough
+          ? { 'x-api-key': body.apiKey, 'anthropic-version': '2023-06-01' }
+          : { 'Authorization': `Bearer ${body.apiKey}` };
+        const raw = await httpGet(url, hdrs, 10000);
+        const json = JSON.parse(raw);
+        const models = (json.data || []).map((m: { id?: string }) => m.id).filter(Boolean) as string[];
+        sendJson(res, 200, { models }, config, origin);
+      } catch (err) {
+        sendError(res, 502, 'api_error', `Failed to fetch models: ${(err as Error).message}`, config, origin);
+      }
+      return;
+    }
+
     if (req.method === 'POST' && pathname === '/api/config/providers') {
       let bodyStr: string;
       try { bodyStr = await readBody(req); } catch {
