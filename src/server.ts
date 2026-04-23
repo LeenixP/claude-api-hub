@@ -467,7 +467,12 @@ export function createServer(router: ModelRouter, config: GatewayConfig): http.S
         sendError(res, 502, 'api_error', `Response parse error: ${(err as Error).message}`, config, origin); return;
       }
 
-      logManager.addLog({ ...logBase, status: 200, durationMs: Date.now() - startTime }, logDetail);
+      const usage = anthropicResp.usage || (upstreamJson.usage ? { input_tokens: upstreamJson.usage.prompt_tokens, output_tokens: upstreamJson.usage.completion_tokens } : null);
+      logManager.addLog({
+        ...logBase, status: 200, durationMs: Date.now() - startTime,
+        inputTokens: usage?.input_tokens ?? 0,
+        outputTokens: usage?.output_tokens ?? 0,
+      }, logDetail);
       sendJson(res, 200, anthropicResp, config, origin);
       return;
     }

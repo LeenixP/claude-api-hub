@@ -14,6 +14,8 @@ export interface LogEntry {
   stream: boolean;
   status: number;
   durationMs: number;
+  inputTokens?: number;
+  outputTokens?: number;
   error?: string;
   logFile?: string;
 }
