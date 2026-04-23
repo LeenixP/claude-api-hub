@@ -1,7 +1,7 @@
 import http from 'http';
 import https from 'https';
 import crypto from 'crypto';
-import { writeFileSync } from 'fs';
+import { writeFileSync, appendFileSync } from 'fs';
 import { URL } from 'url';
 
 // ─── Connection Pool ───
@@ -25,9 +25,11 @@ import { ClaudeProvider } from './providers/claude.js';
 import { GenericOpenAIProvider } from './providers/generic.js';
 import { dashboardHtml } from './dashboard.js';
 import { getConfigPath, loadConfig } from './config.js';
-import { mkdirSync, appendFileSync, readdirSync, unlinkSync } from 'fs';
+import { mkdirSync, readdirSync } from 'fs';
+import { readdir, unlink } from 'fs/promises';
 import { homedir } from 'os';
 import { join } from 'path';
+import { logger } from './logger.js';
 
 interface LogEntry {
   time: string;
@@ -60,14 +62,13 @@ let logToFile = false;
 try { mkdirSync(LOG_DIR, { recursive: true }); } catch {}
 
 function cleanLogDir(): void {
-  try {
-    const files = readdirSync(LOG_DIR).filter(f => f.endsWith('.json'));
-    if (files.length >= MAX_LOG_FILES) {
-      for (const f of files) {
-        try { unlinkSync(join(LOG_DIR, f)); } catch {}
-      }
-    }
-  } catch {}
+  readdir(LOG_DIR).then(files => {
+    const jsonFiles = files.filter(f => f.endsWith('.json'));
+    if (jsonFiles.length < MAX_LOG_FILES) return;
+    jsonFiles.sort();
+    const toDelete = jsonFiles.slice(0, Math.floor(jsonFiles.length / 2));
+    Promise.all(toDelete.map(f => unlink(join(LOG_DIR, f)).catch(() => {}))).catch(() => {});
+  }).catch(() => {});
 }
 
 function addLog(entry: LogEntry, detail?: LogDetail): void {
@@ -332,7 +333,7 @@ export function createServer(router: ModelRouter, config: GatewayConfig): http.S
     rateLimiter = new RateLimiter(config.rateLimitRpm, config.rateLimitRpm);
   }
   if (!config.adminToken && !process.env.ADMIN_TOKEN) {
-    console.warn('[warn] No adminToken configured — management API is unprotected. Set adminToken in config or ADMIN_TOKEN env var.');
+    logger.warn('No adminToken configured — management API is unprotected. Set adminToken in config or ADMIN_TOKEN env var.');
   }
 
   return http.createServer(async (req, res) => {
