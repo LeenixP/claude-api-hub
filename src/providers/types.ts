@@ -13,6 +13,9 @@ export interface ProviderConfig {
   apiKeys?: string[];
   prefix?: string | string[];
   passthrough?: boolean;
+  authMode?: 'apikey' | 'oauth';
+  providerType?: 'standard' | 'kiro';
+  kiroAuthMethod?: 'social' | 'builder-id';
   kiroRegion?: string;
   kiroCredsPath?: string;
   [key: string]: unknown;
@@ -42,6 +45,7 @@ export interface GatewayConfig {
   trustProxy?: boolean;
   fallbackChain?: Record<string, string>;
   password?: string;
+  tokenRefreshMinutes?: number;
 }
 
 // ─── Anthropic API Types (incoming from Claude Code) ───

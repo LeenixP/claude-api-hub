@@ -410,6 +410,9 @@ let config = null;
 let allModels = [];
 let fetchedModels = {};
 let editingProvider = null;
+let currentProviderType = 'standard';
+let oauthCredsPath = null;
+let oauthPollingTimer = null;
 let logFilter = 'all';
 let healthCache = {};
 let adminToken = localStorage.getItem('adminToken') || '';
@@ -680,17 +683,20 @@ function renderProviders() {
     const enableBadge = p.enabled
       ? '<button class="badge badge-on" onclick="event.stopPropagation();toggleEnabled(\x27' + esc(key) + '\x27)" title="Click to disable">ON</button>'
       : '<button class="badge badge-off" onclick="event.stopPropagation();toggleEnabled(\x27' + esc(key) + '\x27)" title="Click to enable">OFF</button>';
-    const formatBadge = '<button class="badge ' + (p.passthrough ? 'badge-anthropic' : 'badge-openai')
-      + '" onclick="event.stopPropagation();toggleProtocol(\x27' + esc(key) + '\x27)" title="Click to switch">'
-      + (p.passthrough ? 'Anthropic' : 'OpenAI') + '</button>';
+    const formatBadge = (p.authMode === 'oauth')
+      ? '<span class="badge badge-anthropic" style="font-size:11px">Kiro</span>'
+      : '<span class="badge ' + (p.passthrough ? 'badge-anthropic' : 'badge-openai') + '">'
+        + (p.passthrough ? 'Anthropic' : 'OpenAI') + '</span>';
     const configModels = p.models || [];
     const apiModels = fetchedModels[p.name || key] || [];
     const allProviderModels = [...new Set([...apiModels, ...configModels])];
     const models = allProviderModels.map(m => '<span class="model-tag">' + esc(m) + '</span>').join('');
     const prefix = p.prefix ? (Array.isArray(p.prefix) ? p.prefix.join(', ') : p.prefix) : '-';
-    const keyStatus = (!p.apiKey || p.apiKey === '***')
-      ? '<span class="key-warn">\u26a0 Missing</span>'
-      : '<span class="key-ok">\u2713 Set</span>';
+    const keyStatus = (p.authMode === 'oauth')
+      ? '<span class="badge badge-anthropic" style="font-size:11px;padding:1px 6px">OAuth</span>'
+      : (!p.apiKey || p.apiKey === '***')
+        ? '<span class="key-warn">\u26a0 Missing</span>'
+        : '<span class="key-ok">\u2713 Set</span>';
 
     return '<div class="card" id="provider-' + esc(key) + '">'
       + '<div class="provider-header">'
@@ -720,67 +726,30 @@ function renderProviders() {
 // ── Provider Test ──
 async function testProvider(key) {
   const p = config.providers[key];
-  const model = p.defaultModel || (p.models && p.models[0]);
-  if (!model) { toast('No model configured', 'error'); return; }
-  toast('Testing ' + p.name + ' (' + model + ')...', 'info');
+  toast('Testing ' + (p.name || key) + '...', 'info');
   const start = Date.now();
   try {
-    const res = await fetch('/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': 'test',
-        'anthropic-version': '2023-06-01'
-      },
-      body: JSON.stringify({
-        model: model,
-        messages: [{ role: 'user', content: 'Say "OK" and nothing else.' }],
-        max_tokens: 16,
-        stream: false
-      })
-    });
-    const latency = Date.now() - start;
-    const body = await res.json();
-    healthCache[p.name || key] = {
-      status: res.ok ? 'ok' : 'error',
-      latencyMs: latency,
-      error: res.ok ? undefined : (body?.error?.message || '' + res.status)
-    };
-
-    renderProviders();
-    if (res.ok) {
-      const text = (body.content || []).map(b => b.text || '').join('').slice(0, 80);
-      toast(p.name + ': OK (' + latency + 'ms) — "' + text + '"', 'success');
+    const res = await apiFetch('/api/test-provider/' + encodeURIComponent(key), { method: 'POST' });
+    const data = await res.json();
+    const latency = data.latencyMs || (Date.now() - start);
+    if (data.success) {
+      healthCache[p.name || key] = { status: 'ok', latencyMs: latency };
+      toast(p.name + ': Test passed (' + latency + 'ms, model: ' + data.model + ')', 'success');
     } else {
-      toast(p.name + ': ' + res.status + ' ' + (body?.error?.message || ''), 'error');
+      healthCache[p.name || key] = { status: 'error', latencyMs: latency, error: data.error };
+      toast(p.name + ': ' + (data.error || 'Test failed'), 'error');
     }
   } catch (e) {
     healthCache[p.name || key] = { status: 'error', latencyMs: Date.now() - start, error: e.message };
-    renderProviders();
     toast(p.name + ': ' + e.message, 'error');
   }
+  renderProviders();
 }
 
 async function testAllProviders() {
   toast('Testing all providers...', 'info');
   const entries = Object.entries(config.providers).filter(([, p]) => p.enabled);
   await Promise.all(entries.map(([key]) => testProvider(key)));
-}
-
-async function toggleProtocol(key) {
-  const p = config.providers[key];
-  const newVal = !p.passthrough;
-  try {
-    await apiFetch('/api/config/providers/' + encodeURIComponent(key), {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ passthrough: newVal })
-    });
-    toast(p.name + ': ' + (newVal ? 'Anthropic API' : 'OpenAI Compatible'), 'success');
-    load();
-  } catch (e) {
-    toast('Switch failed', 'error');
-  }
 }
 
 async function toggleEnabled(key) {
@@ -829,6 +798,25 @@ function removeModelTag(i) {
 }
 
 async function fetchAndAddModels() {
+  if (currentProviderType === 'kiro') {
+    toast('Fetching Kiro models...', 'info');
+    try {
+      const res = await apiFetch('/api/oauth/kiro/models');
+      if (!res.ok) { toast('Failed to fetch Kiro models', 'error'); return; }
+      const json = await res.json();
+      const models = json.models || [];
+      if (models.length === 0) { toast('No models found', 'error'); return; }
+      let added = 0;
+      models.forEach(m => {
+        if (!modalModels.includes(m)) { modalModels.push(m); added++; }
+      });
+      renderModelTags();
+      toast('Added ' + added + ' Kiro models (total: ' + modalModels.length + ')', 'success');
+    } catch (e) {
+      toast('Fetch failed: ' + e.message, 'error');
+    }
+    return;
+  }
   const baseUrl = document.getElementById('f-url').value.trim();
   const apiKey = document.getElementById('f-key-val').value.trim();
   if (!baseUrl) { toast('Enter Base URL first', 'error'); return; }
@@ -866,9 +854,159 @@ document.addEventListener('keydown', e => {
   }
 });
 
+// ── Provider Type & OAuth ──
+function switchProviderType(type) {
+  currentProviderType = type;
+  const apiKeySection = document.getElementById('auth-apikey-section');
+  const oauthSection = document.getElementById('auth-oauth-section');
+  if (type === 'kiro') {
+    apiKeySection.style.display = 'none';
+    oauthSection.style.display = '';
+    if (!document.getElementById('f-url').value) {
+      document.getElementById('f-url').value = 'https://q.us-east-1.amazonaws.com';
+    }
+    if (!editingProvider && !document.getElementById('f-prefix').value) {
+      document.getElementById('f-prefix').value = 'kiro-';
+    }
+  } else {
+    apiKeySection.style.display = '';
+    oauthSection.style.display = 'none';
+  }
+}
+
+function updateOAuthStatus(state, message) {
+  const el = document.getElementById('oauth-status');
+  const btn = document.getElementById('btn-refresh-creds');
+  el.className = 'oauth-status oauth-status-' + state;
+  if (state === 'pending') {
+    el.innerHTML = '<span class="oauth-spinner"></span> ' + esc(message);
+    document.querySelectorAll('.oauth-btn').forEach(b => b.disabled = true);
+    btn.style.display = 'none';
+  } else if (state === 'success') {
+    el.innerHTML = '&#10003; ' + esc(message);
+    document.querySelectorAll('.oauth-btn').forEach(b => b.disabled = false);
+    btn.style.display = '';
+  } else if (state === 'error') {
+    el.innerHTML = '&#10007; ' + esc(message);
+    document.querySelectorAll('.oauth-btn').forEach(b => b.disabled = false);
+    btn.style.display = 'none';
+  } else {
+    el.innerHTML = esc(message);
+    document.querySelectorAll('.oauth-btn').forEach(b => b.disabled = false);
+    btn.style.display = 'none';
+  }
+}
+
+async function startKiroOAuth(method) {
+  const region = document.getElementById('f-kiro-region').value || 'us-east-1';
+  const startUrl = document.getElementById('f-kiro-start-url').value.trim() || undefined;
+  updateOAuthStatus('pending', 'Opening authorization window...');
+
+  try {
+    const res = await apiFetch('/api/oauth/kiro/auth-url', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ method, region, startUrl })
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      updateOAuthStatus('error', err.error?.message || 'Failed to start OAuth');
+      return;
+    }
+    const data = await res.json();
+
+    const popup = window.open(data.authUrl, '_blank', 'width=600,height=700,scrollbars=yes');
+
+    // Detect popup close and cancel OAuth if user closes it without completing
+    if (popup) {
+      const closeChecker = setInterval(() => {
+        if (popup.closed) {
+          clearInterval(closeChecker);
+          // Wait 3 seconds for backend polling to complete before cancelling
+          setTimeout(() => {
+            if (!oauthCredsPath) {
+              apiFetch('/api/oauth/kiro/cancel', { method: 'POST' }).catch(() => {});
+              if (oauthPollingTimer) { clearInterval(oauthPollingTimer); oauthPollingTimer = null; }
+              updateOAuthStatus('idle', 'Not authorized');
+            }
+          }, 3000);
+        }
+      }, 1000);
+    }
+
+    if (data.authInfo && data.authInfo.method === 'builder-id') {
+      updateOAuthStatus('pending', 'Waiting for device authorization... Enter code: ' + (data.authInfo.userCode || ''));
+    } else {
+      updateOAuthStatus('pending', 'Waiting for authorization...');
+    }
+
+    // Start polling for result
+    if (oauthPollingTimer) clearInterval(oauthPollingTimer);
+    let attempts = 0;
+    oauthPollingTimer = setInterval(async () => {
+      attempts++;
+      if (attempts > 120) { // 4 min timeout
+        clearInterval(oauthPollingTimer);
+        oauthPollingTimer = null;
+        updateOAuthStatus('error', 'Authorization timed out');
+        return;
+      }
+      try {
+        const r = await apiFetch('/api/oauth/kiro/result');
+        const result = await r.json();
+        if (result.success && result.credsPath) {
+          clearInterval(oauthPollingTimer);
+          oauthPollingTimer = null;
+          oauthCredsPath = result.credsPath;
+          updateOAuthStatus('success', 'Authorized (expires: ' + new Date(result.creds.expiresAt).toLocaleTimeString() + ')');
+        } else if (result.error && result.error !== 'No pending OAuth result') {
+          // Only stop on real errors, not "no pending result" (means still in progress)
+          clearInterval(oauthPollingTimer);
+          oauthPollingTimer = null;
+          updateOAuthStatus('error', result.error);
+        }
+        // Otherwise keep polling
+      } catch (e) {
+        // ignore polling errors, keep trying
+      }
+    }, 2000);
+  } catch (e) {
+    updateOAuthStatus('error', e.message);
+  }
+}
+
+async function refreshKiroCreds() {
+  if (!oauthCredsPath) {
+    toast('No credentials to refresh', 'error');
+    return;
+  }
+  toast('Refreshing credentials...', 'info');
+  try {
+    const res = await apiFetch('/api/oauth/kiro/refresh', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ credsPath: oauthCredsPath })
+    });
+    if (res.ok) {
+      const data = await res.json();
+      updateOAuthStatus('success', 'Refreshed (expires: ' + new Date(data.expiresAt).toLocaleTimeString() + ')');
+      toast('Credentials refreshed', 'success');
+    } else {
+      const err = await res.json().catch(() => ({}));
+      updateOAuthStatus('error', 'Refresh failed: ' + (err.error?.message || 'Unknown error'));
+      toast('Refresh failed', 'error');
+    }
+  } catch (e) {
+    toast('Refresh failed: ' + e.message, 'error');
+  }
+}
+
 // ── Provider CRUD ──
 function openAddProvider() {
   editingProvider = null;
+  currentProviderType = 'standard';
+  oauthCredsPath = null;
+  if (oauthPollingTimer) { clearInterval(oauthPollingTimer); oauthPollingTimer = null; }
   modalModels = [];
   document.getElementById('modal-title').textContent = 'Add Provider';
   ['f-key', 'f-name', 'f-url', 'f-key-val', 'f-default', 'f-prefix', 'f-model-input'].forEach(id => {
@@ -876,6 +1014,11 @@ function openAddProvider() {
   });
   document.getElementById('f-key').disabled = false;
   document.getElementById('f-enabled').checked = true;
+  document.getElementById('f-provider-type').value = 'standard';
+  document.getElementById('f-kiro-region').value = 'us-east-1';
+  document.getElementById('f-kiro-start-url').value = '';
+  switchProviderType('standard');
+  updateOAuthStatus('idle', 'Not authorized');
   renderModelTags();
   document.getElementById('provider-modal').classList.add('active');
 }
@@ -896,11 +1039,48 @@ function editProvider(key) {
   document.getElementById('f-prefix').value = Array.isArray(p.prefix) ? p.prefix.join(', ') : (p.prefix || '');
   document.getElementById('f-enabled').checked = p.enabled !== false;
   document.getElementById('f-model-input').value = '';
+
+  // Detect provider type
+  const isKiro = (p.providerType === 'kiro') || (p.authMode === 'oauth') || (p.baseUrl && p.baseUrl.includes('amazonaws.com'));
+  currentProviderType = isKiro ? 'kiro' : 'standard';
+  oauthCredsPath = p.kiroCredsPath || null;
+  document.getElementById('f-provider-type').value = currentProviderType;
+  document.getElementById('f-kiro-region').value = p.kiroRegion || 'us-east-1';
+  document.getElementById('f-kiro-start-url').value = p.kiroStartUrl || '';
+  // Set protocol radio
+  const protoRadio = document.querySelectorAll('input[name="f-protocol"]');
+  protoRadio.forEach(r => { r.checked = (r.value === 'anthropic') ? !!p.passthrough : !p.passthrough; });
+  switchProviderType(currentProviderType);
+
+  if (isKiro && p.kiroCredsPath) {
+    // Check OAuth credential status
+    updateOAuthStatus('pending', 'Checking credentials...');
+    apiFetch('/api/oauth/kiro/status?credsPath=' + encodeURIComponent(p.kiroCredsPath))
+      .then(r => r.json())
+      .then(status => {
+        if (status.valid) {
+          updateOAuthStatus('success', 'Authorized (expires: ' + new Date(status.expiresAt).toLocaleTimeString() + ')');
+        } else if (status.canRefresh) {
+          updateOAuthStatus('error', 'Expired - click Refresh');
+        } else {
+          updateOAuthStatus('error', 'Invalid credentials');
+        }
+      })
+      .catch(() => updateOAuthStatus('error', 'Failed to check status'));
+  } else if (isKiro) {
+    updateOAuthStatus('idle', 'Not authorized');
+  }
+
   renderModelTags();
   document.getElementById('provider-modal').classList.add('active');
 }
 
 function closeModal() {
+  if (oauthPollingTimer) { clearInterval(oauthPollingTimer); oauthPollingTimer = null; }
+  // Cancel any pending OAuth on the backend
+  if (currentProviderType === 'kiro' && !oauthCredsPath) {
+    apiFetch('/api/oauth/kiro/cancel', { method: 'POST' }).catch(() => {});
+  }
   document.getElementById('provider-modal').classList.remove('active');
 }
 
@@ -921,16 +1101,38 @@ async function saveProvider() {
   const prefix = prefixStr.includes(',')
     ? prefixStr.split(',').map(s => s.trim()).filter(Boolean)
     : prefixStr;
+  const isKiro = currentProviderType === 'kiro';
+  const protocol = document.querySelector('input[name="f-protocol"]:checked')?.value || 'openai';
+  const kiroRegion = document.getElementById('f-kiro-region').value;
+  const kiroStartUrl = document.getElementById('f-kiro-start-url').value.trim();
 
   if (!key || !name || !baseUrl || models.length === 0 || !defaultModel) {
     toast('Please fill all required fields', 'error');
     return;
   }
+  if (isKiro && !oauthCredsPath) {
+    toast('Please complete OAuth authorization first', 'error');
+    return;
+  }
+  if (!isKiro && !editingProvider && !apiKey) {
+    toast('API Key is required for new providers', 'error');
+    return;
+  }
 
   try {
     if (editingProvider) {
-      const body = { name, baseUrl, models, defaultModel, enabled, prefix: prefix || undefined };
+      const body = { name, baseUrl, models, defaultModel, enabled, prefix: prefix || '' };
       if (apiKey) body.apiKey = apiKey;
+      if (isKiro) {
+        body.authMode = 'oauth';
+        body.providerType = 'kiro';
+        body.kiroRegion = kiroRegion;
+        body.kiroStartUrl = kiroStartUrl;
+        body.kiroCredsPath = oauthCredsPath;
+        body.passthrough = false;
+      } else {
+        body.passthrough = (protocol === 'anthropic');
+      }
       await apiFetch('/api/config/providers/' + encodeURIComponent(key), {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -938,11 +1140,23 @@ async function saveProvider() {
       });
       toast('Provider updated', 'success');
     } else {
-      if (!apiKey) { toast('API Key is required for new providers', 'error'); return; }
+      const body = { name, baseUrl, models, defaultModel, enabled, prefix: prefix || '' };
+      if (isKiro) {
+        body.authMode = 'oauth';
+        body.providerType = 'kiro';
+        body.kiroRegion = kiroRegion;
+        body.kiroStartUrl = kiroStartUrl;
+        body.kiroCredsPath = oauthCredsPath;
+        body.passthrough = false;
+        body.apiKey = '';
+      } else {
+        body.apiKey = apiKey;
+        body.passthrough = (protocol === 'anthropic');
+      }
       await apiFetch('/api/config/providers', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, baseUrl, apiKey, models, defaultModel, enabled, passthrough: false, prefix: prefix || undefined })
+        body: JSON.stringify(body)
       });
       toast('Provider added', 'success');
     }
@@ -1223,7 +1437,9 @@ function switchPage(page) {
   if (section) section.classList.add('active');
   if (tab) tab.classList.add('active');
   window.location.hash = page;
-  if (page === 'config') loadConfigEditor();
+  if (page === 'config') {
+    switchConfigMode(configMode);
+  }
 }
 
 function initRouter() {
@@ -1240,6 +1456,87 @@ window.addEventListener('hashchange', () => {
 
 // ── Config Editor ──
 let configEditorCache = '';
+let configMode = localStorage.getItem('configMode') || 'ui';
+
+function switchConfigMode(mode) {
+  configMode = mode;
+  localStorage.setItem('configMode', mode);
+  document.getElementById('btn-config-ui').classList.toggle('active', mode === 'ui');
+  document.getElementById('btn-config-json').classList.toggle('active', mode === 'json');
+  document.getElementById('config-ui-mode').style.display = mode === 'ui' ? '' : 'none';
+  document.getElementById('config-json-mode').style.display = mode === 'json' ? '' : 'none';
+  if (mode === 'ui') loadConfigUI();
+  else loadConfigEditor();
+}
+
+function loadConfigUI() {
+  if (!config) return;
+  const el = id => document.getElementById(id);
+  if (el('cfg-port')) el('cfg-port').value = config.port || 9800;
+  if (el('cfg-host')) el('cfg-host').value = config.host || '0.0.0.0';
+  if (el('cfg-log-level')) el('cfg-log-level').value = config.logLevel || 'info';
+  if (el('cfg-password')) el('cfg-password').value = '';
+  if (el('cfg-rate-limit')) el('cfg-rate-limit').value = config.rateLimitRpm || 0;
+  if (el('cfg-trust-proxy')) el('cfg-trust-proxy').checked = !!config.trustProxy;
+  if (el('cfg-token-refresh')) el('cfg-token-refresh').value = config.tokenRefreshMinutes || 30;
+  if (el('cfg-stream-timeout')) el('cfg-stream-timeout').value = Math.round((config.streamTimeoutMs || 300000) / 1000);
+  if (el('cfg-stream-idle')) el('cfg-stream-idle').value = Math.round((config.streamIdleTimeoutMs || 120000) / 1000);
+  if (el('cfg-max-response')) el('cfg-max-response').value = config.maxResponseBytes ? Math.round(config.maxResponseBytes / 1048576) : 10;
+  if (el('cfg-cors')) el('cfg-cors').value = (config.corsOrigins || []).join(', ');
+
+  // Populate default provider dropdown
+  const dpSelect = el('cfg-default-provider');
+  if (dpSelect) {
+    const providers = Object.keys(config.providers || {});
+    dpSelect.innerHTML = providers.map(k =>
+      '<option value="' + esc(k) + '"' + (k === config.defaultProvider ? ' selected' : '') + '>' + esc(k) + '</option>'
+    ).join('');
+  }
+}
+
+async function saveConfigUI() {
+  const el = id => document.getElementById(id);
+  const updates = {
+    port: parseInt(el('cfg-port').value) || 9800,
+    host: el('cfg-host').value.trim() || '0.0.0.0',
+    logLevel: el('cfg-log-level').value,
+    defaultProvider: el('cfg-default-provider').value,
+    rateLimitRpm: parseInt(el('cfg-rate-limit').value) || 0,
+    trustProxy: el('cfg-trust-proxy').checked,
+    tokenRefreshMinutes: parseInt(el('cfg-token-refresh').value) || 30,
+    streamTimeoutMs: (parseInt(el('cfg-stream-timeout').value) || 300) * 1000,
+    streamIdleTimeoutMs: (parseInt(el('cfg-stream-idle').value) || 120) * 1000,
+    maxResponseBytes: (parseInt(el('cfg-max-response').value) || 10) * 1048576,
+  };
+
+  const corsVal = el('cfg-cors').value.trim();
+  if (corsVal) {
+    updates.corsOrigins = corsVal.split(',').map(s => s.trim()).filter(Boolean);
+  }
+
+  const pwd = el('cfg-password').value;
+  if (pwd) updates.password = pwd;
+
+  // Merge with existing config (preserve providers, aliases, etc.)
+  const merged = { ...config, ...updates };
+
+  try {
+    const res = await apiFetch('/api/config/import', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(merged)
+    });
+    if (res.ok) {
+      toast('Configuration saved', 'success');
+      load();
+    } else {
+      const err = await res.json().catch(() => ({}));
+      toast('Save failed: ' + (err.error?.message || res.status), 'error');
+    }
+  } catch (e) {
+    toast('Save failed: ' + e.message, 'error');
+  }
+}
 
 async function loadConfigEditor() {
   const editor = document.getElementById('config-editor');
@@ -1410,9 +1707,12 @@ function startDashboard() {
   initQuickStart();
   initRouter();
   load();
-  loadLogs();
-  loadFileLogStatus();
-  loadStats();
+  // Charts need visible canvas with dimensions; delay until layout completes
+  setTimeout(() => {
+    loadLogs();
+    loadFileLogStatus();
+    loadStats();
+  }, 150);
   initSSE();
 
   // Auto-expire session after 30 min
@@ -1428,3 +1728,27 @@ function startDashboard() {
 boot();
 setInterval(() => { if (!sseConnected) loadLogs(); }, 5000);
 setInterval(loadStats, 3000);
+window.addEventListener('resize', debounce(() => {
+  if (cachedLogs.length > 0) {
+    drawTrendChart(cachedLogs);
+    drawTokenChart(cachedLogs);
+  }
+}, 200));
+
+// Redraw charts when canvas becomes visible (e.g. after login overlay removal)
+const _chartObserver = new ResizeObserver(() => {
+  const tc = document.getElementById('trend-chart');
+  if (cachedLogs.length > 0 && tc && tc.getBoundingClientRect().width > 0) {
+    drawTrendChart(cachedLogs);
+    drawTokenChart(cachedLogs);
+    if (!chartInitialized) {
+      chartInitialized = true;
+      setupChartTooltip(tc, document.getElementById('chart-tooltip'));
+      setupTokenTooltip(document.getElementById('token-chart'));
+    }
+  }
+});
+const _tc = document.getElementById('trend-chart');
+const _tkc = document.getElementById('token-chart');
+if (_tc) _chartObserver.observe(_tc);
+if (_tkc) _chartObserver.observe(_tkc);

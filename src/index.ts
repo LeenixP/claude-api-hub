@@ -5,6 +5,8 @@ import { fileURLToPath } from 'url';
 import { loadConfig } from './config.js';
 import { createRouter } from './router.js';
 import { createServer } from './server.js';
+import { rebuildProviders } from './server.js';
+import { TokenRefresher } from './services/token-refresher.js';
 import { createProvider } from './providers/factory.js';
 import { logger, setLogLevel } from './logger.js';
 import { destroyAgents } from './services/forwarder.js';
@@ -73,6 +75,11 @@ async function main(): Promise<void> {
   const logManager = new LogManager(undefined, undefined, undefined, eventBus);
   const server = createServer(router, config, logManager, eventBus, rateTracker);
 
+  // Auto-refresh OAuth tokens (default 30 min, configurable via tokenRefreshMinutes)
+  const refreshMinutes = config.tokenRefreshMinutes || 30;
+  const tokenRefresher = new TokenRefresher(router, config, rebuildProviders, refreshMinutes);
+  tokenRefresher.start();
+
   server.on('error', (err: NodeJS.ErrnoException) => {
     if (err.code === 'EADDRINUSE') {
       logger.error(`Port ${config.port} is already in use. Try a different port with --port <port> or API_HUB_PORT env var.`);
@@ -102,6 +109,7 @@ async function main(): Promise<void> {
     }
     isShuttingDown = true;
     logger.info(`Received ${signal}, shutting down gracefully...`);
+    tokenRefresher.stop();
     server.close(() => {
       destroyAgents();
       rateTracker.destroy();

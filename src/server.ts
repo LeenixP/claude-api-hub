@@ -2,13 +2,17 @@ import http from 'http';
 import crypto from 'crypto';
 import { writeFileSync, renameSync } from 'fs';
 import { ModelRouter } from './router.js';
-import { AnthropicRequest, GatewayConfig, ProviderConfig } from './providers/types.js';
+import { AnthropicRequest, GatewayConfig, ProviderConfig, Provider } from './providers/types.js';
 import { createProvider } from './providers/factory.js';
 import { dashboardHtml } from './dashboard.js';
 import { getConfigPath, loadConfig } from './config.js';
 import { logger } from './logger.js';
 import { getCorsHeaders, sendJson, sendError, readBody, maskKey } from './utils/http.js';
 import { PerIpRateLimiter, requireAdmin, setSecurityHeaders, createSessionToken } from './middleware/auth.js';
+import {
+  handleSocialAuth, handleBuilderIDAuth, refreshCredentials,
+  importAwsCredentials, getCredentialStatus, getLastOAuthResult, clearLastOAuthResult, cancelOAuth,
+} from './providers/kiro-oauth.js';
 import { LogManager } from './services/log-manager.js';
 import type { LogEntry, LogDetail } from './services/log-manager.js';
 import { forwardRequest, forwardStream, httpGet } from './services/forwarder.js';
@@ -22,10 +26,16 @@ function saveConfig(config: GatewayConfig): void {
   renameSync(tmpPath, configPath);
 }
 
-function rebuildProviders(router: ModelRouter, config: GatewayConfig): void {
-  const providers = Object.entries(config.providers)
-    .filter(([, pc]) => pc.enabled)
-    .map(([, pc]) => createProvider(pc));
+export function rebuildProviders(router: ModelRouter, config: GatewayConfig): void {
+  const providers: Provider[] = [];
+  for (const [, pc] of Object.entries(config.providers)) {
+    if (!pc.enabled) continue;
+    try {
+      providers.push(createProvider(pc));
+    } catch (err) {
+      logger.warn(`Skipping provider "${pc.name}": ${(err as Error).message}`);
+    }
+  }
   router.replaceAll(providers);
 }
 
@@ -213,14 +223,16 @@ export function createServer(router: ModelRouter, config: GatewayConfig, logMana
         sendError(res, 400, 'invalid_request_error', 'Invalid JSON body', config, origin); return;
       }
       const { name, baseUrl, apiKey, models, defaultModel, enabled } = body;
-      if (!name || !baseUrl || !apiKey || !models || !defaultModel) {
-        sendError(res, 400, 'invalid_request_error', 'Missing required fields: name, baseUrl, apiKey, models, defaultModel', config, origin); return;
+      const authMode = body.authMode as string | undefined;
+      const isOAuth = authMode === 'oauth';
+      if (!name || !baseUrl || (!isOAuth && !apiKey) || !models || !defaultModel) {
+        sendError(res, 400, 'invalid_request_error', 'Missing required fields: name, baseUrl, apiKey (or authMode=oauth), models, defaultModel', config, origin); return;
       }
       if (config.providers[name]) {
         sendError(res, 409, 'conflict_error', `Provider "${name}" already exists`, config, origin); return;
       }
-      const allowedFields = ['name', 'baseUrl', 'apiKey', 'models', 'defaultModel', 'enabled', 'prefix', 'passthrough'];
-      const newProvider: ProviderConfig = { name, baseUrl, apiKey, models, defaultModel, enabled: enabled ?? true };
+      const allowedFields = ['name', 'baseUrl', 'apiKey', 'models', 'defaultModel', 'enabled', 'prefix', 'passthrough', 'authMode', 'providerType', 'kiroAuthMethod', 'kiroRegion', 'kiroCredsPath', 'kiroStartUrl'];
+      const newProvider: ProviderConfig = { name, baseUrl, apiKey: apiKey || '', models, defaultModel, enabled: enabled ?? true };
       for (const [k, v] of Object.entries(body)) {
         if (allowedFields.includes(k) && !(k in newProvider)) {
           (newProvider as unknown as Record<string, unknown>)[k] = v;
@@ -253,7 +265,7 @@ export function createServer(router: ModelRouter, config: GatewayConfig, logMana
       try { updates = JSON.parse(bodyStr); } catch {
         sendError(res, 400, 'invalid_request_error', 'Invalid JSON body', config, origin); return;
       }
-      const allowedUpdateFields = ['name', 'baseUrl', 'apiKey', 'models', 'defaultModel', 'enabled', 'prefix', 'passthrough'];
+      const allowedUpdateFields = ['name', 'baseUrl', 'apiKey', 'models', 'defaultModel', 'enabled', 'prefix', 'passthrough', 'authMode', 'providerType', 'kiroAuthMethod', 'kiroRegion', 'kiroCredsPath', 'kiroStartUrl'];
       const filtered: Partial<ProviderConfig> = {};
       for (const [k, v] of Object.entries(updates)) {
         if (allowedUpdateFields.includes(k)) {
@@ -434,6 +446,176 @@ export function createServer(router: ModelRouter, config: GatewayConfig, logMana
         sendJson(res, 200, { reloaded: true, config: masked }, config, origin);
       } catch (err) {
         sendError(res, 500, 'api_error', `Reload failed: ${(err as Error).message}`, config, origin);
+      }
+      return;
+    }
+
+    // ─── Kiro OAuth Routes ───
+
+    if (req.method === 'POST' && pathname === '/api/oauth/kiro/auth-url') {
+      let bodyStr: string;
+      try { bodyStr = await readBody(req); } catch {
+        sendError(res, 400, 'invalid_request_error', 'Failed to read request body', config, origin); return;
+      }
+      let body: { method?: string; region?: string; startUrl?: string };
+      try { body = JSON.parse(bodyStr); } catch {
+        sendError(res, 400, 'invalid_request_error', 'Invalid JSON body', config, origin); return;
+      }
+      const method = body.method || 'google';
+      const region = body.region || 'us-east-1';
+      const startUrl = body.startUrl || undefined;
+      try {
+        clearLastOAuthResult();
+        let result;
+        if (method === 'builder-id') {
+          result = await handleBuilderIDAuth({ region, startUrl });
+        } else {
+          const provider = method === 'github' ? 'Github' as const : 'Google' as const;
+          result = await handleSocialAuth(provider, { region });
+        }
+        sendJson(res, 200, { authUrl: result.authUrl, authInfo: result.authInfo }, config, origin);
+      } catch (err) {
+        sendError(res, 500, 'api_error', `OAuth failed: ${(err as Error).message}`, config, origin);
+      }
+      return;
+    }
+
+    if (req.method === 'POST' && pathname === '/api/oauth/kiro/import') {
+      let bodyStr: string;
+      try { bodyStr = await readBody(req); } catch {
+        sendError(res, 400, 'invalid_request_error', 'Failed to read request body', config, origin); return;
+      }
+      let body: { clientId?: string; clientSecret?: string; accessToken?: string; refreshToken?: string; region?: string; authMethod?: string };
+      try { body = JSON.parse(bodyStr); } catch {
+        sendError(res, 400, 'invalid_request_error', 'Invalid JSON body', config, origin); return;
+      }
+      try {
+        const result = await importAwsCredentials({
+          clientId: body.clientId || '',
+          clientSecret: body.clientSecret || '',
+          accessToken: body.accessToken || '',
+          refreshToken: body.refreshToken || '',
+          region: body.region,
+          authMethod: body.authMethod,
+        });
+        if (result.success) {
+          sendJson(res, 200, { success: true, credsPath: result.credsPath }, config, origin);
+        } else {
+          sendError(res, 400, 'invalid_request_error', result.error || 'Import failed', config, origin);
+        }
+      } catch (err) {
+        sendError(res, 500, 'api_error', `Import failed: ${(err as Error).message}`, config, origin);
+      }
+      return;
+    }
+
+    if (req.method === 'GET' && pathname === '/api/oauth/kiro/status') {
+      const urlObj = new URL(req.url ?? '/', `http://${req.headers.host || 'localhost'}`);
+      const credsPath = urlObj.searchParams.get('credsPath') || undefined;
+      try {
+        const status = getCredentialStatus(credsPath);
+        sendJson(res, 200, status, config, origin);
+      } catch (err) {
+        sendError(res, 500, 'api_error', `Status check failed: ${(err as Error).message}`, config, origin);
+      }
+      return;
+    }
+
+    if (req.method === 'POST' && pathname === '/api/oauth/kiro/refresh') {
+      let bodyStr: string;
+      try { bodyStr = await readBody(req); } catch {
+        sendError(res, 400, 'invalid_request_error', 'Failed to read request body', config, origin); return;
+      }
+      let body: { credsPath?: string };
+      try { body = JSON.parse(bodyStr); } catch {
+        sendError(res, 400, 'invalid_request_error', 'Invalid JSON body', config, origin); return;
+      }
+      try {
+        const refreshed = await refreshCredentials(body.credsPath);
+        sendJson(res, 200, { success: true, expiresAt: refreshed.expiresAt }, config, origin);
+      } catch (err) {
+        sendError(res, 500, 'api_error', `Refresh failed: ${(err as Error).message}`, config, origin);
+      }
+      return;
+    }
+
+    if (req.method === 'GET' && pathname === '/api/oauth/kiro/result') {
+      const result = getLastOAuthResult();
+      sendJson(res, 200, result || { success: false, error: 'No pending OAuth result' }, config, origin);
+      if (result) clearLastOAuthResult();
+      return;
+    }
+
+    if (req.method === 'POST' && pathname === '/api/oauth/kiro/cancel') {
+      cancelOAuth();
+      sendJson(res, 200, { cancelled: true }, config, origin);
+      return;
+    }
+
+    if (req.method === 'GET' && pathname === '/api/oauth/kiro/models') {
+      sendJson(res, 200, {
+        models: [
+          'claude-sonnet-4-6',
+          'claude-haiku-4-5',
+          'claude-opus-4-6',
+          'claude-opus-4-7',
+          'claude-opus-4-5',
+          'claude-sonnet-4-5',
+          'claude-sonnet-4-20250514',
+          'claude-3-7-sonnet-20250219',
+        ],
+      }, config, origin);
+      return;
+    }
+
+    // ─── Provider Test (full Claude Code flow, bypass aliases) ───
+
+    const testMatch = pathname.match(/^\/api\/test-provider\/([^/]+)$/);
+    if (req.method === 'POST' && testMatch) {
+      const providerKey = decodeURIComponent(testMatch[1]);
+      const pc = config.providers[providerKey];
+      if (!pc) {
+        sendError(res, 404, 'not_found_error', `Provider "${providerKey}" not found`, config, origin);
+        return;
+      }
+      let testProvider: Provider;
+      try {
+        testProvider = createProvider(pc);
+      } catch (err) {
+        sendError(res, 500, 'api_error', `Provider init failed: ${(err as Error).message}`, config, origin);
+        return;
+      }
+      const model = pc.defaultModel || pc.models[0];
+      if (!model) {
+        sendError(res, 400, 'invalid_request_error', 'No model configured for this provider', config, origin);
+        return;
+      }
+      const testReq: AnthropicRequest = {
+        model,
+        max_tokens: 32,
+        messages: [{ role: 'user', content: 'Say "ok" and nothing else.' }],
+        stream: false,
+      };
+      let built: { url: string; headers: Record<string, string>; body: string };
+      try {
+        built = testProvider.buildRequest(testReq);
+      } catch (err) {
+        sendError(res, 500, 'api_error', `Build error: ${(err as Error).message}`, config, origin);
+        return;
+      }
+      const startTime = Date.now();
+      try {
+        const upstream = await forwardRequest(built.url, built.headers, built.body, 30000, config.maxResponseBytes);
+        const latency = Date.now() - startTime;
+        if (upstream.status === 200) {
+          sendJson(res, 200, { success: true, latencyMs: latency, model, provider: pc.name || providerKey }, config, origin);
+        } else {
+          let errMsg = '';
+          try { const j = JSON.parse(upstream.body); errMsg = j.error?.message || j.message || upstream.body.slice(0, 300); } catch { errMsg = upstream.body.slice(0, 300); }
+          sendJson(res, 200, { success: false, latencyMs: latency, status: upstream.status, error: errMsg, model, provider: pc.name || providerKey }, config, origin);
+        }
+      } catch (err) {
+        sendJson(res, 200, { success: false, latencyMs: Date.now() - startTime, error: (err as Error).message, model, provider: pc.name || providerKey }, config, origin);
       }
       return;
     }

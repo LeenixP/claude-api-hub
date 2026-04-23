@@ -63,12 +63,15 @@ The gateway intercepts Anthropic Messages API requests from Claude Code, resolve
 - **Multi-Key Pool**: Round-robin key rotation with automatic health tracking and recovery per provider
 - **Fallback Chain**: Auto-route to backup provider when primary is unhealthy, with cycle detection
 - **Rate Tracker**: Real-time QPS/RPM/TPS metrics via `/api/stats` endpoint
-- **Config Editor**: JSON config editor with validation, import/export support
+- **Config Editor**: Dual-mode config editor — structured UI form or raw JSON editor, with validation, import/export support
 - **Setup Guide**: Interactive setup guide in the management panel
 - **Alias Mapping**: Map haiku / sonnet / opus to any provider's model via combo dropdown with auto-detection from provider APIs
-- **Protocol Toggle**: Switch between Anthropic (passthrough) and OpenAI (auto-translate) per provider with one click
+- **Protocol Selection**: Choose between Anthropic (passthrough) and OpenAI (auto-translate) per provider inside the modal form
+- **Kiro OAuth**: One-click OAuth authorization for Kiro (Google, GitHub, or AWS Builder ID) directly from the Web dashboard — no manual credential files needed
+- **Token Auto-Refresh**: Background service automatically refreshes OAuth credentials before expiry (configurable interval, default 30 minutes)
+- **Provider Testing**: Test each provider with a full Claude Code request flow, bypassing alias routing to verify direct connectivity
 - **Provider Health Check**: Test each provider with real `/v1/messages` requests, shows response text and latency
-- **Model Management**: Tag-based model editor — add, remove, or fetch models from provider APIs
+- **Model Management**: Tag-based model editor — add, remove, or fetch models from provider APIs. Kiro models fetched from built-in list
 - **Request Logging**: Live auto-refreshing logs with tier detection (Haiku/Sonnet/Opus), expandable details, and filter by status
 - **File Logging**: Optional detailed logging to `~/.claude-api-hub/logs/` with 4096 file limit and auto-cleanup
 - **Hot Reload**: Add/edit/delete providers and aliases without restarting the gateway
@@ -142,12 +145,16 @@ Access `http://localhost:9800` — split into two panels:
 
 **Left Panel:**
 - **Quick Start**: 3-step setup guide with copyable config snippet
-- **Alias Mapping**: Map haiku/sonnet/opus to any model. Combo dropdown auto-detects models from provider APIs, also accepts custom model names
-- **Providers**: Cards showing name, protocol badge (click to toggle Anthropic/OpenAI), models (merged from API + config), prefix, default model, key status. Test/Edit/Delete buttons on each card
+- **Alias Mapping**: Map haiku/sonnet/opus to any model. Combo dropdown auto-detects models from provider APIs, also accepts custom model names. Per-tier timeout configuration
+- **Providers**: Cards showing name, protocol badge (Anthropic/OpenAI/Kiro), models (merged from API + config), prefix, default model, key status. Test/Edit/Delete buttons on each card
 
 **Right Panel:**
-- **Request Logs**: Auto-refreshes every 2s, preserves expanded state. Filter by All/OK/Errors. Each entry shows `claudeModel → resolvedModel → provider` with duration. Click to expand details (request ID, target URL, error info, log file path)
+- **Request Logs**: Real-time SSE updates, preserves expanded state. Filter by All/OK/Errors. Each entry shows `claudeModel → resolvedModel → provider` with duration. Click to expand details (request ID, target URL, error info, log file path)
 - **File Log Toggle**: Enable/disable detailed file logging to disk
+
+**Config Page (dual-mode):**
+- **UI Mode**: Structured form with cards for General, Security, Token Refresh, Stream/Timeouts, CORS settings
+- **JSON Mode**: Raw JSON editor with validation, import/export, and reset
 
 ## Alias Mapping
 
@@ -188,41 +195,70 @@ Via the Web dashboard (recommended) or config file at `~/.claude-api-hub/provide
 |-------|-------------|
 | `name` | Display name |
 | `baseUrl` | API endpoint base URL |
-| `apiKey` | API key (supports `${ENV_VAR}` syntax) |
+| `apiKey` | API key (supports `${ENV_VAR}` syntax). Not required for Kiro OAuth providers |
 | `models` | List of available model IDs |
 | `defaultModel` | Default model for this provider |
 | `prefix` | Routing prefix (string or array), e.g. `"kimi-"` |
 | `passthrough` | `true` = Anthropic Messages API (direct forward), `false` = OpenAI Chat Completions API (auto-translate) |
 | `enabled` | `true` / `false` to enable/disable |
+| `providerType` | `"standard"` (default) or `"kiro"` for Kiro OAuth providers |
+| `authMode` | `"apikey"` (default) or `"oauth"` for OAuth-based authentication |
+| `kiroRegion` | AWS region for Kiro provider (default: `us-east-1`) |
+| `kiroCredsPath` | Path to Kiro OAuth credentials file |
+| `kiroStartUrl` | Custom AWS SSO start URL for Builder ID auth |
 
 ### Protocol Selection
 
-Each provider can use either protocol — toggle via the badge on the provider card:
+Each provider can use one of three protocols — select inside the provider modal form:
 
 - **Anthropic API** (passthrough): Request forwarded as-is via `x-api-key`. Use for Anthropic official API or compatible proxies (e.g. MiniMax Anthropic endpoint)
 - **OpenAI Compatible** (auto-translate): Request auto-translated from Anthropic to OpenAI format. Auth via `Bearer` token. Use for Kimi, GLM, DeepSeek, and any OpenAI-compatible API
-- **Kiro** (AWS Q): Uses Kiro OAuth credentials to call Claude models via AWS Q `generateAssistantResponse` endpoint. Requires a Kiro OAuth credentials file (see below)
+- **Kiro** (AWS Q): Select "Kiro" as Provider Type. Uses OAuth credentials to call Claude models via AWS Q `generateAssistantResponse` endpoint. Authorize directly from the Web UI
 
 ## Kiro Provider
 
 The Kiro provider routes requests through AWS Q (CodeWhisperer), allowing you to use Claude models with Kiro OAuth credentials instead of an Anthropic API key.
 
-### Setup
+### Web UI Authorization (Recommended)
 
-1. Obtain Kiro OAuth credentials (via Kiro IDE login or AWS Builder ID)
-2. Save the credentials JSON file (containing `accessToken`, `refreshToken`, etc.)
-3. Add the provider in the dashboard or config:
+1. Open the Web dashboard → click **Add Provider** → select **Kiro** as Provider Type
+2. In the **Kiro Authorization** section, choose an auth method:
+   - **Sign in with Google** — One-click, easiest
+   - **Sign in with GitHub** — One-click, easiest
+   - **AWS Builder ID** — Use your AWS developer account (requires verification code)
+3. Optionally set **Region** and **Start URL** (for custom AWS SSO endpoints)
+4. Click the auth button — a popup opens for authorization
+5. After authorization completes, the status updates automatically
+6. Click **Fetch** to load available models, then **Save**
+
+Credentials are saved to `~/.kiro/oauth_creds.json` and automatically refreshed in the background (configurable interval, default 30 minutes).
+
+### Manual Config
+
+Alternatively, add the provider directly in the config file:
 
 ```json
 "kiro": {
   "name": "Kiro",
   "baseUrl": "https://q.us-east-1.amazonaws.com",
-  "apiKey": "/path/to/kiro-credentials.json",
+  "apiKey": "",
   "models": ["claude-sonnet-4-6", "claude-haiku-4-5"],
   "defaultModel": "claude-sonnet-4-6",
   "enabled": true,
-  "prefix": "kiro-",
-  "passthrough": true
+  "providerType": "kiro",
+  "authMode": "oauth",
+  "kiroRegion": "us-east-1",
+  "kiroCredsPath": "~/.kiro/oauth_creds.json"
+}
+```
+
+### Token Auto-Refresh
+
+OAuth tokens are automatically refreshed before expiry by a background service. Configure the interval in the Config page or in the config file:
+
+```json
+{
+  "tokenRefreshMinutes": 30
 }
 ```
 
@@ -274,6 +310,14 @@ Tokens are automatically refreshed when expired.
 | `/api/aliases` | GET/PUT | Get or update alias mapping |
 | `/api/fetch-models` | GET | Fetch real model lists from provider APIs |
 | `/api/health/providers` | GET | Test connectivity to all providers |
+| `/api/test-provider/:key` | POST | Test a provider with full request flow (bypasses aliases) |
+| `/api/oauth/kiro/auth-url` | POST | Start Kiro OAuth flow (returns auth URL) |
+| `/api/oauth/kiro/result` | GET | Poll OAuth authorization result |
+| `/api/oauth/kiro/status` | GET | Check Kiro credential status |
+| `/api/oauth/kiro/refresh` | POST | Manually refresh Kiro credentials |
+| `/api/oauth/kiro/cancel` | POST | Cancel pending OAuth flow |
+| `/api/oauth/kiro/import` | POST | Import AWS SSO credentials |
+| `/api/oauth/kiro/models` | GET | List available Kiro models |
 | `/api/logs` | GET | Request logs (last 200, lightweight) |
 | `/api/logs/clear` | POST | Clear log buffer |
 | `/api/logs/file-status` | GET | File logging status and file count |

@@ -41,7 +41,6 @@ export class KiroAuth {
     this.region = this.creds.region || this.region;
   }
 
-  /** Synchronous credential loading for buildRequest (called once at startup). */
   loadCredentialsSync(): void {
     const envB64 = process.env.KIRO_OAUTH_CREDS_BASE64;
     if (envB64) {
@@ -58,12 +57,10 @@ export class KiroAuth {
     this.region = this.creds.region || this.region;
   }
 
-  /** Get access token synchronously (must call loadCredentialsSync first). */
   getAccessTokenSync(): string | undefined {
     return this.creds.accessToken;
   }
 
-  /** Get profileArn synchronously. */
   getProfileArn(): string | undefined {
     return this.creds.profileArn;
   }
@@ -144,6 +141,27 @@ export class KiroAuth {
     } catch { /* best effort */ }
   }
 
+  static async refreshCredentials(credsPath: string): Promise<KiroCredentials> {
+    const auth = new KiroAuth('us-east-1', credsPath);
+    await auth.loadCredentials();
+    await auth.refreshToken();
+    return auth['creds'];
+  }
+
+  static getCredentialStatus(credsPath: string): { valid: boolean; expiresAt?: string; authMethod?: string; canRefresh: boolean } {
+    try {
+      const raw = fs.readFileSync(credsPath, 'utf-8');
+      const creds = JSON.parse(raw) as KiroCredentials;
+      const expired = creds.expiresAt ? Date.now() > new Date(creds.expiresAt).getTime() - 5 * 60 * 1000 : true;
+      const canRefresh = !!creds.refreshToken && (
+        creds.authMethod === 'social' || (!!creds.clientId && !!creds.clientSecret)
+      );
+      return { valid: !expired, expiresAt: creds.expiresAt, authMethod: creds.authMethod, canRefresh };
+    } catch {
+      return { valid: false, canRefresh: false };
+    }
+  }
+
   private httpsPost(url: string, body: Record<string, string>): Promise<Record<string, unknown>> {
     return new Promise((resolve, reject) => {
       const payload = JSON.stringify(body);
@@ -162,7 +180,7 @@ export class KiroAuth {
         res.on('data', (chunk: Buffer) => { data += chunk.toString(); });
         res.on('end', () => {
           if (res.statusCode && res.statusCode >= 400) {
-  return reject(new Error(`Token refresh failed: HTTP ${res.statusCode} - ${data}`));
+            return reject(new Error(`Token refresh failed: HTTP ${res.statusCode} - ${data}`));
           }
           try { resolve(JSON.parse(data) as Record<string, unknown>); }
           catch { reject(new Error(`Invalid JSON in refresh response: ${data}`)); }

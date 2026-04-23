@@ -208,23 +208,124 @@
 
   <!-- Config Page -->
   <div class="page-section" id="page-config">
-    <div class="section-header"><h2>Configuration Editor</h2></div>
-    <div class="card" style="padding:20px">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px">
-        <div style="display:flex;align-items:center;gap:8px">
-          <span id="config-status" style="font-size:12px;color:var(--text-muted)">Loading...</span>
-        </div>
-        <div style="display:flex;gap:6px;flex-wrap:wrap">
-          <label class="btn-ghost btn-sm" style="cursor:pointer;margin:0">
-            Import
-            <input type="file" id="config-import-file" accept=".json" style="display:none" onchange="importConfig(this)">
-          </label>
-          <button class="btn-ghost btn-sm" onclick="exportConfig()">Export</button>
-          <button class="btn-ghost btn-sm" onclick="resetConfigEditor()">Reset</button>
-          <button class="btn-primary btn-sm" onclick="saveConfigEditor()">Save</button>
+    <div class="section-header">
+      <h2>Configuration</h2>
+      <div class="config-mode-toggle">
+        <button class="config-mode-btn active" id="btn-config-ui" onclick="switchConfigMode('ui')">UI Mode</button>
+        <button class="config-mode-btn" id="btn-config-json" onclick="switchConfigMode('json')">JSON Editor</button>
+      </div>
+    </div>
+
+    <!-- UI Mode -->
+    <div id="config-ui-mode">
+      <div class="config-card">
+        <h4>General</h4>
+        <div class="form-grid">
+          <div class="form-group">
+            <label>Port</label>
+            <input type="number" id="cfg-port" min="1" max="65535">
+          </div>
+          <div class="form-group">
+            <label>Host</label>
+            <input type="text" id="cfg-host">
+          </div>
+          <div class="form-group">
+            <label>Log Level</label>
+            <select id="cfg-log-level">
+              <option value="debug">debug</option>
+              <option value="info">info</option>
+              <option value="warn">warn</option>
+              <option value="error">error</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Default Provider</label>
+            <select id="cfg-default-provider"></select>
+          </div>
         </div>
       </div>
-      <textarea id="config-editor" spellcheck="false" style="width:100%;min-height:520px;background:var(--bg);border:2px solid var(--border);border-radius:var(--radius-sm);padding:14px;font-family:var(--mono);font-size:13px;color:var(--text);line-height:1.6;resize:vertical;outline:none;transition:border-color 0.2s" oninput="validateJson()"></textarea>
+
+      <div class="config-card">
+        <h4>Security</h4>
+        <div class="form-grid">
+          <div class="form-group">
+            <label>Admin Password</label>
+            <input type="password" id="cfg-password" placeholder="Leave blank to keep current">
+          </div>
+          <div class="form-group">
+            <label>Rate Limit (RPM)</label>
+            <input type="number" id="cfg-rate-limit" min="0" placeholder="0 = disabled">
+          </div>
+          <div class="form-group">
+            <div class="form-check">
+              <input type="checkbox" id="cfg-trust-proxy">
+              <label for="cfg-trust-proxy">Trust Proxy (X-Forwarded-For)</label>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="config-card">
+        <h4>OAuth Token Refresh</h4>
+        <div class="form-grid">
+          <div class="form-group">
+            <label>Refresh Interval (minutes)</label>
+            <input type="number" id="cfg-token-refresh" min="5" max="1440" placeholder="30">
+          </div>
+        </div>
+      </div>
+
+      <div class="config-card">
+        <h4>Stream & Timeouts</h4>
+        <div class="form-grid">
+          <div class="form-group">
+            <label>Stream Timeout (sec)</label>
+            <input type="number" id="cfg-stream-timeout" min="1000">
+          </div>
+          <div class="form-group">
+            <label>Stream Idle Timeout (sec)</label>
+            <input type="number" id="cfg-stream-idle" min="1000">
+          </div>
+          <div class="form-group">
+            <label>Max Response (MB)</label>
+            <input type="number" id="cfg-max-response" min="1">
+          </div>
+        </div>
+      </div>
+
+      <div class="config-card">
+        <h4>CORS Origins</h4>
+        <div class="form-group">
+          <label>Allowed Origins <span style="font-weight:400;color:var(--text-muted)">(comma-separated, * for all)</span></label>
+          <input type="text" id="cfg-cors" placeholder="http://localhost:3000, http://localhost:8080">
+        </div>
+      </div>
+
+      <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:16px">
+        <button class="btn-ghost" onclick="loadConfigUI()">Reset</button>
+        <button class="btn-primary" onclick="saveConfigUI()">Save Configuration</button>
+      </div>
+    </div>
+
+    <!-- JSON Mode -->
+    <div id="config-json-mode" style="display:none">
+      <div class="card" style="padding:20px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px">
+          <div style="display:flex;align-items:center;gap:8px">
+            <span id="config-status" style="font-size:12px;color:var(--text-muted)">Loading...</span>
+          </div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
+            <label class="btn-ghost btn-sm" style="cursor:pointer;margin:0">
+              Import
+              <input type="file" id="config-import-file" accept=".json" style="display:none" onchange="importConfig(this)">
+            </label>
+            <button class="btn-ghost btn-sm" onclick="exportConfig()">Export</button>
+            <button class="btn-ghost btn-sm" onclick="resetConfigEditor()">Reset</button>
+            <button class="btn-primary btn-sm" onclick="saveConfigEditor()">Save</button>
+          </div>
+        </div>
+        <textarea id="config-editor" spellcheck="false" style="width:100%;min-height:520px;background:var(--bg);border:2px solid var(--border);border-radius:var(--radius-sm);padding:14px;font-family:var(--mono);font-size:13px;color:var(--text);line-height:1.6;resize:vertical;outline:none;transition:border-color 0.2s" oninput="validateJson()"></textarea>
+      </div>
     </div>
   </div>
 
@@ -398,32 +499,95 @@ curl -X PUT http://localhost:3456/api/aliases \
 
 <!-- Provider Modal -->
 <div class="modal-overlay" id="provider-modal">
-  <div class="modal">
+  <div class="modal" style="max-width:560px">
     <h3 id="modal-title">Add Provider</h3>
     <div class="form-grid">
       <div class="form-group">
-        <label>ID <span style="font-weight:400;color:var(--text-muted)">(unique key for routing)</span></label>
+        <label>ID <span style="font-weight:400;color:var(--text-muted)">(unique key)</span></label>
         <input type="text" id="f-key" placeholder="e.g. deepseek">
       </div>
       <div class="form-group">
         <label>Display Name</label>
         <input type="text" id="f-name" placeholder="e.g. DeepSeek">
       </div>
+      <div class="form-group">
+        <label>Provider Type</label>
+        <select id="f-provider-type" onchange="switchProviderType(this.value)">
+          <option value="standard">Standard (API Key)</option>
+          <option value="kiro">Kiro (AWS OAuth)</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <div class="form-check">
+          <input type="checkbox" id="f-enabled" checked>
+          <label for="f-enabled">Enabled</label>
+        </div>
+      </div>
       <div class="form-group full">
         <label>Base URL</label>
         <input type="text" id="f-url" placeholder="https://api.deepseek.com/v1">
       </div>
-      <div class="form-group full">
+
+      <!-- Auth: API Key Mode -->
+      <div class="form-group full" id="auth-apikey-section">
         <label>API Key</label>
         <input type="text" id="f-key-val" placeholder="sk-... or ${ENV_VAR}">
+        <div style="display:flex;gap:8px;margin-top:6px">
+          <label style="font-size:12px;color:var(--text-muted)">Protocol:</label>
+          <label class="protocol-option"><input type="radio" name="f-protocol" value="anthropic" checked><span>Anthropic</span></label>
+          <label class="protocol-option"><input type="radio" name="f-protocol" value="openai"><span>OpenAI</span></label>
+        </div>
       </div>
+
+      <!-- Auth: OAuth Mode -->
+      <div class="form-group full" id="auth-oauth-section" style="display:none">
+        <label>Kiro Authorization</label>
+        <div class="oauth-card">
+          <p style="margin:0 0 12px;font-size:13px;color:var(--text-dim)">Authorize Kiro to get free access to Claude models via AWS.</p>
+          <div class="oauth-method-row">
+            <button type="button" class="oauth-btn oauth-btn-google" onclick="startKiroOAuth('google')">
+              <strong>Sign in with Google</strong>
+              <small>One-click, easiest</small>
+            </button>
+            <button type="button" class="oauth-btn oauth-btn-github" onclick="startKiroOAuth('github')">
+              <strong>Sign in with GitHub</strong>
+              <small>One-click, easiest</small>
+            </button>
+          </div>
+          <div style="margin-top:10px">
+            <button type="button" class="oauth-btn oauth-btn-aws" style="width:100%" onclick="startKiroOAuth('builder-id')">
+              <strong>AWS Builder ID</strong>
+              <small>Use your AWS developer account (requires verification code input)</small>
+            </button>
+          </div>
+          <div class="oauth-row" style="margin-top:10px">
+            <label style="font-size:12px;color:var(--text-muted);min-width:44px">Region</label>
+            <select id="f-kiro-region" style="flex:1">
+              <option value="us-east-1">us-east-1 (default)</option>
+              <option value="eu-west-1">eu-west-1</option>
+              <option value="ap-northeast-1">ap-northeast-1</option>
+            </select>
+          </div>
+          <div class="oauth-row" style="margin-top:6px">
+            <label style="font-size:12px;color:var(--text-muted);min-width:44px">Start URL</label>
+            <input type="text" id="f-kiro-start-url" placeholder="Optional, e.g. https://d-xxxxx.awsapps.com/start" style="flex:1;font-size:12px">
+          </div>
+          <div id="oauth-status" class="oauth-status oauth-status-idle">
+            Not authorized
+          </div>
+          <div id="oauth-actions" style="display:flex;gap:6px;margin-top:8px">
+            <button type="button" class="btn-ghost btn-sm" id="btn-refresh-creds" onclick="refreshKiroCreds()" style="display:none">Refresh Credentials</button>
+          </div>
+        </div>
+      </div>
+
       <div class="form-group full">
         <label>Models</label>
         <div id="f-models-tags" style="display:flex;flex-wrap:wrap;gap:5px;min-height:32px;padding:6px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:4px"></div>
         <div style="display:flex;gap:6px">
           <input type="text" id="f-model-input" placeholder="Type model name and press Enter" style="flex:1">
           <button class="btn-ghost btn-sm" type="button" onclick="addModelTag()">Add</button>
-          <button class="btn-ghost btn-sm" type="button" onclick="fetchAndAddModels()">Fetch from API</button>
+          <button class="btn-ghost btn-sm" type="button" onclick="fetchAndAddModels()">Fetch</button>
         </div>
       </div>
       <div class="form-group">
@@ -431,15 +595,8 @@ curl -X PUT http://localhost:3456/api/aliases \
         <input type="text" id="f-default" placeholder="deepseek-chat">
       </div>
       <div class="form-group">
-        <label>Prefix <span style="font-weight:400;color:var(--text-muted)">(for routing)</span></label>
+        <label>Prefix <span style="font-weight:400;color:var(--text-muted)">(routing)</span></label>
         <input type="text" id="f-prefix" placeholder="deepseek-">
-      </div>
-      <div class="form-group">
-        <div class="form-check">
-          <input type="checkbox" id="f-enabled" checked>
-          <label for="f-enabled">Enabled</label>
-        </div>
-
       </div>
     </div>
     <div class="modal-actions">
