@@ -1305,6 +1305,7 @@ let editingProvider = null;
 let logFilter = 'all';
 let healthCache = {};
 let adminToken = localStorage.getItem('adminToken') || '';
+let authDismissed = false;
 
 function apiHeaders(extra) {
   const h = extra || {};
@@ -1316,13 +1317,19 @@ async function apiFetch(url, options) {
   const opts = options || {};
   opts.headers = apiHeaders(opts.headers || {});
   const res = await fetch(url, opts);
-  if (res.status === 401) {
-    const token = prompt('Enter admin token to access the dashboard:');
+  if (res.status === 401 && !authDismissed) {
+    if (adminToken) {
+      adminToken = '';
+      localStorage.removeItem('adminToken');
+    }
+    const token = prompt('This dashboard requires an admin token:');
     if (token) {
       adminToken = token;
       localStorage.setItem('adminToken', token);
       opts.headers['x-admin-token'] = token;
       return fetch(url, opts);
+    } else {
+      authDismissed = true;
     }
   }
   return res;
