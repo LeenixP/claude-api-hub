@@ -1374,6 +1374,7 @@ async function load() {
 }
 
 function updateHeaderStats() {
+  if (!config || !config.providers) return;
   const pCount = Object.values(config.providers).filter(p => p.enabled).length;
   const mCount = allModels.length;
   document.getElementById('stat-providers').innerHTML = '<b>' + pCount + '</b> providers';

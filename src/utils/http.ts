@@ -49,6 +49,7 @@ export function readBody(req: http.IncomingMessage, maxBytes = 10 * 1024 * 1024)
 }
 
 export function maskKey(key: string): string {
+  if (!key) return '***';
   if (key.length <= 8) return '***';
   return key.slice(0, 4) + '***' + key.slice(-4);
 }
