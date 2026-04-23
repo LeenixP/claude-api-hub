@@ -166,7 +166,7 @@ html.theme-transition *::after {
 /* ── Stats Grid ── */
 .stats-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   gap: 16px;
   margin-bottom: 24px;
 }
@@ -201,6 +201,7 @@ html.theme-transition *::after {
 .stat-card:nth-child(2) { --stat-accent: var(--success); }
 .stat-card:nth-child(3) { --stat-accent: var(--violet); }
 .stat-card:nth-child(4) { --stat-accent: var(--danger); }
+.stat-card:nth-child(5) { --stat-accent: var(--cyan); }
 .stat-icon {
   width: 42px; height: 42px;
   border-radius: 10px;
@@ -681,6 +682,12 @@ button {
       </div>
       <div><div class="stat-value" id="stat-error-count">0</div><div class="stat-label">Errors</div></div>
     </div>
+    <div class="stat-card">
+      <div class="stat-icon" style="background:rgba(34,211,238,0.12);color:var(--cyan)">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7V4h16v3"/><path d="M9 20h6"/><path d="M12 4v16"/></svg>
+      </div>
+      <div><div class="stat-value" id="stat-total-tokens">0</div><div class="stat-label">Total Tokens</div></div>
+    </div>
   </section>
 
   <section class="chart-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px">
@@ -931,11 +938,19 @@ function updateStats(logs) {
   const ok = logs.filter(l => l.status >= 200 && l.status < 300).length;
   const rate = total > 0 ? ((ok / total) * 100).toFixed(1) + '%' : '-';
   const avgMs = total > 0 ? Math.round(logs.reduce((s, l) => s + (l.durationMs || 0), 0) / total) + 'ms' : '-';
+  const totalTokens = logs.reduce((s, l) => s + (l.inputTokens || 0) + (l.outputTokens || 0), 0);
   const el = (id) => document.getElementById(id);
   if (el('stat-total-req')) animateValue(el('stat-total-req'), total);
   if (el('stat-success-rate')) el('stat-success-rate').textContent = rate;
   if (el('stat-avg-latency')) el('stat-avg-latency').textContent = avgMs;
   if (el('stat-error-count')) animateValue(el('stat-error-count'), total - ok);
+  if (el('stat-total-tokens')) {
+    if (totalTokens > 0) {
+      el('stat-total-tokens').textContent = totalTokens > 1000 ? (totalTokens / 1000).toFixed(1) + 'K' : totalTokens.toString();
+    } else {
+      el('stat-total-tokens').textContent = '-';
+    }
+  }
 }
 
 // ── Charts ──
@@ -953,26 +968,110 @@ function setChartRange(hours, btn) {
 
 function setupChartTooltip(canvas, tooltip) {
   if (!canvas || !tooltip) return;
+  let overlayCanvas = document.getElementById('trend-overlay');
+  if (!overlayCanvas) {
+    overlayCanvas = document.createElement('canvas');
+    overlayCanvas.id = 'trend-overlay';
+    overlayCanvas.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none';
+    canvas.parentElement.appendChild(overlayCanvas);
+  }
+
   canvas.addEventListener('mousemove', (e) => {
     const rect = canvas.getBoundingClientRect();
     const x = e.clientX - rect.left;
-    const pad = 30;
-    const plotW = rect.width - pad - 8;
-    const idx = Math.floor(((x - pad) / plotW) * chartBuckets.length);
-    if (idx < 0 || idx >= chartBuckets.length) { tooltip.style.display = 'none'; return; }
-    const time = new Date(chartCutoff + idx * chartBucketMs);
-    const timeStr = time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    const ok = chartBuckets[idx] - chartErrBuckets[idx];
-    tooltip.innerHTML = '<div style="color:var(--text);font-weight:600;margin-bottom:4px">' + timeStr + '</div>'
-      + '<div style="color:var(--success)">OK: ' + ok + '</div>'
-      + '<div style="color:var(--danger)">Errors: ' + chartErrBuckets[idx] + '</div>'
-      + '<div style="color:var(--text-dim)">Total: ' + chartBuckets[idx] + '</div>';
-    tooltip.style.display = 'block';
-    const tx = Math.min(x + 12, rect.width - 130);
-    tooltip.style.left = tx + 'px';
-    tooltip.style.top = '8px';
+    const y = e.clientY - rect.top;
+    const padL = 30, padR = 8, padT = 10, padB = 20;
+    const plotW = rect.width - padL - padR;
+    const plotH = rect.height - padT - padB;
+    const idx = Math.floor(((x - padL) / plotW) * chartBuckets.length);
+
+    // Draw crosshair
+    const dpr = window.devicePixelRatio || 1;
+    overlayCanvas.width = rect.width * dpr;
+    overlayCanvas.height = rect.height * dpr;
+    const octx = overlayCanvas.getContext('2d');
+    octx.scale(dpr, dpr);
+    octx.clearRect(0, 0, rect.width, rect.height);
+
+    if (idx >= 0 && idx < chartBuckets.length && x >= padL && x <= rect.width - padR) {
+      const stepX = plotW / (chartBuckets.length - 1 || 1);
+      const snapX = padL + idx * stepX;
+      const max = Math.max(...chartBuckets, 1);
+      const snapY = padT + plotH - (chartBuckets[idx] / max) * plotH;
+
+      // Vertical line
+      octx.strokeStyle = 'rgba(148, 163, 184, 0.4)';
+      octx.lineWidth = 1;
+      octx.setLineDash([3, 3]);
+      octx.beginPath(); octx.moveTo(snapX, padT); octx.lineTo(snapX, padT + plotH); octx.stroke();
+      // Horizontal line
+      octx.beginPath(); octx.moveTo(padL, snapY); octx.lineTo(rect.width - padR, snapY); octx.stroke();
+      octx.setLineDash([]);
+      // Dot
+      octx.beginPath(); octx.arc(snapX, snapY, 4, 0, Math.PI * 2);
+      octx.fillStyle = '#3B82F6'; octx.fill();
+      octx.strokeStyle = '#fff'; octx.lineWidth = 1.5; octx.stroke();
+
+      const time = new Date(chartCutoff + idx * chartBucketMs);
+      const timeStr = time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      const ok = chartBuckets[idx] - chartErrBuckets[idx];
+      tooltip.innerHTML = '<div style="color:var(--text);font-weight:600;margin-bottom:3px">' + timeStr + '</div>'
+        + '<div><span style="color:var(--success)">\\u25CF</span> OK: ' + ok + '</div>'
+        + '<div><span style="color:var(--danger)">\\u25CF</span> Errors: ' + chartErrBuckets[idx] + '</div>'
+        + '<div style="color:var(--text-dim);border-top:1px solid var(--border);margin-top:3px;padding-top:3px">Total: ' + chartBuckets[idx] + '</div>';
+      tooltip.style.display = 'block';
+      const tx = snapX + 16 > rect.width - 130 ? snapX - 140 : snapX + 16;
+      tooltip.style.left = tx + 'px';
+      tooltip.style.top = Math.max(8, snapY - 30) + 'px';
+    } else {
+      tooltip.style.display = 'none';
+    }
   });
-  canvas.addEventListener('mouseleave', () => { tooltip.style.display = 'none'; });
+  canvas.addEventListener('mouseleave', () => {
+    tooltip.style.display = 'none';
+    const octx = overlayCanvas.getContext('2d');
+    octx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+  });
+}
+
+let tokenBuckets = { input: [], output: [], bucketMs: 0, cutoff: 0 };
+
+function setupTokenTooltip(canvas) {
+  if (!canvas) return;
+  let tip = document.getElementById('token-tooltip');
+  if (!tip) {
+    tip = document.createElement('div');
+    tip.id = 'token-tooltip';
+    tip.style.cssText = 'display:none;position:absolute;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:8px 12px;font-size:11px;pointer-events:none;z-index:10;box-shadow:var(--shadow)';
+    canvas.parentElement.style.position = 'relative';
+    canvas.parentElement.appendChild(tip);
+  }
+
+  canvas.addEventListener('mousemove', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const padL = 8, padR = 8;
+    const plotW = rect.width - padL - padR;
+    const count = tokenBuckets.input.length;
+    if (count === 0) { tip.style.display = 'none'; return; }
+    const barW = plotW / count;
+    const idx = Math.floor((x - padL) / barW);
+    if (idx < 0 || idx >= count) { tip.style.display = 'none'; return; }
+
+    const inTok = tokenBuckets.input[idx];
+    const outTok = tokenBuckets.output[idx];
+    const time = new Date(tokenBuckets.cutoff + idx * tokenBuckets.bucketMs);
+    const timeStr = time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+    tip.innerHTML = '<div style="color:var(--text);font-weight:600;margin-bottom:3px">' + timeStr + '</div>'
+      + '<div><span style="color:rgba(34,211,238,0.9)">\\u25CF</span> Input: ' + inTok.toLocaleString() + '</div>'
+      + '<div><span style="color:rgba(168,85,250,0.9)">\\u25CF</span> Output: ' + outTok.toLocaleString() + '</div>';
+    tip.style.display = 'block';
+    const tx = Math.min(x + 12, rect.width - 120);
+    tip.style.left = tx + 'px';
+    tip.style.top = '8px';
+  });
+  canvas.addEventListener('mouseleave', () => { tip.style.display = 'none'; });
 }
 
 function drawTrendChart(logs) {
@@ -1143,6 +1242,7 @@ function drawTokenChart(logs) {
 
   const totalIn = inputTokens.reduce((a, b) => a + b, 0);
   const totalOut = outputTokens.reduce((a, b) => a + b, 0);
+  tokenBuckets = { input: inputTokens, output: outputTokens, bucketMs, cutoff };
   if (totalEl) {
     totalEl.textContent = hasTokenData
       ? 'In: ' + totalIn.toLocaleString() + ' / Out: ' + totalOut.toLocaleString()
@@ -1644,6 +1744,7 @@ async function loadLogs() {
     if (!chartInitialized) {
       chartInitialized = true;
       setupChartTooltip(document.getElementById('trend-chart'), document.getElementById('chart-tooltip'));
+      setupTokenTooltip(document.getElementById('token-chart'));
     }
     const panel = document.getElementById('log-panel');
     if (!logs || logs.length === 0) {
