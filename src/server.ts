@@ -64,6 +64,35 @@ export function createServer(router: ModelRouter, config: GatewayConfig, logMana
       return;
     }
 
+    if (req.method === 'POST' && pathname === '/api/auth/login') {
+      let bodyStr: string;
+      try { bodyStr = await readBody(req); } catch {
+        sendError(res, 400, 'invalid_request_error', 'Failed to read request body', config, origin); return;
+      }
+      let body: { password?: string };
+      try { body = JSON.parse(bodyStr); } catch {
+        sendError(res, 400, 'invalid_request_error', 'Invalid JSON body', config, origin); return;
+      }
+      const adminToken = config.adminToken || process.env.ADMIN_TOKEN;
+      if (!adminToken) {
+        sendJson(res, 200, { success: true, token: '' }, config, origin);
+        return;
+      }
+      if (!body.password) {
+        sendJson(res, 401, { success: false, message: 'Password required' }, config, origin);
+        return;
+      }
+      const bufA = Buffer.from(body.password, 'utf-8');
+      const bufB = Buffer.from(adminToken, 'utf-8');
+      const match = bufA.length === bufB.length && crypto.timingSafeEqual(bufA, bufB);
+      if (match) {
+        sendJson(res, 200, { success: true, token: adminToken }, config, origin);
+      } else {
+        sendJson(res, 401, { success: false, message: 'Incorrect password' }, config, origin);
+      }
+      return;
+    }
+
     if (req.method === 'GET' && pathname === '/v1/models') {
       const models: Array<{ id: string; object: string; owned_by: string }> = [];
       for (const provider of router.getProviders()) {

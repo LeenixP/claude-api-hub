@@ -29,6 +29,7 @@ A local API gateway that lets Claude Code route requests to any LLM provider via
 - [Supported Providers](#supported-providers)
 - [Alias Mapping](#alias-mapping)
 - [Adding Providers](#adding-providers)
+- [Kiro Provider](#kiro-provider)
 - [API Endpoints](#api-endpoints)
 - [Security](#security)
 - [Logging](#logging)
@@ -71,6 +72,7 @@ The gateway intercepts Anthropic Messages API requests from Claude Code, resolve
 | Provider | Protocol | Status |
 |----------|----------|--------|
 | Claude (Anthropic) | Passthrough | Verified |
+| Kiro (AWS Q / CodeWhisperer) | Kiro OAuth → AWS Q API | Verified |
 | Kimi (Moonshot AI) | OpenAI Compatible | Verified |
 | MiniMax | OpenAI Compatible | Verified |
 | GLM (Zhipu AI) | OpenAI Compatible | Verified |
@@ -189,6 +191,58 @@ Each provider can use either protocol — toggle via the badge on the provider c
 
 - **Anthropic API** (passthrough): Request forwarded as-is via `x-api-key`. Use for Anthropic official API or compatible proxies (e.g. MiniMax Anthropic endpoint)
 - **OpenAI Compatible** (auto-translate): Request auto-translated from Anthropic to OpenAI format. Auth via `Bearer` token. Use for Kimi, GLM, DeepSeek, and any OpenAI-compatible API
+- **Kiro** (AWS Q): Uses Kiro OAuth credentials to call Claude models via AWS Q `generateAssistantResponse` endpoint. Requires a Kiro OAuth credentials file (see below)
+
+## Kiro Provider
+
+The Kiro provider routes requests through AWS Q (CodeWhisperer), allowing you to use Claude models with Kiro OAuth credentials instead of an Anthropic API key.
+
+### Setup
+
+1. Obtain Kiro OAuth credentials (via Kiro IDE login or AWS Builder ID)
+2. Save the credentials JSON file (containing `accessToken`, `refreshToken`, etc.)
+3. Add the provider in the dashboard or config:
+
+```json
+"kiro": {
+  "name": "Kiro",
+  "baseUrl": "https://q.us-east-1.amazonaws.com",
+  "apiKey": "/path/to/kiro-credentials.json",
+  "models": ["claude-sonnet-4-6", "claude-haiku-4-5"],
+  "defaultModel": "claude-sonnet-4-6",
+  "enabled": true,
+  "prefix": "kiro-",
+  "passthrough": true
+}
+```
+
+### Credentials Format
+
+**Social Auth** (Google/GitHub):
+```json
+{
+  "accessToken": "...",
+  "refreshToken": "...",
+  "profileArn": "arn:aws:...",
+  "expiresAt": "2025-01-01T00:00:00.000Z",
+  "authMethod": "social",
+  "region": "us-east-1"
+}
+```
+
+**Builder ID**:
+```json
+{
+  "accessToken": "...",
+  "refreshToken": "...",
+  "clientId": "...",
+  "clientSecret": "...",
+  "authMethod": "builder-id",
+  "idcRegion": "us-east-1"
+}
+```
+
+Tokens are automatically refreshed when expired.
 
 ## API Endpoints
 
@@ -208,6 +262,7 @@ Each provider can use either protocol — toggle via the badge on the provider c
 | `/api/logs` | GET | Request logs (last 200, lightweight) |
 | `/api/logs/clear` | POST | Clear log buffer |
 | `/api/logs/file-status` | GET | File logging status and file count |
+| `/api/auth/login` | POST | Password login (returns auth token) |
 | `/api/logs/file-toggle` | PUT | Toggle file logging on/off |
 
 ## Logging
@@ -226,6 +281,7 @@ Two-tier logging system:
 
 ## Security
 
+- **Password Login Portal**: The dashboard shows a login page when `adminToken` is configured. Enter the admin password to authenticate — credentials are stored in localStorage and sent as `x-admin-token` header on subsequent requests
 - **Admin Auth**: Set `adminToken` in config or `ADMIN_TOKEN` env var to protect management API endpoints
 - **Per-IP Rate Limiting**: Configure `rateLimitRpm` to limit requests per minute per IP
 - **CORS Restriction**: Defaults to localhost; configure `corsOrigins` for specific origins

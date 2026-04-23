@@ -1313,25 +1313,73 @@ function apiHeaders(extra) {
   return h;
 }
 
-function showAuthBanner() {
-  if (document.getElementById('auth-banner')) return;
-  const banner = document.createElement('div');
-  banner.id = 'auth-banner';
-  banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:200;background:var(--danger);color:#fff;text-align:center;padding:10px;font-size:13px;display:flex;align-items:center;justify-content:center;gap:10px';
-  banner.innerHTML = 'Admin token required. <button onclick="promptToken()" style="background:#fff;color:var(--danger);border:none;padding:4px 12px;border-radius:4px;cursor:pointer;font-weight:600">Enter Token</button>';
-  document.body.prepend(banner);
-}
+function showLoginPage() {
+  if (document.getElementById('login-overlay')) return;
+  const overlay = document.createElement('div');
+  overlay.id = 'login-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:300;background:var(--bg);display:flex;align-items:center;justify-content:center';
+  overlay.innerHTML = '<div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:40px;width:100%;max-width:380px;box-shadow:var(--shadow-lg);animation:fadeInLogin 0.4s ease">'
+    + '<div style="text-align:center;margin-bottom:28px">'
+      + '<div style="width:56px;height:56px;border-radius:14px;background:var(--primary-glow);color:var(--primary);display:inline-flex;align-items:center;justify-content:center;margin-bottom:14px">'
+        + '<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>'
+      + '</div>'
+      + '<h2 style="font-size:20px;font-weight:700;color:var(--text);margin-bottom:4px">API Hub</h2>'
+      + '<p style="font-size:13px;color:var(--text-muted)">Enter admin password to continue</p>'
+    + '</div>'
+    + '<form id="login-form" autocomplete="on">'
+      + '<div style="margin-bottom:16px">'
+        + '<input type="password" id="login-password" placeholder="Password" autocomplete="current-password" '
+          + 'style="width:100%;padding:11px 14px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:14px;outline:none;transition:border-color 0.15s">'
+      + '</div>'
+      + '<div id="login-error" style="display:none;color:var(--danger);font-size:13px;margin-bottom:12px;text-align:center"></div>'
+      + '<button type="submit" id="login-btn" style="width:100%;padding:11px;background:var(--primary);color:#fff;border:none;border-radius:var(--radius-sm);font-size:14px;font-weight:600;cursor:pointer;transition:all 0.15s">'
+        + 'Sign In'
+      + '</button>'
+    + '</form>'
+  + '</div>';
+  document.body.appendChild(overlay);
 
-function promptToken() {
-  const token = prompt('Enter admin token:');
-  if (token) {
-    adminToken = token;
-    localStorage.setItem('adminToken', token);
-    const banner = document.getElementById('auth-banner');
-    if (banner) banner.remove();
-    authRequired = false;
-    load();
-  }
+  const style = document.createElement('style');
+  style.textContent = '@keyframes fadeInLogin{from{opacity:0;transform:scale(0.96)}to{opacity:1;transform:scale(1)}}';
+  overlay.appendChild(style);
+
+  const pwdInput = document.getElementById('login-password');
+  if (pwdInput) pwdInput.focus();
+
+  document.getElementById('login-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const pwd = document.getElementById('login-password').value.trim();
+    const errEl = document.getElementById('login-error');
+    const btn = document.getElementById('login-btn');
+    if (!pwd) { errEl.textContent = 'Please enter a password'; errEl.style.display = 'block'; return; }
+    btn.disabled = true; btn.textContent = 'Signing in...';
+    errEl.style.display = 'none';
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: pwd })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        adminToken = data.token;
+        localStorage.setItem('adminToken', data.token);
+        authRequired = false;
+        overlay.remove();
+        load();
+      } else {
+        errEl.textContent = data.message || 'Incorrect password';
+        errEl.style.display = 'block';
+        btn.disabled = false; btn.textContent = 'Sign In';
+        document.getElementById('login-password').value = '';
+        document.getElementById('login-password').focus();
+      }
+    } catch (err) {
+      errEl.textContent = 'Connection failed';
+      errEl.style.display = 'block';
+      btn.disabled = false; btn.textContent = 'Sign In';
+    }
+  });
 }
 
 async function apiFetch(url, options) {
@@ -1345,7 +1393,7 @@ async function apiFetch(url, options) {
       localStorage.removeItem('adminToken');
     }
     authRequired = true;
-    showAuthBanner();
+    showLoginPage();
   }
   return res;
 }
