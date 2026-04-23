@@ -328,20 +328,22 @@ function forwardStream(
 
     if (onUpstreamResponse) onUpstreamResponse(200, upstreamRes.headers);
 
-    let lastActivity = Date.now();
-    const idleCheck = setInterval(() => {
-      if (Date.now() - lastActivity > idleTimeoutMs) {
-        clearInterval(idleCheck);
+    let idleTimer: NodeJS.Timeout | null = null;
+    function resetIdleTimer() {
+      if (idleTimer) clearTimeout(idleTimer);
+      idleTimer = setTimeout(() => {
         upstreamRes.destroy(new Error(`Stream idle timeout: no data for ${idleTimeoutMs}ms`));
-      }
-    }, 10000);
+      }, idleTimeoutMs);
+    }
+    resetIdleTimer();
 
     upstreamRes.on('data', (chunk: Buffer) => {
-      lastActivity = Date.now();
-      onChunk(chunk.toString('utf-8'));
+      resetIdleTimer();
+      const str = chunk.toString('utf-8');
+      onChunk(str);
     });
-    upstreamRes.on('end', () => { clearInterval(idleCheck); onEnd(); });
-    upstreamRes.on('error', (err) => { clearInterval(idleCheck); onError(err); });
+    upstreamRes.on('end', () => { if (idleTimer) clearTimeout(idleTimer); onEnd(); });
+    upstreamRes.on('error', (err) => { if (idleTimer) clearTimeout(idleTimer); onError(err); });
   });
 
   req.on('timeout', () => {

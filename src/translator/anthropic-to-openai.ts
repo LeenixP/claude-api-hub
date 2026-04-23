@@ -39,11 +39,15 @@ function convertContentBlocks(
       if (typeof resultBlock.content === 'string') {
         content = resultBlock.content;
       } else {
-        content = resultBlock.content
-          .filter((b) => b.type === 'text')
-          .map((b) => (b as { type: 'text'; text: string }).text)
-          .join('\n');
+        const parts: string[] = [];
+        for (const b of resultBlock.content) {
+          if (b.type === 'text') parts.push((b as { type: 'text'; text: string }).text);
+          else if (b.type === 'image') parts.push(`[image: ${(b as { type: 'image'; source: { media_type: string } }).source.media_type}]`);
+          else parts.push(`[${b.type}]`);
+        }
+        content = parts.join('\n');
       }
+      if (resultBlock.is_error) content = `[ERROR] ${content}`;
       toolResultMessages.push({
         role: 'tool',
         content,
@@ -100,14 +104,15 @@ function convertMessage(msg: AnthropicMessage): OpenAIMessage[] {
         if (typeof resultBlock.content === 'string') {
           content = resultBlock.content;
         } else {
-          content = resultBlock.content
-            .filter((b) => b.type === 'text')
-            .map((b) => (b as { type: 'text'; text: string }).text)
-            .join('\n');
+          const parts: string[] = [];
+          for (const b of resultBlock.content) {
+            if (b.type === 'text') parts.push((b as { type: 'text'; text: string }).text);
+            else if (b.type === 'image') parts.push(`[image: ${(b as { type: 'image'; source: { media_type: string } }).source.media_type}]`);
+            else parts.push(`[${b.type}]`);
+          }
+          content = parts.join('\n');
         }
-        if (resultBlock.is_error) {
-          content = `[ERROR] ${content}`;
-        }
+        if (resultBlock.is_error) content = `[ERROR] ${content}`;
         toolResultMessages.push({
           role: 'tool',
           content,
@@ -181,6 +186,7 @@ export function translateRequest(req: AnthropicRequest, targetModel: string): Op
     model: targetModel,
     messages,
     max_tokens: req.max_tokens,
+    max_completion_tokens: req.max_tokens,
   };
 
   if (req.temperature !== undefined) result.temperature = req.temperature;

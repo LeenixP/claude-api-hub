@@ -19,6 +19,8 @@ export interface StreamState {
   outputTokens: number;
   textBlockIndex: number;
   textStarted: boolean;
+  thinkingBlockIndex: number;
+  thinkingStarted: boolean;
   toolCalls: Map<number, {
     id: string;
     name: string;
@@ -38,6 +40,8 @@ export function createStreamState(model: string): StreamState {
     outputTokens: 0,
     textBlockIndex: -1,
     textStarted: false,
+    thinkingBlockIndex: -1,
+    thinkingStarted: false,
     toolCalls: new Map(),
     nextBlockIndex: 0,
     initialized: false,
@@ -79,6 +83,12 @@ export function translateResponse(
 
   const choice = res.choices[0];
   const content: AnthropicContentBlock[] = [];
+
+  // Handle reasoning_content (DeepSeek and similar models)
+  const msg = choice.message as Record<string, unknown>;
+  if (msg.reasoning_content && typeof msg.reasoning_content === 'string') {
+    content.push({ type: 'thinking', thinking: msg.reasoning_content });
+  }
 
   if (choice.message.content) {
     content.push({ type: 'text', text: choice.message.content });
@@ -162,6 +172,25 @@ export function translateStreamChunk(
   }
 
   const delta = choice.delta;
+  const deltaRaw = delta as Record<string, unknown>;
+
+  // Reasoning content delta (DeepSeek and similar)
+  if (deltaRaw.reasoning_content != null && deltaRaw.reasoning_content !== '') {
+    if (!state.thinkingStarted) {
+      state.thinkingBlockIndex = state.nextBlockIndex++;
+      state.thinkingStarted = true;
+      events.push({
+        type: 'content_block_start',
+        index: state.thinkingBlockIndex,
+        content_block: { type: 'thinking', thinking: '' },
+      });
+    }
+    events.push({
+      type: 'content_block_delta',
+      index: state.thinkingBlockIndex,
+      delta: { type: 'thinking_delta', thinking: deltaRaw.reasoning_content as string },
+    });
+  }
 
   // Text content delta
   if (delta.content != null && delta.content !== '') {
@@ -228,6 +257,10 @@ export function translateStreamChunk(
   // Finish
   if (choice.finish_reason && !state.finished) {
     state.finished = true;
+
+    if (state.thinkingStarted) {
+      events.push({ type: 'content_block_stop', index: state.thinkingBlockIndex });
+    }
 
     if (state.textStarted) {
       events.push({ type: 'content_block_stop', index: state.textBlockIndex });
