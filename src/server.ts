@@ -375,9 +375,12 @@ export function createServer(router: ModelRouter, config: GatewayConfig): http.S
       return;
     }
 
-    // ─── Admin API (requires authentication) ───
+    // ─── Admin API (mutating endpoints require authentication) ───
 
-    if (pathname.startsWith('/api/')) {
+    const isAdminMutation = pathname.startsWith('/api/') && (
+      req.method === 'POST' || req.method === 'PUT' || req.method === 'DELETE'
+    );
+    if (isAdminMutation) {
       if (!requireAdmin(req, res, config)) return;
     }
 

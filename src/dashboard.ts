@@ -815,7 +815,7 @@ async function load() {
 }
 
 function updateHeaderStats() {
-  const pCount = Object.values(config.providers).filter(p => p.enabled).length; = Object.values(config.providers).filter(p => p.enabled).length;
+  const pCount = Object.values(config.providers).filter(p => p.enabled).length;
   const mCount = allModels.length;
   document.getElementById('stat-providers').innerHTML = '<b>' + pCount + '</b> providers';
   document.getElementById('stat-models').innerHTML = '<b>' + mCount + '</b> models';
