@@ -12,6 +12,9 @@ export interface ProviderConfig {
   enabled: boolean;
   prefix?: string | string[];
   passthrough?: boolean;
+  kiroRegion?: string;
+  kiroCredsPath?: string;
+  [key: string]: unknown;
 }
 
 export interface TierTimeout {
