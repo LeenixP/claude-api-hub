@@ -22,6 +22,12 @@ export interface GatewayConfig {
   logLevel: 'debug' | 'info' | 'warn' | 'error';
   aliases?: Record<string, string>;
   version?: string;
+  adminToken?: string;
+  corsOrigins?: string[];
+  rateLimitRpm?: number;
+  streamTimeoutMs?: number;
+  streamIdleTimeoutMs?: number;
+  maxResponseBytes?: number;
 }
 
 // ─── Anthropic API Types (incoming from Claude Code) ───
