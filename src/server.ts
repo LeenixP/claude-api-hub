@@ -375,6 +375,11 @@ export function createServer(router: ModelRouter, config: GatewayConfig): http.S
 
     const pathname = req.url?.split('?')[0] ?? '/';
 
+    // Security headers (set early, before any route returns)
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+
     // Dashboard
     if (req.method === 'GET' && pathname === '/') {
       const html = dashboardHtml(config.version || '');
@@ -411,11 +416,6 @@ export function createServer(router: ModelRouter, config: GatewayConfig): http.S
     if (isAdminEndpoint || isAdminMutation) {
       if (!requireAdmin(req, res, config)) return;
     }
-
-    // Security headers
-    res.setHeader('X-Content-Type-Options', 'nosniff');
-    res.setHeader('X-Frame-Options', 'DENY');
-    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
 
     // GET /api/config
     if (req.method === 'GET' && pathname === '/api/config') {
