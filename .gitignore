@@ -1,6 +1,13 @@
 node_modules/
 dist/
 *.log
+*.tgz
+coverage/
 .DS_Store
 .env
 .env.*
+.env.local
+.omc/
+reviews/
+.vscode/
+.idea/

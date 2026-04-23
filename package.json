@@ -1,6 +1,6 @@
 {
   "name": "claude-api-hub",
-  "version": "1.0.1",
+  "version": "3.0.0",
   "description": "Multi-provider API gateway for Claude Code - routes requests to Claude/Kimi/MiniMax/GLM based on model ID",
   "type": "module",
   "main": "dist/index.js",
@@ -11,6 +11,7 @@
   "files": [
     "dist",
     "config",
+    "static",
     "README.md"
   ],
   "scripts": {
@@ -45,11 +46,9 @@
     "url": "https://github.com/LeenixP/claude-api-hub/issues"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=22"
   },
-  "dependencies": {
-    "eventsource-parser": "^3.0.1"
-  },
+  "dependencies": {},
   "devDependencies": {
     "typescript": "^5.8.0",
     "tsx": "^4.19.0",

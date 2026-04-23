@@ -5,52 +5,135 @@ import { fileURLToPath } from 'url';
 import { loadConfig } from './config.js';
 import { createRouter } from './router.js';
 import { createServer } from './server.js';
-import { Provider } from './providers/types.js';
-import { ClaudeProvider } from './providers/claude.js';
-import { GenericOpenAIProvider } from './providers/generic.js';
+import { rebuildProviders } from './server.js';
+import { TokenRefresher } from './services/token-refresher.js';
+import { createProvider } from './providers/factory.js';
+import { logger, setLogLevel } from './logger.js';
+import { destroyAgents } from './services/forwarder.js';
+import { LogManager } from './services/log-manager.js';
+import { EventBus } from './services/event-bus.js';
+import { RateTracker } from './services/rate-tracker.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
+function parseArgs(): { port?: number; host?: string; config?: string } {
+  const args = process.argv.slice(2);
+  const result: { port?: number; host?: string; config?: string } = {};
+  for (let i = 0; i < args.length; i++) {
+    if ((args[i] === '--port' || args[i] === '-p') && args[i + 1]) {
+      result.port = parseInt(args[++i]);
+    } else if ((args[i] === '--host' || args[i] === '-h') && args[i + 1]) {
+      result.host = args[++i];
+    } else if ((args[i] === '--config' || args[i] === '-c') && args[i + 1]) {
+      result.config = args[++i];
+    } else if (args[i] === '--help') {
+      console.log(`Usage: claude-api-hub [options]
+
+Options:
+  -p, --port <port>    Port to listen on (default: from config)
+  -h, --host <host>    Host to bind to (default: from config)
+  -c, --config <path>  Path to config file
+  --help               Show this help message
+
+Environment variables:
+  API_HUB_PORT         Override port
+  API_HUB_HOST         Override host
+  ADMIN_TOKEN          Admin authentication token`);
+      process.exit(0);
+    }
+  }
+  return result;
+}
+
 async function main(): Promise<void> {
-  const config = loadConfig();
+  const args = parseArgs();
+  const config = loadConfig(args.config);
+  if (config.logLevel) setLogLevel(config.logLevel);
+
+  if (args.port) config.port = args.port;
+  if (args.host) config.host = args.host;
+  if (process.env.API_HUB_PORT) config.port = parseInt(process.env.API_HUB_PORT);
+  if (process.env.API_HUB_HOST) config.host = process.env.API_HUB_HOST;
+
   try {
     const pkg = JSON.parse(readFileSync(join(__dirname, '../package.json'), 'utf-8'));
     config.version = pkg.version;
   } catch { /* ignore */ }
 
-
-  const providers: Provider[] = [];
-  for (const [key, providerConfig] of Object.entries(config.providers)) {
-    if (!providerConfig.enabled) continue;
-    if (providerConfig.passthrough) {
-      providers.push(new ClaudeProvider(providerConfig));
-    } else {
-      if (key === 'claude' && !('passthrough' in providerConfig)) {
-        console.warn(`[warn] Provider "${key}" looks like Anthropic but missing passthrough:true — using OpenAI translation. Set passthrough:true in config if this is an Anthropic-format API.`);
-      }
-      providers.push(new GenericOpenAIProvider(providerConfig));
-    }
-  }
+  const providers = Object.entries(config.providers)
+    .filter(([, pc]) => pc.enabled)
+    .map(([, pc]) => createProvider(pc));
 
   if (providers.length === 0) {
-    console.error('[error] No providers loaded. Exiting.');
+    logger.error('No providers loaded. Exiting.');
     process.exit(1);
   }
 
-  const router = createRouter(providers, config.defaultProvider, config.aliases ?? {});
-  const server = createServer(router, config);
+  const router = createRouter(providers, config.defaultProvider, config.aliases ?? {}, config.fallbackChain ?? {});
+  const eventBus = new EventBus();
+  const rateTracker = new RateTracker();
+  const logManager = new LogManager(undefined, undefined, undefined, eventBus);
+  const server = createServer(router, config, logManager, eventBus, rateTracker);
+
+  // Auto-refresh OAuth tokens (default 30 min, configurable via tokenRefreshMinutes)
+  const refreshMinutes = config.tokenRefreshMinutes || 30;
+  const tokenRefresher = new TokenRefresher(router, config, rebuildProviders, refreshMinutes);
+  tokenRefresher.start();
+
+  server.on('error', (err: NodeJS.ErrnoException) => {
+    if (err.code === 'EADDRINUSE') {
+      logger.error(`Port ${config.port} is already in use. Try a different port with --port <port> or API_HUB_PORT env var.`);
+    } else if (err.code === 'EACCES') {
+      logger.error(`Permission denied for port ${config.port}. Try a port > 1024.`);
+    } else {
+      logger.error(`Server error: ${err.message}`);
+    }
+    process.exit(1);
+  });
 
   server.listen(config.port, config.host, () => {
-    console.log(`[info] claude-api-hub listening on http://${config.host}:${config.port}`);
-    console.log(`[info] Providers: ${providers.map(p => p.name).join(', ')}`);
+    logger.info(`api-hub v${config.version || '?'} listening on http://${config.host}:${config.port}`);
+    logger.info(`Dashboard: http://localhost:${config.port}`);
+    logger.info(`Providers: ${providers.map(p => p.name).join(', ')}`);
     if (config.aliases) {
       const aliasStr = Object.entries(config.aliases).map(([k, v]) => `${k}→${v}`).join(', ');
-      console.log(`[info] Aliases: ${aliasStr}`);
+      logger.info(`Aliases: ${aliasStr}`);
     }
   });
 
-  process.on('SIGINT', () => { server.close(); process.exit(0); });
-  process.on('SIGTERM', () => { server.close(); process.exit(0); });
+  let isShuttingDown = false;
+  function gracefulShutdown(signal: string): void {
+    if (isShuttingDown) {
+      logger.warn('Force exit.');
+      process.exit(1);
+    }
+    isShuttingDown = true;
+    logger.info(`Received ${signal}, shutting down gracefully...`);
+    tokenRefresher.stop();
+    server.close(() => {
+      destroyAgents();
+      rateTracker.destroy();
+      logManager.close();
+      process.exit(0);
+    });
+    setTimeout(() => {
+      logger.warn('Graceful shutdown timed out after 10s, forcing exit.');
+      destroyAgents();
+      rateTracker.destroy();
+      logManager.close();
+      process.exit(1);
+    }, 10000).unref();
+  }
+
+  process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+  process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+  process.on('uncaughtException', (err) => {
+    logger.error(`Uncaught exception: ${err.message}`);
+    gracefulShutdown('uncaughtException');
+  });
+  process.on('unhandledRejection', (reason) => {
+    logger.error(`Unhandled rejection: ${reason}`);
+  });
 }
 
 main().catch((err) => {

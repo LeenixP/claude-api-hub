@@ -1,22 +1,29 @@
 import type {
   Provider,
   ProviderConfig,
+  StreamContext,
   AnthropicRequest,
   AnthropicResponse,
   AnthropicStreamEvent,
   OpenAIResponse,
   OpenAIStreamChunk,
 } from './types.js';
+import { KeyPool } from '../services/pool-manager.js';
 
 export class ClaudeProvider implements Provider {
   name: string;
   config: ProviderConfig;
   private prefix: string | string[] | undefined;
+  pool: KeyPool | null = null;
+  private lastUsedKey: string | null = null;
 
   constructor(config: ProviderConfig) {
     this.name = config.name;
     this.config = config;
     this.prefix = config.prefix;
+    if (config.apiKeys && config.apiKeys.length > 0) {
+      this.pool = new KeyPool(config.apiKeys);
+    }
   }
 
   matchModel(model: string): boolean {
@@ -46,13 +53,15 @@ export class ClaudeProvider implements Provider {
     if (req.tools && req.tools.length > 0) clean.tools = req.tools;
     if (req.tool_choice) clean.tool_choice = req.tool_choice;
     if (req.metadata) clean.metadata = req.metadata;
-    const rawReq = req as unknown as Record<string, unknown>;
-    if (rawReq.thinking) clean.thinking = rawReq.thinking;
+    if (req.thinking) clean.thinking = req.thinking;
+
+    const apiKey = this.pool?.getKey() ?? this.config.apiKey;
+    this.lastUsedKey = apiKey;
 
     return {
       url: `${this.config.baseUrl}/v1/messages`,
       headers: {
-        'x-api-key': this.config.apiKey,
+        'x-api-key': apiKey,
         'anthropic-version': '2023-06-01',
         'content-type': 'application/json',
       },
@@ -60,11 +69,23 @@ export class ClaudeProvider implements Provider {
     };
   }
 
+  reportSuccess(): void {
+    if (this.pool && this.lastUsedKey) this.pool.reportSuccess(this.lastUsedKey);
+  }
+
+  reportError(): void {
+    if (this.pool && this.lastUsedKey) this.pool.reportError(this.lastUsedKey);
+  }
+
   parseResponse(raw: OpenAIResponse, _originalModel: string): AnthropicResponse {
     return raw as unknown as AnthropicResponse;
   }
 
-  parseStreamChunk(chunk: OpenAIStreamChunk, _originalModel: string): AnthropicStreamEvent[] {
+  createStreamContext(_originalModel: string): StreamContext {
+    return { initialized: true };
+  }
+
+  parseStreamChunk(chunk: OpenAIStreamChunk, _originalModel: string, _ctx: StreamContext): AnthropicStreamEvent[] {
     return [chunk as unknown as AnthropicStreamEvent];
   }
 }

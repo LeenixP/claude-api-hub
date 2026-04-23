@@ -53,6 +53,28 @@ describe('translateRequest', () => {
     expect(result.messages[0].content).toBe('Part one.\nPart two.');
   });
 
+  it('passes is_error from tool_result as [ERROR] prefix', () => {
+    const req: AnthropicRequest = {
+      model: 'test',
+      messages: [{
+        role: 'user',
+        content: [
+          {
+            type: 'tool_result',
+            tool_use_id: 'call_1',
+            content: 'Something went wrong',
+            is_error: true,
+          },
+        ],
+      }],
+      max_tokens: 100,
+    };
+    const result = translateRequest(req, 'test-model');
+    const toolMsg = result.messages.find(m => m.role === 'tool');
+    expect(toolMsg).toBeDefined();
+    expect(toolMsg!.content).toBe('[ERROR] Something went wrong');
+  });
+
   it('converts tool_use block to OpenAI function calling', () => {
     const req: AnthropicRequest = {
       model: 'kimi-latest',
@@ -191,6 +213,151 @@ describe('translateResponse', () => {
     expect(toolBlock.id).toBe('call_abc');
     expect(toolBlock.name).toBe('get_weather');
     expect(toolBlock.input).toEqual({ city: 'Shanghai' });
+  });
+});
+
+// ─── Edge Cases ───
+
+describe('translateResponse edge cases', () => {
+  it('handles empty choices array', () => {
+    const res = {
+      id: 'chatcmpl-empty',
+      object: 'chat.completion' as const,
+      created: 1700000000,
+      model: 'test',
+      choices: [],
+      usage: { prompt_tokens: 5, completion_tokens: 0, total_tokens: 5 },
+    };
+    const result = translateResponse(res, 'test-model');
+    expect(result.type).toBe('message');
+    expect(result.content).toHaveLength(1);
+    expect(result.content[0]).toEqual({ type: 'text', text: '' });
+    expect(result.stop_reason).toBe('end_turn');
+  });
+
+  it('handles undefined usage', () => {
+    const res = {
+      id: 'chatcmpl-nousage',
+      object: 'chat.completion' as const,
+      created: 1700000000,
+      model: 'test',
+      choices: [{
+        index: 0,
+        message: { role: 'assistant' as const, content: 'Hi' },
+        finish_reason: 'stop' as const,
+      }],
+      usage: undefined as any,
+    };
+    const result = translateResponse(res, 'test-model');
+    expect(result.usage.input_tokens).toBe(0);
+    expect(result.usage.output_tokens).toBe(0);
+  });
+
+  it('maps content_filter finish reason', () => {
+    const res: OpenAIResponse = {
+      id: 'chatcmpl-filter',
+      object: 'chat.completion',
+      created: 1700000000,
+      model: 'test',
+      choices: [{
+        index: 0,
+        message: { role: 'assistant', content: '' },
+        finish_reason: 'content_filter',
+      }],
+      usage: { prompt_tokens: 5, completion_tokens: 0, total_tokens: 5 },
+    };
+    const result = translateResponse(res, 'test-model');
+    expect(result.stop_reason).toBe('end_turn');
+  });
+
+  it('maps length finish reason to max_tokens', () => {
+    const res: OpenAIResponse = {
+      id: 'chatcmpl-len',
+      object: 'chat.completion',
+      created: 1700000000,
+      model: 'test',
+      choices: [{
+        index: 0,
+        message: { role: 'assistant', content: 'truncated' },
+        finish_reason: 'length',
+      }],
+      usage: { prompt_tokens: 5, completion_tokens: 100, total_tokens: 105 },
+    };
+    const result = translateResponse(res, 'test-model');
+    expect(result.stop_reason).toBe('max_tokens');
+  });
+});
+
+describe('translateStreamChunk edge cases', () => {
+  it('tool call name overwrites instead of appending', () => {
+    const state = createStreamState('test');
+    // First chunk with tool call name
+    const chunk1: OpenAIStreamChunk = {
+      id: 'c1', object: 'chat.completion.chunk', created: 123, model: 'test',
+      choices: [{
+        index: 0,
+        delta: { tool_calls: [{ index: 0, id: 'call_1', type: 'function' as const, function: { name: 'get_weather', arguments: '' } }] },
+        finish_reason: null,
+      }],
+    };
+    translateStreamChunk(chunk1, 'test', state);
+
+    // Second chunk repeating the name (some APIs do this)
+    const chunk2: OpenAIStreamChunk = {
+      id: 'c1', object: 'chat.completion.chunk', created: 123, model: 'test',
+      choices: [{
+        index: 0,
+        delta: { tool_calls: [{ index: 0, type: 'function' as const, function: { name: 'get_weather', arguments: '{"city"' } }] },
+        finish_reason: null,
+      }],
+    };
+    translateStreamChunk(chunk2, 'test', state);
+
+    const entry = state.toolCalls.get(0)!;
+    // Should be 'get_weather', NOT 'get_weatherget_weather'
+    expect(entry.name).toBe('get_weather');
+  });
+
+  it('state persists across multiple chunks', () => {
+    const state = createStreamState('test');
+
+    const chunk1: OpenAIStreamChunk = {
+      id: 'c1', object: 'chat.completion.chunk', created: 123, model: 'test',
+      choices: [{ index: 0, delta: { role: 'assistant', content: 'Hello' }, finish_reason: null }],
+    };
+    const events1 = translateStreamChunk(chunk1, 'test', state);
+    expect(events1.some(e => e.type === 'message_start')).toBe(true);
+    expect(state.textStarted).toBe(true);
+    expect(state.nextBlockIndex).toBe(1);
+
+    const chunk2: OpenAIStreamChunk = {
+      id: 'c1', object: 'chat.completion.chunk', created: 123, model: 'test',
+      choices: [{ index: 0, delta: { content: ' world' }, finish_reason: null }],
+    };
+    const events2 = translateStreamChunk(chunk2, 'test', state);
+    // No duplicate message_start
+    expect(events2.some(e => e.type === 'message_start')).toBe(false);
+    expect(events2.some(e => e.type === 'content_block_delta')).toBe(true);
+  });
+
+  it('handles usage-only chunk without choices', () => {
+    const state = createStreamState('test');
+    // First emit message_start
+    const chunk1: OpenAIStreamChunk = {
+      id: 'c1', object: 'chat.completion.chunk', created: 123, model: 'test',
+      choices: [{ index: 0, delta: { content: 'Hi' }, finish_reason: null }],
+    };
+    translateStreamChunk(chunk1, 'test', state);
+
+    const usageChunk: OpenAIStreamChunk = {
+      id: 'c1', object: 'chat.completion.chunk', created: 123, model: 'test',
+      choices: [],
+      usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
+    };
+    const events = translateStreamChunk(usageChunk, 'test', state);
+    // Should not crash, may return empty or just update state
+    expect(state.inputTokens).toBe(10);
+    expect(state.outputTokens).toBe(5);
   });
 });
 

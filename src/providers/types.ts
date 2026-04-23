@@ -10,8 +10,21 @@ export interface ProviderConfig {
   models: string[];
   defaultModel: string;
   enabled: boolean;
+  apiKeys?: string[];
   prefix?: string | string[];
   passthrough?: boolean;
+  authMode?: 'apikey' | 'oauth';
+  providerType?: 'standard' | 'kiro';
+  kiroAuthMethod?: 'social' | 'builder-id';
+  kiroRegion?: string;
+  kiroCredsPath?: string;
+  [key: string]: unknown;
+}
+
+export interface TierTimeout {
+  timeoutMs: number;
+  streamTimeoutMs?: number;
+  streamIdleTimeoutMs?: number;
 }
 
 export interface GatewayConfig {
@@ -21,7 +34,18 @@ export interface GatewayConfig {
   defaultProvider: string;
   logLevel: 'debug' | 'info' | 'warn' | 'error';
   aliases?: Record<string, string>;
+  tierTimeouts?: Record<string, TierTimeout>;
   version?: string;
+  adminToken?: string;
+  corsOrigins?: string[];
+  rateLimitRpm?: number;
+  streamTimeoutMs?: number;
+  streamIdleTimeoutMs?: number;
+  maxResponseBytes?: number;
+  trustProxy?: boolean;
+  fallbackChain?: Record<string, string>;
+  password?: string;
+  tokenRefreshMinutes?: number;
 }
 
 // ─── Anthropic API Types (incoming from Claude Code) ───
@@ -39,6 +63,7 @@ export interface AnthropicRequest {
   tools?: AnthropicTool[];
   tool_choice?: AnthropicToolChoice;
   metadata?: Record<string, unknown>;
+  thinking?: { type: 'enabled'; budget_tokens: number };
 }
 
 export interface AnthropicMessage {
@@ -235,6 +260,11 @@ export interface OpenAIStreamChoice {
 
 // ─── Provider Interface ───
 
+export interface StreamContext {
+  initialized: boolean;
+  [key: string]: unknown;
+}
+
 export interface Provider {
   name: string;
   config: ProviderConfig;
@@ -242,7 +272,9 @@ export interface Provider {
   resolveModel(model: string): string;
   buildRequest(req: AnthropicRequest): { url: string; headers: Record<string, string>; body: string };
   parseResponse(raw: OpenAIResponse, originalModel: string): AnthropicResponse;
-  parseStreamChunk(chunk: OpenAIStreamChunk, originalModel: string): AnthropicStreamEvent[];
+  createStreamContext(originalModel: string): StreamContext;
+  parseStreamChunk(chunk: OpenAIStreamChunk, originalModel: string, ctx: StreamContext): AnthropicStreamEvent[];
+  isHealthy?(): boolean;
 }
 
 // ─── Router Types ───

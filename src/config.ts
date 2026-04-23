@@ -6,8 +6,17 @@ import { GatewayConfig, ProviderConfig } from './providers/types.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
+const ALLOWED_ENV_PREFIXES = [
+  'ANTHROPIC_', 'MOONSHOT_', 'MINIMAX_', 'ZHIPUAI_',
+  'OPENAI_', 'DEEPSEEK_', 'ADMIN_', 'API_HUB_',
+];
+
 function interpolateEnvVars(value: string): string {
-  return value.replace(/\$\{([^}]+)\}/g, (_, varName) => {
+  return value.replace(/\$\{([^}]+)\}/g, (_, varName: string) => {
+    if (!ALLOWED_ENV_PREFIXES.some(p => varName.startsWith(p))) {
+      console.warn(`[warn] Blocked env var interpolation: ${varName} (not in allowed prefixes)`);
+      return '';
+    }
     return process.env[varName] ?? '';
   });
 }
@@ -30,10 +39,10 @@ function interpolateConfig(obj: unknown): unknown {
 }
 
 function validateConfig(config: GatewayConfig): void {
-  if (!config.port || typeof config.port !== 'number') {
-    throw new Error('Config: missing or invalid "port"');
+  if (!config.port || typeof config.port !== 'number' || config.port < 1 || config.port > 65535) {
+    throw new Error('Config: "port" must be a number between 1 and 65535');
   }
-  if (!config.host) {
+  if (!config.host || typeof config.host !== 'string') {
     throw new Error('Config: missing "host"');
   }
   if (!config.defaultProvider) {
@@ -45,10 +54,20 @@ function validateConfig(config: GatewayConfig): void {
   if (!config.providers[config.defaultProvider]) {
     throw new Error(`Config: defaultProvider "${config.defaultProvider}" not found in providers`);
   }
+  const validLogLevels = ['debug', 'info', 'warn', 'error'];
+  if (config.logLevel && !validLogLevels.includes(config.logLevel)) {
+    throw new Error(`Config: "logLevel" must be one of: ${validLogLevels.join(', ')}`);
+  }
   for (const [name, provider] of Object.entries(config.providers as Record<string, ProviderConfig>)) {
     if (!provider.baseUrl) throw new Error(`Config: provider "${name}" missing "baseUrl"`);
+    try { new URL(provider.baseUrl); } catch {
+      throw new Error(`Config: provider "${name}" has invalid "baseUrl": ${provider.baseUrl}`);
+    }
     if (!provider.models || provider.models.length === 0) {
       throw new Error(`Config: provider "${name}" missing "models"`);
+    }
+    if (!provider.apiKey || provider.apiKey.trim() === '') {
+      console.warn(`[warn] Provider "${name}" has empty apiKey — check environment variables`);
     }
   }
 }
