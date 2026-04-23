@@ -1,6 +1,41 @@
+<div align="center">
+
 # Claude API Hub
 
+**Route Claude Code to any LLM provider with a single config change.**
+
+[![npm version](https://img.shields.io/npm/v/claude-api-hub.svg)](https://www.npmjs.com/package/claude-api-hub)
+[![CI](https://github.com/LeenixP/claude-api-hub/actions/workflows/ci.yml/badge.svg)](https://github.com/LeenixP/claude-api-hub/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Node.js Version](https://img.shields.io/node/v/claude-api-hub)](package.json)
+
+[English](README.md) | [中文](README.zh.md)
+
+</div>
+
 A local API gateway that lets Claude Code route requests to any LLM provider via model aliases (haiku / sonnet / opus). Manage everything from a Web dashboard — no config files needed.
+
+## Why Claude API Hub?
+
+- **Use any LLM with Claude Code** — Route Sonnet requests to Kimi, GLM, MiniMax, DeepSeek, or any OpenAI-compatible API
+- **Zero config switching** — Change model routing from the web dashboard, no restart needed
+- **Zero runtime dependencies** — Built on Node.js native `http` module, ~50KB installed
+
+## Table of Contents
+
+- [How It Works](#how-it-works)
+- [Quick Start](#quick-start)
+- [Web Dashboard](#web-dashboard)
+- [Supported Providers](#supported-providers)
+- [Alias Mapping](#alias-mapping)
+- [Adding Providers](#adding-providers)
+- [API Endpoints](#api-endpoints)
+- [Security](#security)
+- [Logging](#logging)
+- [Routing Rules](#routing-rules)
+- [Development](#development)
+- [Contributing](#contributing)
+- [License](#license)
 
 ## How It Works
 
@@ -28,13 +63,33 @@ The gateway intercepts Anthropic Messages API requests from Claude Code, resolve
 - **File Logging**: Optional detailed logging to `~/.claude-api-hub/logs/` with 4096 file limit and auto-cleanup
 - **Hot Reload**: Add/edit/delete providers and aliases without restarting the gateway
 - **Streaming**: Full SSE event stream forwarding and translation
-- **Zero Runtime Deps**: Built on Node.js native `http` module (only `eventsource-parser` for SSE)
+- **Zero Runtime Deps**: Built on Node.js native `http` module — no Express, no Axios, no dependencies
+- **Security**: Admin token auth, per-IP rate limiting, CORS restriction, timing-safe comparison
+
+## Supported Providers
+
+| Provider | Protocol | Status |
+|----------|----------|--------|
+| Claude (Anthropic) | Passthrough | Verified |
+| Kimi (Moonshot AI) | OpenAI Compatible | Verified |
+| MiniMax | OpenAI Compatible | Verified |
+| GLM (Zhipu AI) | OpenAI Compatible | Verified |
+| DeepSeek | OpenAI Compatible | Verified |
+| Any OpenAI-compatible API | Auto-translate | Supported |
 
 ## Quick Start
+
+### Prerequisites
+
+- Node.js >= 18
+
+### Install & Run
 
 ```bash
 npm install -g claude-api-hub
 claude-api-hub
+# ✓ api-hub listening on http://0.0.0.0:9800
+# ✓ Open http://localhost:9800 for the web dashboard
 ```
 
 Open `http://localhost:9800` to access the Web dashboard.
@@ -50,6 +105,24 @@ Point Claude Code at the gateway in `~/.claude/settings.json`:
 ```
 
 Restart Claude Code and all requests will route through the gateway.
+
+### Verify
+
+```bash
+curl http://localhost:9800/health
+# {"status":"ok","timestamp":"..."}
+```
+
+### Example Request
+
+```bash
+curl -X POST http://localhost:9800/v1/messages \
+  -H "Content-Type: application/json" \
+  -H "x-api-key: your-key" \
+  -d '{"model":"claude-sonnet-4-6","max_tokens":100,"messages":[{"role":"user","content":"Hello"}]}'
+```
+
+If `sonnet` is aliased to `kimi-k2.6`, the request is auto-routed to Kimi with protocol translation.
 
 ## Web Dashboard
 
@@ -151,13 +224,28 @@ Two-tier logging system:
 3. **Model list match**: Check provider's `models` array
 4. **Fallback**: Use `defaultProvider`
 
+## Security
+
+- **Admin Auth**: Set `adminToken` in config or `ADMIN_TOKEN` env var to protect management API endpoints
+- **Per-IP Rate Limiting**: Configure `rateLimitRpm` to limit requests per minute per IP
+- **CORS Restriction**: Defaults to localhost; configure `corsOrigins` for specific origins
+- **Timing-Safe Comparison**: Admin token uses `crypto.timingSafeEqual` to prevent timing attacks
+- **Env Var Whitelist**: Only `ANTHROPIC_*`, `MOONSHOT_*`, `MINIMAX_*`, `ZHIPUAI_*`, `OPENAI_*`, `DEEPSEEK_*` prefixes are interpolated
+- **API Key Masking**: Keys are masked in all API responses and logs
+
+See [SECURITY.md](SECURITY.md) for vulnerability reporting.
+
 ## Development
 
 ```bash
 npm run dev      # Dev mode (hot reload)
 npm run build    # Compile TypeScript
-npm test         # Run tests (24 tests)
+npm test         # Run tests (60 tests)
 ```
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and PR guidelines.
 
 ## License
 

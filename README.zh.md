@@ -1,6 +1,41 @@
+<div align="center">
+
 # Claude API Hub
 
+**一行配置，让 Claude Code 接入任意 LLM 厂商。**
+
+[![npm version](https://img.shields.io/npm/v/claude-api-hub.svg)](https://www.npmjs.com/package/claude-api-hub)
+[![CI](https://github.com/LeenixP/claude-api-hub/actions/workflows/ci.yml/badge.svg)](https://github.com/LeenixP/claude-api-hub/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Node.js Version](https://img.shields.io/node/v/claude-api-hub)](package.json)
+
+[English](README.md) | [中文](README.zh.md)
+
+</div>
+
 本地 API 网关，让 Claude Code 通过模型别名（haiku / sonnet / opus）无缝路由到任意 LLM 厂商。通过 Web 面板管理一切，无需手写配置。
+
+## 为什么选择 Claude API Hub？
+
+- **Claude Code 接入任意模型** — 将 Sonnet 请求路由到 Kimi、GLM、MiniMax、DeepSeek 或任何 OpenAI 兼容 API
+- **零配置切换** — 在 Web 面板上修改路由，无需重启
+- **零运行时依赖** — 基于 Node.js 原生 `http` 模块，安装体积约 50KB
+
+## 目录
+
+- [工作原理](#工作原理)
+- [快速开始](#快速开始)
+- [Web 管理面板](#web-管理面板)
+- [支持的厂商](#支持的厂商)
+- [别名映射](#别名映射)
+- [添加 Provider](#添加-provider)
+- [API 端点](#api-端点)
+- [安全性](#安全性)
+- [日志系统](#日志系统)
+- [路由规则](#路由规则)
+- [开发](#开发)
+- [贡献](#贡献)
+- [许可证](#许可证)
 
 ## 工作原理
 
@@ -28,7 +63,19 @@ Claude Code ──► ANTHROPIC_BASE_URL=http://127.0.0.1:9800
 - **文件日志**：可选的详细日志记录到 `~/.claude-api-hub/logs/`，4096 文件上限自动清理
 - **热重载**：增删改 Provider 和别名无需重启网关
 - **流式支持**：完整的 SSE 事件流转发和转换
-- **零运行时依赖**：网关核心使用 Node.js 原生 `http` 模块
+- **零运行时依赖**：基于 Node.js 原生 `http` 模块 — 无 Express、无 Axios、无任何依赖
+- **安全防护**：Admin Token 认证、Per-IP 速率限制、CORS 限制、时序安全比较
+
+## 支持的厂商
+
+| 厂商 | 协议 | 状态 |
+|------|------|------|
+| Claude (Anthropic) | 直接透传 | 已验证 |
+| Kimi (Moonshot AI) | OpenAI 兼容 | 已验证 |
+| MiniMax | OpenAI 兼容 | 已验证 |
+| GLM (智谱 AI) | OpenAI 兼容 | 已验证 |
+| DeepSeek | OpenAI 兼容 | 已验证 |
+| 任何 OpenAI 兼容 API | 自动转换 | 支持 |
 
 ## 快速开始
 
@@ -151,14 +198,29 @@ claude-api-hub
 3. **模型列表匹配**：检查 Provider 的 `models` 数组
 4. **兜底**：使用 `defaultProvider`
 
+## 安全性
+
+- **Admin 认证**：在配置中设置 `adminToken` 或环境变量 `ADMIN_TOKEN` 保护管理 API
+- **Per-IP 速率限制**：配置 `rateLimitRpm` 限制每 IP 每分钟请求数
+- **CORS 限制**：默认只允许 localhost；通过 `corsOrigins` 配置允许的来源
+- **时序安全比较**：Admin Token 使用 `crypto.timingSafeEqual` 防止时序攻击
+- **环境变量白名单**：仅允许 `ANTHROPIC_*`、`MOONSHOT_*`、`MINIMAX_*`、`ZHIPUAI_*`、`OPENAI_*`、`DEEPSEEK_*` 前缀
+- **API Key 脱敏**：所有 API 响应和日志中的 Key 均已脱敏
+
+详见 [SECURITY.md](SECURITY.md)。
+
 ## 开发
 
 ```bash
 npm run dev      # 开发模式（热重载）
 npm run build    # 编译
-npm test         # 测试（24 个测试用例）
+npm test         # 测试（60 个测试用例）
 ```
 
-## License
+## 贡献
+
+详见 [CONTRIBUTING.md](CONTRIBUTING.md)。
+
+## 许可证
 
 MIT
