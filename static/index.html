@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>API Hub</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header>
+  <h1>API Hub <span style="font-size:11px;font-weight:400;color:var(--text-muted);margin-left:6px">v{{VERSION}}</span></h1>
+  <div class="header-right">
+    <div class="header-stat" id="stat-providers"></div>
+    <div class="header-stat" id="stat-models"></div>
+    <div class="header-stat"><span class="dot dot-ok"></span>Running</div>
+    <button class="theme-toggle" onclick="toggleTheme()" aria-label="Toggle theme" title="Toggle theme">&#9790;</button>
+  </div>
+</header>
+
+<main>
+  <section class="stats-grid">
+    <div class="stat-card">
+      <div class="stat-icon" style="background:var(--primary-glow);color:var(--primary)">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+      </div>
+      <div><div class="stat-value" id="stat-total-req">0</div><div class="stat-label">Total Requests</div></div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon" style="background:rgba(34,197,94,0.12);color:var(--success)">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+      </div>
+      <div><div class="stat-value" id="stat-success-rate">-</div><div class="stat-label">Success Rate</div></div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon" style="background:rgba(168,85,247,0.12);color:var(--violet)">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+      </div>
+      <div><div class="stat-value" id="stat-avg-latency">-</div><div class="stat-label">Avg Latency</div></div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon" style="background:rgba(239,68,68,0.12);color:var(--danger)">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+      </div>
+      <div><div class="stat-value" id="stat-error-count">0</div><div class="stat-label">Errors</div></div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon" style="background:rgba(34,211,238,0.12);color:var(--cyan)">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7V4h16v3"/><path d="M9 20h6"/><path d="M12 4v16"/></svg>
+      </div>
+      <div><div class="stat-value" id="stat-total-tokens">0</div><div class="stat-label">Total Tokens</div></div>
+    </div>
+  </section>
+
+  <section class="chart-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px">
+    <div class="card" style="padding:14px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <h2 style="font-size:14px;font-weight:600;color:var(--text)">Request Trend</h2>
+        <div class="log-filter" id="chart-range">
+          <button class="btn-ghost btn-sm active" onclick="setChartRange(1,this)">1H</button>
+          <button class="btn-ghost btn-sm" onclick="setChartRange(6,this)">6H</button>
+          <button class="btn-ghost btn-sm" onclick="setChartRange(24,this)">24H</button>
+        </div>
+      </div>
+      <div style="position:relative">
+        <canvas id="trend-chart" height="100" style="width:100%;display:block"></canvas>
+        <div id="chart-tooltip" style="display:none;position:absolute;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:8px 12px;font-size:11px;pointer-events:none;z-index:10;box-shadow:var(--shadow)"></div>
+      </div>
+    </div>
+    <div class="card" style="padding:14px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <h2 style="font-size:14px;font-weight:600;color:var(--text)">Token Usage</h2>
+        <div style="font-size:11px;color:var(--text-muted)" id="token-total"></div>
+      </div>
+      <canvas id="token-chart" height="100" style="width:100%;display:block"></canvas>
+    </div>
+  </section>
+
+  <div class="info-card">
+    <h3>Quick Start</h3>
+    <div class="setup-steps">
+      <div class="setup-step">
+        <div class="step-num">1</div>
+        <div class="step-content">
+          <div class="step-title">Gateway URL</div>
+          <div class="step-desc">Your API Hub is running at:</div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <code id="gateway-url" style="background:var(--bg);border:1px solid var(--border);padding:4px 10px;border-radius:4px;font-family:var(--mono);font-size:13px"></code>
+            <button class="copy-btn" onclick="copyText(document.getElementById('gateway-url').textContent)">Copy</button>
+          </div>
+        </div>
+      </div>
+      <div class="setup-step">
+        <div class="step-num">2</div>
+        <div class="step-content">
+          <div class="step-title">Configure Claude Code</div>
+          <div class="step-desc">Add to <code style="background:var(--bg);padding:2px 6px;border-radius:3px;font-size:12px">~/.claude/settings.json</code> env section:</div>
+          <div class="step-code" id="config-snippet"><button class="copy-btn" onclick="copyConfig()">Copy</button></div>
+        </div>
+      </div>
+      <div class="setup-step">
+        <div class="step-num">3</div>
+        <div class="step-content">
+          <div class="step-title">Restart Claude Code</div>
+          <div class="step-desc">Reopen Claude Code. All requests will route through this gateway.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="main-grid">
+    <div class="main-left">
+      <!-- Alias Mapping -->
+      <section>
+        <div class="section-header"><h2>Alias Mapping</h2></div>
+        <div style="font-size:12px;color:var(--text-muted);margin:-12px 0 14px">Map haiku/sonnet/opus to any provider model. Set per-tier request timeout.</div>
+        <div class="card" id="aliases-card">
+          <div class="alias-row alias-header">
+            <div style="font-size:11px;color:var(--text-muted);font-weight:600">Tier</div>
+            <div style="font-size:11px;color:var(--text-muted);font-weight:600">Target Model</div>
+            <div style="font-size:11px;color:var(--text-muted);font-weight:600;text-align:center">Timeout</div>
+            <div style="font-size:11px;color:var(--text-muted);font-weight:600">Provider</div>
+          </div>
+          <div class="alias-row">
+            <div class="alias-label haiku">Haiku</div>
+            <div class="combo">
+              <input type="text" id="alias-haiku" placeholder="Type or select a model..." autocomplete="off">
+              <div class="combo-panel" id="panel-haiku"></div>
+            </div>
+            <div class="timeout-wrap"><input type="number" id="timeout-haiku" class="timeout-input" placeholder="--" min="1">s</div>
+            <div class="alias-provider" id="alias-haiku-provider"></div>
+          </div>
+          <div class="alias-row">
+            <div class="alias-label sonnet">Sonnet</div>
+            <div class="combo">
+              <input type="text" id="alias-sonnet" placeholder="Type or select a model..." autocomplete="off">
+              <div class="combo-panel" id="panel-sonnet"></div>
+            </div>
+            <div class="timeout-wrap"><input type="number" id="timeout-sonnet" class="timeout-input" placeholder="--" min="1">s</div>
+            <div class="alias-provider" id="alias-sonnet-provider"></div>
+          </div>
+          <div class="alias-row">
+            <div class="alias-label opus">Opus</div>
+            <div class="combo">
+              <input type="text" id="alias-opus" placeholder="Type or select a model..." autocomplete="off">
+              <div class="combo-panel" id="panel-opus"></div>
+            </div>
+            <div class="timeout-wrap"><input type="number" id="timeout-opus" class="timeout-input" placeholder="--" min="1">s</div>
+            <div class="alias-provider" id="alias-opus-provider"></div>
+          </div>
+          <div style="margin-top: 12px; display: flex; justify-content: flex-end;">
+            <button class="btn-primary" onclick="saveAliases()">Save Aliases</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- Providers -->
+      <section>
+        <div class="section-header">
+          <h2>Providers</h2>
+          <div style="display: flex; gap: 6px;">
+            <button class="btn-ghost btn-sm" onclick="testAllProviders()">Test All</button>
+            <button class="btn-primary btn-sm" onclick="openAddProvider()">+ Add</button>
+          </div>
+        </div>
+        <div id="providers-list"><div class="loading">Loading providers</div></div>
+      </section>
+    </div>
+
+    <div class="main-right">
+      <!-- Request Logs -->
+      <section>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+          <h2 style="font-size:17px;font-weight:600;color:var(--text)">Request Logs</h2>
+          <button class="btn-ghost btn-sm" id="file-log-btn" onclick="toggleFileLog()">File Log: OFF</button>
+        </div>
+        <div style="display:flex;gap:6px;align-items:center;margin-bottom:12px">
+          <div class="log-filter">
+            <button class="btn-ghost btn-sm active" onclick="setLogFilter('all', this)">All</button>
+            <button class="btn-ghost btn-sm" onclick="setLogFilter('ok', this)">OK</button>
+            <button class="btn-ghost btn-sm" onclick="setLogFilter('err', this)">Errors</button>
+          </div>
+          <input type="text" id="log-search" class="log-search" placeholder="Filter by model, provider..." oninput="debouncedLoadLogs()">
+          <button class="btn-ghost btn-sm" onclick="clearLogs()">Clear</button>
+        </div>
+        <div class="log-panel" id="log-panel"><div class="empty">No logs yet</div></div>
+      </section>
+
+  </div>
+</main>
+
+<footer style="text-align:center;padding:16px 24px;font-size:12px;color:var(--text-muted);border-top:1px solid var(--border)">
+  API Hub v{{VERSION}} &middot; <a href="https://github.com/LeenixP/claude-api-hub" target="_blank" style="color:var(--primary);text-decoration:none">GitHub</a>
+
+
+</footer>
+
+<!-- Provider Modal -->
+<div class="modal-overlay" id="provider-modal">
+  <div class="modal">
+    <h3 id="modal-title">Add Provider</h3>
+    <div class="form-grid">
+      <div class="form-group">
+        <label>ID <span style="font-weight:400;color:var(--text-muted)">(unique key for routing)</span></label>
+        <input type="text" id="f-key" placeholder="e.g. deepseek">
+      </div>
+      <div class="form-group">
+        <label>Display Name</label>
+        <input type="text" id="f-name" placeholder="e.g. DeepSeek">
+      </div>
+      <div class="form-group full">
+        <label>Base URL</label>
+        <input type="text" id="f-url" placeholder="https://api.deepseek.com/v1">
+      </div>
+      <div class="form-group full">
+        <label>API Key</label>
+        <input type="text" id="f-key-val" placeholder="sk-... or ${ENV_VAR}">
+      </div>
+      <div class="form-group full">
+        <label>Models</label>
+        <div id="f-models-tags" style="display:flex;flex-wrap:wrap;gap:5px;min-height:32px;padding:6px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:4px"></div>
+        <div style="display:flex;gap:6px">
+          <input type="text" id="f-model-input" placeholder="Type model name and press Enter" style="flex:1">
+          <button class="btn-ghost btn-sm" type="button" onclick="addModelTag()">Add</button>
+          <button class="btn-ghost btn-sm" type="button" onclick="fetchAndAddModels()">Fetch from API</button>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Default Model</label>
+        <input type="text" id="f-default" placeholder="deepseek-chat">
+      </div>
+      <div class="form-group">
+        <label>Prefix <span style="font-weight:400;color:var(--text-muted)">(for routing)</span></label>
+        <input type="text" id="f-prefix" placeholder="deepseek-">
+      </div>
+      <div class="form-group">
+        <div class="form-check">
+          <input type="checkbox" id="f-enabled" checked>
+          <label for="f-enabled">Enabled</label>
+        </div>
+
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-ghost" onclick="closeModal()">Cancel</button>
+      <button class="btn-primary" onclick="saveProvider()">Save</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="app.js"></script>
+</body>
+</html>
