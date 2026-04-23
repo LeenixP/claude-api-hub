@@ -8,6 +8,11 @@
     "sonnet": "claude-sonnet-4-6",
     "opus": "claude-opus-4-6"
   },
+  "tierTimeouts": {
+    "haiku": { "timeoutMs": 120000 },
+    "sonnet": { "timeoutMs": 300000 },
+    "opus": { "timeoutMs": 600000 }
+  },
   "providers": {
     "claude": {
       "name": "Claude (Anthropic)",
@@ -45,6 +50,15 @@
       "defaultModel": "glm-4-plus",
       "enabled": true,
       "prefix": "glm-"
+    },
+    "deepseek": {
+      "name": "DeepSeek",
+      "baseUrl": "https://api.deepseek.com/v1",
+      "apiKey": "${DEEPSEEK_API_KEY}",
+      "models": ["deepseek-chat", "deepseek-reasoner"],
+      "defaultModel": "deepseek-chat",
+      "enabled": false,
+      "prefix": "deepseek-"
     }
   }
 }
