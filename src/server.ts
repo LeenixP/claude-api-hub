@@ -278,6 +278,33 @@ export function createServer(router: ModelRouter, config: GatewayConfig): http.S
       return;
     }
 
+    // ─── Tier Timeouts ───
+
+    if (req.method === 'GET' && pathname === '/api/tier-timeouts') {
+      sendJson(res, 200, config.tierTimeouts ?? {}, config, origin);
+      return;
+    }
+
+    if (req.method === 'PUT' && pathname === '/api/tier-timeouts') {
+      let bodyStr: string;
+      try { bodyStr = await readBody(req); } catch {
+        sendError(res, 400, 'invalid_request_error', 'Failed to read request body', config, origin); return;
+      }
+      let newTimeouts: Record<string, { timeoutMs: number; streamTimeoutMs?: number; streamIdleTimeoutMs?: number }>;
+      try { newTimeouts = JSON.parse(bodyStr); } catch {
+        sendError(res, 400, 'invalid_request_error', 'Invalid JSON body', config, origin); return;
+      }
+      const validTierKeys = ['haiku', 'sonnet', 'opus'];
+      const invalidKeys = Object.keys(newTimeouts).filter(k => !validTierKeys.includes(k));
+      if (invalidKeys.length > 0) {
+        sendError(res, 400, 'invalid_request_error', `Invalid tier keys: ${invalidKeys.join(', ')}`, config, origin); return;
+      }
+      config.tierTimeouts = newTimeouts;
+      saveConfig(config);
+      sendJson(res, 200, config.tierTimeouts, config, origin);
+      return;
+    }
+
     // ─── Config Reload ───
 
     if (req.method === 'POST' && pathname === '/api/config/reload') {
@@ -333,6 +360,12 @@ export function createServer(router: ModelRouter, config: GatewayConfig): http.S
         : rawModel.toLowerCase().includes('sonnet') ? 'Sonnet'
         : rawModel.toLowerCase().includes('opus') ? 'Opus'
         : rawModel;
+
+      const tierKey = claudeModel.toLowerCase();
+      const tierTimeout = config.tierTimeouts?.[tierKey];
+      const reqTimeoutMs = tierTimeout?.timeoutMs ?? config.streamTimeoutMs ?? 120000;
+      const reqStreamTimeoutMs = tierTimeout?.streamTimeoutMs ?? config.streamTimeoutMs ?? 30000;
+      const reqStreamIdleMs = tierTimeout?.streamIdleTimeoutMs ?? config.streamIdleTimeoutMs ?? 60000;
 
       let routeResult;
       try { routeResult = router.route(anthropicReq.model); } catch (err) {
@@ -401,14 +434,14 @@ export function createServer(router: ModelRouter, config: GatewayConfig): http.S
               ...cors,
             });
           },
-          config.streamTimeoutMs ?? 30000,
-          config.streamIdleTimeoutMs ?? 60000,
+          reqStreamTimeoutMs,
+          reqStreamIdleMs,
         );
         return;
       }
 
       let upstream;
-      try { upstream = await forwardRequest(built.url, built.headers, built.body, undefined, config.maxResponseBytes); } catch (err) {
+      try { upstream = await forwardRequest(built.url, built.headers, built.body, reqTimeoutMs, config.maxResponseBytes); } catch (err) {
         logManager.addLog({ ...logBase, status: 502, durationMs: Date.now() - startTime, error: (err as Error).message }, logDetail);
         sendError(res, 502, 'api_error', `Upstream request failed: ${(err as Error).message}`, config, origin); return;
       }

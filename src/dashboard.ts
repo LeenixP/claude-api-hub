@@ -371,13 +371,26 @@ button {
 /* ── Alias Mapping ── */
 .alias-row {
   display: grid;
-  grid-template-columns: 80px 1fr 120px;
+  grid-template-columns: 80px 1fr 80px 120px;
   gap: 10px;
   align-items: center;
   padding: 10px 0;
   border-bottom: 1px solid var(--border);
 }
 .alias-row:last-of-type { border-bottom: none; }
+.timeout-input {
+  width: 80px;
+  padding: 6px 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-size: 12px;
+  text-align: center;
+  outline: none;
+}
+.timeout-input:focus { border-color: var(--primary); }
+.timeout-input::placeholder { color: var(--text-muted); font-size: 11px; }
 .alias-label { font-weight: 700; font-size: 16px; }
 .alias-label.haiku { color: var(--cyan); }
 .alias-label.sonnet { color: var(--violet); }
@@ -700,6 +713,7 @@ button {
               <input type="text" id="alias-haiku" placeholder="Type or select a model..." autocomplete="off">
               <div class="combo-panel" id="panel-haiku"></div>
             </div>
+            <input type="number" id="timeout-haiku" class="timeout-input" placeholder="Timeout(s)" title="Request timeout in seconds">
             <div class="alias-provider" id="alias-haiku-provider"></div>
           </div>
           <div class="alias-row">
@@ -708,6 +722,7 @@ button {
               <input type="text" id="alias-sonnet" placeholder="Type or select a model..." autocomplete="off">
               <div class="combo-panel" id="panel-sonnet"></div>
             </div>
+            <input type="number" id="timeout-sonnet" class="timeout-input" placeholder="Timeout(s)" title="Request timeout in seconds">
             <div class="alias-provider" id="alias-sonnet-provider"></div>
           </div>
           <div class="alias-row">
@@ -716,6 +731,7 @@ button {
               <input type="text" id="alias-opus" placeholder="Type or select a model..." autocomplete="off">
               <div class="combo-panel" id="panel-opus"></div>
             </div>
+            <input type="number" id="timeout-opus" class="timeout-input" placeholder="Timeout(s)" title="Request timeout in seconds">
             <div class="alias-provider" id="alias-opus-provider"></div>
           </div>
           <div style="margin-top: 12px; display: flex; justify-content: flex-end;">
@@ -1004,12 +1020,19 @@ function getProviderModels() {
 
 function renderAliases() {
   const aliases = config.aliases || {};
+  const timeouts = config.tierTimeouts || {};
   const providerModels = getProviderModels();
   ['haiku', 'sonnet', 'opus'].forEach(tier => {
     const input = document.getElementById('alias-' + tier);
     const panel = document.getElementById('panel-' + tier);
     const provSpan = document.getElementById('alias-' + tier + '-provider');
+    const timeoutInput = document.getElementById('timeout-' + tier);
     input.value = aliases[tier] || '';
+    if (timeoutInput && timeouts[tier]) {
+      timeoutInput.value = Math.round((timeouts[tier].timeoutMs || 120000) / 1000);
+    } else if (timeoutInput) {
+      timeoutInput.value = '';
+    }
 
     function buildPanel(filter) {
       let html = '';
@@ -1058,9 +1081,15 @@ function renderAliases() {
 
 async function saveAliases() {
   const aliases = {};
+  const tierTimeouts = {};
   ['haiku', 'sonnet', 'opus'].forEach(tier => {
     const v = document.getElementById('alias-' + tier).value.trim();
     if (v) aliases[tier] = v;
+    const t = document.getElementById('timeout-' + tier).value.trim();
+    if (t && parseInt(t) > 0) {
+      const ms = parseInt(t) * 1000;
+      tierTimeouts[tier] = { timeoutMs: ms, streamTimeoutMs: ms, streamIdleTimeoutMs: ms };
+    }
   });
   try {
     await fetch('/api/aliases', {
@@ -1068,7 +1097,14 @@ async function saveAliases() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(aliases)
     });
-    toast('Aliases saved', 'success');
+    if (Object.keys(tierTimeouts).length > 0) {
+      await fetch('/api/tier-timeouts', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(tierTimeouts)
+      });
+    }
+    toast('Aliases & timeouts saved', 'success');
     load();
   } catch (e) {
     toast('Failed to save', 'error');

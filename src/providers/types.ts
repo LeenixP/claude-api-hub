@@ -14,6 +14,12 @@ export interface ProviderConfig {
   passthrough?: boolean;
 }
 
+export interface TierTimeout {
+  timeoutMs: number;
+  streamTimeoutMs?: number;
+  streamIdleTimeoutMs?: number;
+}
+
 export interface GatewayConfig {
   port: number;
   host: string;
@@ -21,6 +27,7 @@ export interface GatewayConfig {
   defaultProvider: string;
   logLevel: 'debug' | 'info' | 'warn' | 'error';
   aliases?: Record<string, string>;
+  tierTimeouts?: Record<string, TierTimeout>;
   version?: string;
   adminToken?: string;
   corsOrigins?: string[];
