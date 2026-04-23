@@ -38,6 +38,7 @@ export function createServer(router: ModelRouter, config: GatewayConfig, logMana
   if (!config.adminToken && !process.env.ADMIN_TOKEN) {
     logger.warn('No adminToken configured — management API is unprotected. Set adminToken in config or ADMIN_TOKEN env var.');
   }
+  const cachedDashboard = dashboardHtml(config.version || '');
 
   return http.createServer(async (req, res) => {
    try {
@@ -57,7 +58,7 @@ export function createServer(router: ModelRouter, config: GatewayConfig, logMana
 
     if (req.method === 'GET' && pathname === '/') {
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', ...cors });
-      res.end(dashboardHtml(config.version || ''));
+      res.end(cachedDashboard);
       return;
     }
 

@@ -1,5 +1,5 @@
-import { mkdirSync, appendFileSync, readdirSync } from 'fs';
-import { readdir, unlink } from 'fs/promises';
+import { mkdirSync, readdirSync } from 'fs';
+import { readdir, unlink, appendFile } from 'fs/promises';
 import { homedir } from 'os';
 import { join } from 'path';
 import { logger } from '../logger.js';
@@ -122,10 +122,9 @@ export class LogManager {
       this.cleanLogDir();
       const filename = entry.requestId + '.json';
       const filepath = join(this.logDir, filename);
-      try {
-        appendFileSync(filepath, JSON.stringify({ ...entry, ...detail }, null, 2), 'utf-8');
-        entry.logFile = filepath;
-      } catch {}
+      appendFile(filepath, JSON.stringify({ ...entry, ...detail }, null, 2), 'utf-8')
+        .then(() => { entry.logFile = filepath; })
+        .catch(() => {});
     }
 
     try {
