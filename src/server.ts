@@ -14,8 +14,6 @@ import { LogManager } from './services/log-manager.js';
 import type { LogEntry, LogDetail } from './services/log-manager.js';
 import { forwardRequest, forwardStream, httpGet } from './services/forwarder.js';
 
-const logManager = new LogManager();
-
 function saveConfig(config: GatewayConfig): void {
   writeFileSync(getConfigPath(), JSON.stringify(config, null, 2), 'utf-8');
 }
@@ -29,7 +27,7 @@ function rebuildProviders(router: ModelRouter, config: GatewayConfig): void {
   router.replaceAll(providers);
 }
 
-export function createServer(router: ModelRouter, config: GatewayConfig): http.Server {
+export function createServer(router: ModelRouter, config: GatewayConfig, logManager: LogManager): http.Server {
   let rateLimiter: PerIpRateLimiter | null = null;
   if (config.rateLimitRpm && config.rateLimitRpm > 0) {
     rateLimiter = new PerIpRateLimiter(config.rateLimitRpm);

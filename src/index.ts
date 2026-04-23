@@ -10,6 +10,7 @@ import { ClaudeProvider } from './providers/claude.js';
 import { GenericOpenAIProvider } from './providers/generic.js';
 import { logger, setLogLevel } from './logger.js';
 import { destroyAgents } from './services/forwarder.js';
+import { LogManager } from './services/log-manager.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -43,7 +44,8 @@ async function main(): Promise<void> {
   }
 
   const router = createRouter(providers, config.defaultProvider, config.aliases ?? {});
-  const server = createServer(router, config);
+  const logManager = new LogManager();
+  const server = createServer(router, config, logManager);
 
   server.listen(config.port, config.host, () => {
     logger.info(`api-hub listening on http://${config.host}:${config.port}`);
@@ -57,6 +59,7 @@ async function main(): Promise<void> {
   function gracefulShutdown(signal: string): void {
     logger.info(`Received ${signal}, shutting down gracefully...`);
     destroyAgents();
+    logManager.close();
     server.close(() => {
       logger.info('All connections closed, exiting.');
       process.exit(0);

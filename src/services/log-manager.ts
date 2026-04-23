@@ -1,7 +1,8 @@
-import { appendFileSync, mkdirSync, readdirSync } from 'fs';
+import { mkdirSync, appendFileSync, readdirSync } from 'fs';
 import { readdir, unlink } from 'fs/promises';
 import { homedir } from 'os';
 import { join } from 'path';
+import { DatabaseSync } from 'node:sqlite';
 
 export interface LogEntry {
   time: string;
@@ -28,21 +29,92 @@ export interface LogDetail {
 }
 
 export class LogManager {
-  private logs: LogEntry[] = [];
-  private logToFile = false;
   readonly logDir: string;
   private readonly maxLogs: number;
   private readonly maxLogFiles: number;
+  private db: InstanceType<typeof DatabaseSync>;
+  private stmtInsert: ReturnType<InstanceType<typeof DatabaseSync>['prepare']>;
+  private stmtGetLogs: ReturnType<InstanceType<typeof DatabaseSync>['prepare']>;
+  private stmtClear: ReturnType<InstanceType<typeof DatabaseSync>['prepare']>;
+  private stmtCount: ReturnType<InstanceType<typeof DatabaseSync>['prepare']>;
+  private stmtTrim: ReturnType<InstanceType<typeof DatabaseSync>['prepare']>;
+  private stmtGetSetting: ReturnType<InstanceType<typeof DatabaseSync>['prepare']>;
+  private stmtSetSetting: ReturnType<InstanceType<typeof DatabaseSync>['prepare']>;
 
-  constructor(maxLogs = 200, maxLogFiles = 4096) {
+  constructor(maxLogs = 10000, maxLogFiles = 4096, dbPath?: string) {
     this.maxLogs = maxLogs;
     this.maxLogFiles = maxLogFiles;
     this.logDir = join(homedir(), '.claude-api-hub', 'logs');
     try { mkdirSync(this.logDir, { recursive: true }); } catch {}
+
+    const resolvedDbPath = dbPath ?? join(homedir(), '.claude-api-hub', 'data.db');
+    if (resolvedDbPath !== ':memory:') {
+      try { mkdirSync(join(homedir(), '.claude-api-hub'), { recursive: true }); } catch {}
+    }
+
+    this.db = new DatabaseSync(resolvedDbPath);
+    this.db.exec('PRAGMA journal_mode=WAL');
+    this.db.exec('PRAGMA busy_timeout=3000');
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS request_logs (
+        id             INTEGER PRIMARY KEY AUTOINCREMENT,
+        request_id     TEXT    NOT NULL,
+        time           TEXT    NOT NULL,
+        claude_model   TEXT    NOT NULL DEFAULT '',
+        resolved_model TEXT    NOT NULL DEFAULT '',
+        provider       TEXT    NOT NULL DEFAULT '',
+        protocol       TEXT    NOT NULL DEFAULT '',
+        target_url     TEXT    NOT NULL DEFAULT '',
+        stream         INTEGER NOT NULL DEFAULT 0,
+        status         INTEGER NOT NULL DEFAULT 0,
+        duration_ms    INTEGER NOT NULL DEFAULT 0,
+        input_tokens   INTEGER DEFAULT 0,
+        output_tokens  INTEGER DEFAULT 0,
+        error          TEXT,
+        log_file       TEXT
+      )
+    `);
+    this.db.exec('CREATE INDEX IF NOT EXISTS idx_logs_time ON request_logs(time)');
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS settings (
+        key   TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+      )
+    `);
+
+    this.stmtInsert = this.db.prepare(`
+      INSERT INTO request_logs (request_id, time, claude_model, resolved_model, provider, protocol, target_url, stream, status, duration_ms, input_tokens, output_tokens, error, log_file)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    this.stmtGetLogs = this.db.prepare('SELECT * FROM request_logs ORDER BY id DESC LIMIT ?');
+    this.stmtClear = this.db.prepare('DELETE FROM request_logs');
+    this.stmtCount = this.db.prepare('SELECT COUNT(*) as cnt FROM request_logs');
+    this.stmtTrim = this.db.prepare('DELETE FROM request_logs WHERE id IN (SELECT id FROM request_logs ORDER BY id ASC LIMIT ?)');
+    this.stmtGetSetting = this.db.prepare('SELECT value FROM settings WHERE key = ?');
+    this.stmtSetSetting = this.db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)');
+  }
+
+  private rowToLogEntry(row: Record<string, unknown>): LogEntry {
+    return {
+      time: row.time as string,
+      requestId: row.request_id as string,
+      claudeModel: row.claude_model as string,
+      resolvedModel: row.resolved_model as string,
+      provider: row.provider as string,
+      protocol: row.protocol as string,
+      targetUrl: row.target_url as string,
+      stream: row.stream === 1,
+      status: row.status as number,
+      durationMs: row.duration_ms as number,
+      inputTokens: (row.input_tokens as number) || undefined,
+      outputTokens: (row.output_tokens as number) || undefined,
+      error: (row.error as string) || undefined,
+      logFile: (row.log_file as string) || undefined,
+    };
   }
 
   addLog(entry: LogEntry, detail?: LogDetail): void {
-    if (this.logToFile && detail) {
+    if (this.isFileLogging() && detail) {
       this.cleanLogDir();
       const filename = entry.requestId + '.json';
       const filepath = join(this.logDir, filename);
@@ -51,25 +123,41 @@ export class LogManager {
         entry.logFile = filepath;
       } catch {}
     }
-    this.logs.push(entry);
-    if (this.logs.length > this.maxLogs) this.logs.shift();
+
+    try {
+      this.stmtInsert.run(
+        entry.requestId, entry.time, entry.claudeModel, entry.resolvedModel,
+        entry.provider, entry.protocol, entry.targetUrl, entry.stream ? 1 : 0,
+        entry.status, entry.durationMs, entry.inputTokens ?? 0, entry.outputTokens ?? 0,
+        entry.error ?? null, entry.logFile ?? null
+      );
+      this.trimLogs();
+    } catch {}
   }
 
-  getLogs(): LogEntry[] {
-    return this.logs.slice().reverse();
+  getLogs(limit = 200): LogEntry[] {
+    try {
+      const rows = this.stmtGetLogs.all(limit) as Record<string, unknown>[];
+      return rows.map(r => this.rowToLogEntry(r));
+    } catch { return []; }
   }
 
   clearLogs(): void {
-    this.logs.length = 0;
+    try { this.stmtClear.run(); } catch {}
   }
 
   isFileLogging(): boolean {
-    return this.logToFile;
+    try {
+      const row = this.stmtGetSetting.get('logToFile') as { value: string } | undefined;
+      return row?.value === 'true';
+    } catch { return false; }
   }
 
   toggleFileLogging(): boolean {
-    this.logToFile = !this.logToFile;
-    return this.logToFile;
+    const current = this.isFileLogging();
+    const next = !current;
+    try { this.stmtSetSetting.run('logToFile', next.toString()); } catch {}
+    return next;
   }
 
   getFileCount(): number {
@@ -80,6 +168,19 @@ export class LogManager {
 
   get maxFiles(): number {
     return this.maxLogFiles;
+  }
+
+  close(): void {
+    try { this.db.close(); } catch {}
+  }
+
+  private trimLogs(): void {
+    try {
+      const row = this.stmtCount.get() as { cnt: number };
+      if (row.cnt > this.maxLogs) {
+        this.stmtTrim.run(row.cnt - this.maxLogs);
+      }
+    } catch {}
   }
 
   private cleanLogDir(): void {

@@ -4,6 +4,7 @@ import { createServer } from '../src/server.js';
 import { createRouter } from '../src/router.js';
 import { ClaudeProvider } from '../src/providers/claude.js';
 import { GenericOpenAIProvider } from '../src/providers/generic.js';
+import { LogManager } from '../src/services/log-manager.js';
 import type { GatewayConfig, ProviderConfig } from '../src/providers/types.js';
 
 const testProviderConfig: ProviderConfig = {
@@ -79,7 +80,7 @@ describe('server integration', () => {
       new ClaudeProvider(passthroughConfig),
     ];
     const router = createRouter(providers, 'test', {});
-    server = createServer(router, config);
+    server = createServer(router, config, new LogManager(200, 100, ':memory:'));
     await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', () => resolve()));
   });
 
@@ -169,7 +170,7 @@ describe('server with admin auth', () => {
     const config = makeConfig({ adminToken: 'test-secret-token' });
     const providers = [new GenericOpenAIProvider(testProviderConfig)];
     const router = createRouter(providers, 'test', {});
-    server = createServer(router, config);
+    server = createServer(router, config, new LogManager(200, 100, ':memory:'));
     await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', () => resolve()));
   });
 
@@ -244,7 +245,7 @@ describe('server with rate limiting', () => {
     const config = makeConfig({ rateLimitRpm: 2 });
     const providers = [new GenericOpenAIProvider(testProviderConfig)];
     const router = createRouter(providers, 'test', {});
-    server = createServer(router, config);
+    server = createServer(router, config, new LogManager(200, 100, ':memory:'));
     await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', () => resolve()));
   });
 
