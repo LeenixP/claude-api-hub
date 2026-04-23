@@ -3,8 +3,7 @@ import crypto from 'crypto';
 import { writeFileSync, renameSync } from 'fs';
 import { ModelRouter } from './router.js';
 import { AnthropicRequest, GatewayConfig, ProviderConfig } from './providers/types.js';
-import { ClaudeProvider } from './providers/claude.js';
-import { GenericOpenAIProvider } from './providers/generic.js';
+import { createProvider } from './providers/factory.js';
 import { dashboardHtml } from './dashboard.js';
 import { getConfigPath, loadConfig } from './config.js';
 import { logger } from './logger.js';
@@ -22,11 +21,9 @@ function saveConfig(config: GatewayConfig): void {
 }
 
 function rebuildProviders(router: ModelRouter, config: GatewayConfig): void {
-  const providers: import('./providers/types.js').Provider[] = [];
-  for (const [, pc] of Object.entries(config.providers)) {
-    if (!pc.enabled) continue;
-    providers.push(pc.passthrough ? new ClaudeProvider(pc) : new GenericOpenAIProvider(pc));
-  }
+  const providers = Object.entries(config.providers)
+    .filter(([, pc]) => pc.enabled)
+    .map(([, pc]) => createProvider(pc));
   router.replaceAll(providers);
 }
 

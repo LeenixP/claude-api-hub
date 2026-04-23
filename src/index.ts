@@ -5,9 +5,7 @@ import { fileURLToPath } from 'url';
 import { loadConfig } from './config.js';
 import { createRouter } from './router.js';
 import { createServer } from './server.js';
-import { Provider } from './providers/types.js';
-import { ClaudeProvider } from './providers/claude.js';
-import { GenericOpenAIProvider } from './providers/generic.js';
+import { createProvider } from './providers/factory.js';
 import { logger, setLogLevel } from './logger.js';
 import { destroyAgents } from './services/forwarder.js';
 import { LogManager } from './services/log-manager.js';
@@ -43,11 +41,6 @@ Environment variables:
   return result;
 }
 
-function createProvider(key: string, config: import('./providers/types.js').ProviderConfig): Provider {
-  if (config.passthrough) return new ClaudeProvider(config);
-  return new GenericOpenAIProvider(config);
-}
-
 async function main(): Promise<void> {
   const args = parseArgs();
   const config = loadConfig(args.config);
@@ -63,11 +56,9 @@ async function main(): Promise<void> {
     config.version = pkg.version;
   } catch { /* ignore */ }
 
-  const providers: Provider[] = [];
-  for (const [key, providerConfig] of Object.entries(config.providers)) {
-    if (!providerConfig.enabled) continue;
-    providers.push(createProvider(key, providerConfig));
-  }
+  const providers = Object.entries(config.providers)
+    .filter(([, pc]) => pc.enabled)
+    .map(([, pc]) => createProvider(pc));
 
   if (providers.length === 0) {
     logger.error('No providers loaded. Exiting.');
