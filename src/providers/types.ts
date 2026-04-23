@@ -41,6 +41,7 @@ export interface GatewayConfig {
   maxResponseBytes?: number;
   trustProxy?: boolean;
   fallbackChain?: Record<string, string>;
+  password?: string;
 }
 
 // ─── Anthropic API Types (incoming from Claude Code) ───

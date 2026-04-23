@@ -40,6 +40,20 @@ export class PerIpRateLimiter {
   }
 }
 
+// ─── Session Token Store ───
+
+const sessionTokens = new Set<string>();
+
+export function createSessionToken(): string {
+  const token = crypto.randomUUID();
+  sessionTokens.add(token);
+  return token;
+}
+
+export function isValidSession(token: string): boolean {
+  return sessionTokens.has(token);
+}
+
 // ─── Admin Auth ───
 
 function timingSafeCompare(a: string, b: string): boolean {
@@ -55,11 +69,13 @@ function timingSafeCompare(a: string, b: string): boolean {
 }
 
 export function requireAdmin(req: http.IncomingMessage, res: http.ServerResponse, config: GatewayConfig): boolean {
+  const password = config.password;
   const adminToken = config.adminToken || process.env.ADMIN_TOKEN;
-  if (!adminToken) return true;
+  if (!password && !adminToken) return true;
   const token = req.headers['authorization']?.replace('Bearer ', '')
     || req.headers['x-admin-token'] as string;
-  if (token && timingSafeCompare(token, adminToken)) return true;
+  if (token && isValidSession(token)) return true;
+  if (token && adminToken && timingSafeCompare(token, adminToken)) return true;
   sendError(res, 401, 'authentication_error', 'Invalid or missing admin token', config, req.headers['origin'] as string);
   return false;
 }

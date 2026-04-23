@@ -1,4 +1,5 @@
 {
+  "password": "claude",
   "port": 9800,
   "host": "0.0.0.0",
   "logLevel": "info",

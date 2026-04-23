@@ -425,31 +425,46 @@ function showLoginPage() {
   if (document.getElementById('login-overlay')) return;
   const overlay = document.createElement('div');
   overlay.id = 'login-overlay';
-  overlay.style.cssText = 'position:fixed;inset:0;z-index:300;background:var(--bg);display:flex;align-items:center;justify-content:center';
-  overlay.innerHTML = '<div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:40px;width:100%;max-width:380px;box-shadow:var(--shadow-lg);animation:fadeInLogin 0.4s ease">'
-    + '<div style="text-align:center;margin-bottom:28px">'
-      + '<div style="width:56px;height:56px;border-radius:14px;background:var(--primary-glow);color:var(--primary);display:inline-flex;align-items:center;justify-content:center;margin-bottom:14px">'
-        + '<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>'
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:300;background:linear-gradient(135deg,#1e1b4b 0%,#312e81 30%,#4c1d95 70%,#581c87 100%);display:flex;align-items:center;justify-content:center;padding:20px';
+
+  const loginStyle = document.createElement('style');
+  loginStyle.textContent = '@keyframes fadeInLogin{from{opacity:0;transform:translateY(-20px)}to{opacity:1;transform:translateY(0)}}'
+    + '@keyframes shakeLogin{0%,100%{transform:translateX(0)}25%{transform:translateX(-10px)}75%{transform:translateX(10px)}}'
+    + '#login-password:focus{border-color:#3b82f6 !important;box-shadow:0 0 0 3px rgba(59,130,246,0.25) !important}'
+    + '#login-btn:hover:not(:disabled){transform:translateY(-2px);box-shadow:0 8px 25px rgba(59,130,246,0.4)}'
+    + '#login-btn:active:not(:disabled){transform:translateY(0)}'
+    + '#login-btn:disabled{background:#94a3b8 !important;cursor:not-allowed;transform:none !important;box-shadow:none !important}'
+    + '.login-spinner{display:inline-block;width:16px;height:16px;border:2px solid #fff;border-radius:50%;border-top-color:transparent;animation:loginSpin 0.8s linear infinite;margin-right:8px;vertical-align:middle}'
+    + '@keyframes loginSpin{to{transform:rotate(360deg)}}';
+  overlay.appendChild(loginStyle);
+
+  const card = document.createElement('div');
+  card.style.cssText = 'background:#fff;border-radius:16px;box-shadow:0 20px 60px rgba(0,0,0,0.3);width:100%;max-width:420px;padding:48px;animation:fadeInLogin 0.5s ease';
+
+  card.innerHTML = '<div style="text-align:center;margin-bottom:32px">'
+      + '<div style="width:64px;height:64px;border-radius:16px;background:linear-gradient(135deg,#3b82f6,#6366f1);display:inline-flex;align-items:center;justify-content:center;margin-bottom:16px">'
+        + '<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>'
       + '</div>'
-      + '<h2 style="font-size:20px;font-weight:700;color:var(--text);margin-bottom:4px">API Hub</h2>'
-      + '<p style="font-size:13px;color:var(--text-muted)">Enter admin password to continue</p>'
+      + '<h2 style="font-size:28px;font-weight:700;color:#1e293b;margin-bottom:6px">API Hub</h2>'
+      + '<p style="font-size:16px;color:#64748b">Enter password to continue</p>'
     + '</div>'
     + '<form id="login-form" autocomplete="on">'
-      + '<div style="margin-bottom:16px">'
-        + '<input type="password" id="login-password" placeholder="Password" autocomplete="current-password" '
-          + 'style="width:100%;padding:11px 14px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:14px;outline:none;transition:border-color 0.15s">'
+      + '<div style="margin-bottom:20px">'
+        + '<label style="display:block;margin-bottom:8px;color:#334155;font-size:14px;font-weight:500">Password</label>'
+        + '<input type="password" id="login-password" placeholder="Enter your password" autocomplete="current-password" '
+          + 'style="width:100%;height:48px;padding:0 16px;background:#f8fafc;border:2px solid #e2e8f0;border-radius:10px;color:#1e293b;font-size:16px;outline:none;transition:all 0.3s ease;box-sizing:border-box">'
       + '</div>'
-      + '<div id="login-error" style="display:none;color:var(--danger);font-size:13px;margin-bottom:12px;text-align:center"></div>'
-      + '<button type="submit" id="login-btn" style="width:100%;padding:11px;background:var(--primary);color:#fff;border:none;border-radius:var(--radius-sm);font-size:14px;font-weight:600;cursor:pointer;transition:all 0.15s">'
+      + '<div id="login-error" style="display:none;color:#ef4444;font-size:14px;margin-bottom:16px;text-align:center"></div>'
+      + '<button type="submit" id="login-btn" style="width:100%;height:48px;background:linear-gradient(135deg,#3b82f6 0%,#6366f1 100%);color:#fff;border:none;border-radius:10px;font-size:16px;font-weight:600;cursor:pointer;transition:all 0.3s ease">'
         + 'Sign In'
       + '</button>'
     + '</form>'
-  + '</div>';
-  document.body.appendChild(overlay);
+    + '<div style="text-align:center;margin-top:32px;padding-top:20px;border-top:1px solid #e2e8f0">'
+      + '<p style="font-size:13px;color:#94a3b8">Claude API Hub Gateway</p>'
+    + '</div>';
 
-  const style = document.createElement('style');
-  style.textContent = '@keyframes fadeInLogin{from{opacity:0;transform:scale(0.96)}to{opacity:1;transform:scale(1)}}';
-  overlay.appendChild(style);
+  overlay.appendChild(card);
+  document.body.appendChild(overlay);
 
   const pwdInput = document.getElementById('login-password');
   if (pwdInput) pwdInput.focus();
@@ -460,7 +475,8 @@ function showLoginPage() {
     const errEl = document.getElementById('login-error');
     const btn = document.getElementById('login-btn');
     if (!pwd) { errEl.textContent = 'Please enter a password'; errEl.style.display = 'block'; return; }
-    btn.disabled = true; btn.textContent = 'Signing in...';
+    btn.disabled = true;
+    btn.innerHTML = '<span class="login-spinner"></span>Signing in...';
     errEl.style.display = 'none';
     try {
       const res = await fetch('/api/auth/login', {
@@ -474,21 +490,24 @@ function showLoginPage() {
         localStorage.setItem('adminToken', data.token);
         authRequired = false;
         overlay.remove();
-        load();
+        startDashboard();
       } else {
         errEl.textContent = data.message || 'Incorrect password';
         errEl.style.display = 'block';
-        btn.disabled = false; btn.textContent = 'Sign In';
+        errEl.style.animation = 'shakeLogin 0.3s ease-in-out';
+        setTimeout(() => { errEl.style.animation = ''; }, 300);
+        btn.disabled = false; btn.innerHTML = 'Sign In';
         document.getElementById('login-password').value = '';
         document.getElementById('login-password').focus();
       }
     } catch (err) {
       errEl.textContent = 'Connection failed';
       errEl.style.display = 'block';
-      btn.disabled = false; btn.textContent = 'Sign In';
+      btn.disabled = false; btn.innerHTML = 'Sign In';
     }
   });
 }
+
 
 async function apiFetch(url, options) {
   if (authRequired && !adminToken) return new Response('{}', { status: 401 });
@@ -658,10 +677,10 @@ function renderProviders() {
         + (h.latencyMs ? '<span class="health-ms">' + h.latencyMs + 'ms</span>' : '')
       : '';
     const enableBadge = p.enabled
-      ? '<button class="badge badge-on" onclick="event.stopPropagation();toggleEnabled(\\'' + esc(key) + '\\')" title="Click to disable">ON</button>'
-      : '<button class="badge badge-off" onclick="event.stopPropagation();toggleEnabled(\\'' + esc(key) + '\\')" title="Click to enable">OFF</button>';
+      ? '<button class="badge badge-on" onclick="event.stopPropagation();toggleEnabled(\x27' + esc(key) + '\x27)" title="Click to disable">ON</button>'
+      : '<button class="badge badge-off" onclick="event.stopPropagation();toggleEnabled(\x27' + esc(key) + '\x27)" title="Click to enable">OFF</button>';
     const formatBadge = '<button class="badge ' + (p.passthrough ? 'badge-anthropic' : 'badge-openai')
-      + '" onclick="event.stopPropagation();toggleProtocol(\\'' + esc(key) + '\\')" title="Click to switch">'
+      + '" onclick="event.stopPropagation();toggleProtocol(\x27' + esc(key) + '\x27)" title="Click to switch">'
       + (p.passthrough ? 'Anthropic' : 'OpenAI') + '</button>';
     const configModels = p.models || [];
     const apiModels = fetchedModels[p.name || key] || [];
@@ -682,9 +701,9 @@ function renderProviders() {
           + '<div class="provider-url">' + esc(p.baseUrl) + '</div>'
         + '</div>'
         + '<div class="provider-actions">'
-          + '<button class="btn-ghost btn-sm" onclick="testProvider(\\'' + esc(key) + '\\')">Test</button>'
-          + '<button class="btn-ghost btn-sm" onclick="editProvider(\\'' + esc(key) + '\\')">Edit</button>'
-          + '<button class="btn-danger btn-sm" onclick="deleteProvider(\\'' + esc(key) + '\\')">Del</button>'
+          + '<button class="btn-ghost btn-sm" onclick="testProvider(\x27' + esc(key) + '\x27)">Test</button>'
+          + '<button class="btn-ghost btn-sm" onclick="editProvider(\x27' + esc(key) + '\x27)">Edit</button>'
+          + '<button class="btn-danger btn-sm" onclick="deleteProvider(\x27' + esc(key) + '\x27)">Del</button>'
         + '</div>'
       + '</div>'
       + '<div class="provider-meta">'
@@ -1350,12 +1369,45 @@ function toggleFaq(btn) {
 }
 
 // ── Boot ──
-initQuickStart();
-initRouter();
-load();
-loadLogs();
-loadFileLogStatus();
-loadStats();
-initSSE();
+async function boot() {
+  try {
+    const checkRes = await fetch('/api/auth/check').catch(() => null);
+    if (checkRes && checkRes.ok) {
+      const checkData = await checkRes.json();
+      if (checkData.required) {
+        const saved = localStorage.getItem('adminToken');
+        if (saved) {
+          adminToken = saved;
+          const verifyRes = await apiFetch('/api/config');
+          if (verifyRes.ok) {
+            startDashboard();
+            return;
+          }
+          adminToken = '';
+          localStorage.removeItem('adminToken');
+        }
+        showLoginPage();
+        return;
+      }
+    }
+    startDashboard();
+  } catch (e) {
+    startDashboard();
+  }
+}
+
+
+function startDashboard() {
+  document.querySelectorAll('header, main, footer').forEach(el => el.style.display = '');
+  initQuickStart();
+  initRouter();
+  load();
+  loadLogs();
+  loadFileLogStatus();
+  loadStats();
+  initSSE();
+}
+
+boot();
 setInterval(() => { if (!sseConnected) loadLogs(); }, 5000);
 setInterval(loadStats, 3000);

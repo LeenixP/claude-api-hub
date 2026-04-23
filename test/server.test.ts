@@ -437,7 +437,7 @@ describe('server /api/auth/login', () => {
   let server: http.Server;
 
   beforeAll(async () => {
-    const config = makeConfig({ adminToken: 'login-secret' });
+    const config = makeConfig({ password: 'login-secret' });
     const providers = [new GenericOpenAIProvider(testProviderConfig)];
     const router = createRouter(providers, 'test', {});
     server = createServer(router, config, new LogManager(200, 100, ':memory:'));
@@ -458,7 +458,8 @@ describe('server /api/auth/login', () => {
     expect(res.status).toBe(200);
     const json = JSON.parse(res.body);
     expect(json.success).toBe(true);
-    expect(json.token).toBe('login-secret');
+    expect(json.token).toBeTruthy();
+    expect(json.token).not.toBe('login-secret');
   });
 
   it('POST /api/auth/login with wrong password returns 401', async () => {

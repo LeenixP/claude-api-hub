@@ -8,7 +8,7 @@ import { dashboardHtml } from './dashboard.js';
 import { getConfigPath, loadConfig } from './config.js';
 import { logger } from './logger.js';
 import { getCorsHeaders, sendJson, sendError, readBody, maskKey } from './utils/http.js';
-import { PerIpRateLimiter, requireAdmin, setSecurityHeaders } from './middleware/auth.js';
+import { PerIpRateLimiter, requireAdmin, setSecurityHeaders, createSessionToken } from './middleware/auth.js';
 import { LogManager } from './services/log-manager.js';
 import type { LogEntry, LogDetail } from './services/log-manager.js';
 import { forwardRequest, forwardStream, httpGet } from './services/forwarder.js';
@@ -34,8 +34,8 @@ export function createServer(router: ModelRouter, config: GatewayConfig, logMana
   if (config.rateLimitRpm && config.rateLimitRpm > 0) {
     rateLimiter = new PerIpRateLimiter(config.rateLimitRpm);
   }
-  if (!config.adminToken && !process.env.ADMIN_TOKEN) {
-    logger.warn('No adminToken configured — management API is unprotected. Set adminToken in config or ADMIN_TOKEN env var.');
+  if (!config.password && !config.adminToken && !process.env.ADMIN_TOKEN) {
+    logger.warn('No password configured — management API is unprotected. Set password in config or ADMIN_TOKEN env var.');
   }
   const cachedDashboard = dashboardHtml(config.version || '');
 
@@ -66,6 +66,12 @@ export function createServer(router: ModelRouter, config: GatewayConfig, logMana
       return;
     }
 
+    if (req.method === 'GET' && pathname === '/api/auth/check') {
+      const password = config.password;
+      sendJson(res, 200, { required: !!password }, config, origin);
+      return;
+    }
+
     if (req.method === 'POST' && pathname === '/api/auth/login') {
       let bodyStr: string;
       try { bodyStr = await readBody(req); } catch {
@@ -75,8 +81,8 @@ export function createServer(router: ModelRouter, config: GatewayConfig, logMana
       try { body = JSON.parse(bodyStr); } catch {
         sendError(res, 400, 'invalid_request_error', 'Invalid JSON body', config, origin); return;
       }
-      const adminToken = config.adminToken || process.env.ADMIN_TOKEN;
-      if (!adminToken) {
+      const password = config.password;
+      if (!password) {
         sendJson(res, 200, { success: true, token: '' }, config, origin);
         return;
       }
@@ -85,10 +91,11 @@ export function createServer(router: ModelRouter, config: GatewayConfig, logMana
         return;
       }
       const bufA = Buffer.from(body.password, 'utf-8');
-      const bufB = Buffer.from(adminToken, 'utf-8');
+      const bufB = Buffer.from(password, 'utf-8');
       const match = bufA.length === bufB.length && crypto.timingSafeEqual(bufA, bufB);
       if (match) {
-        sendJson(res, 200, { success: true, token: adminToken }, config, origin);
+        const sessionToken = createSessionToken();
+        sendJson(res, 200, { success: true, token: sessionToken }, config, origin);
       } else {
         sendJson(res, 401, { success: false, message: 'Incorrect password' }, config, origin);
       }
