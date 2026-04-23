@@ -3,6 +3,22 @@ import https from 'https';
 import crypto from 'crypto';
 import { writeFileSync } from 'fs';
 import { URL } from 'url';
+
+// ─── Connection Pool ───
+
+const httpAgent = new http.Agent({
+  keepAlive: true,
+  keepAliveMsecs: 30000,
+  maxSockets: 50,
+  maxFreeSockets: 10,
+});
+
+const httpsAgent = new https.Agent({
+  keepAlive: true,
+  keepAliveMsecs: 30000,
+  maxSockets: 50,
+  maxFreeSockets: 10,
+});
 import { ModelRouter } from './router.js';
 import { AnthropicRequest, GatewayConfig, ProviderConfig } from './providers/types.js';
 import { ClaudeProvider } from './providers/claude.js';
@@ -154,15 +170,16 @@ function saveConfig(config: GatewayConfig): void {
 }
 
 function rebuildProviders(router: ModelRouter, config: GatewayConfig): void {
-  router.clear();
+  const providers: import('./providers/types.js').Provider[] = [];
   for (const [, providerConfig] of Object.entries(config.providers)) {
     if (!providerConfig.enabled) continue;
     if (providerConfig.passthrough) {
-      router.register(new ClaudeProvider(providerConfig));
+      providers.push(new ClaudeProvider(providerConfig));
     } else {
-      router.register(new GenericOpenAIProvider(providerConfig));
+      providers.push(new GenericOpenAIProvider(providerConfig));
     }
   }
+  router.replaceAll(providers);
 }
 
 function forwardRequest(
@@ -184,6 +201,7 @@ function forwardRequest(
       method: 'POST',
       headers: { ...headers, 'Content-Length': Buffer.byteLength(body) },
       timeout: timeoutMs,
+      agent: isHttps ? httpsAgent : httpAgent,
     };
 
     const req = lib.request(options, (res) => {
@@ -230,6 +248,7 @@ function httpGet(
       method: 'GET',
       headers,
       timeout: timeoutMs,
+      agent: isHttps ? httpsAgent : httpAgent,
     };
     const req = lib.request(options, (res) => {
       const chunks: Buffer[] = [];
@@ -264,6 +283,7 @@ function forwardStream(
     method: 'POST',
     headers: { ...headers, 'Content-Length': Buffer.byteLength(body) },
     timeout: connectTimeoutMs,
+    agent: isHttps ? httpsAgent : httpAgent,
   };
 
   const req = lib.request(options, (upstreamRes) => {

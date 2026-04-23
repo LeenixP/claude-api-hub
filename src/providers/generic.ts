@@ -1,6 +1,7 @@
 import type {
   Provider,
   ProviderConfig,
+  StreamContext,
   AnthropicRequest,
   AnthropicResponse,
   AnthropicStreamEvent,
@@ -8,7 +9,7 @@ import type {
   OpenAIStreamChunk,
 } from './types.js';
 import { translateRequest } from '../translator/anthropic-to-openai.js';
-import { translateResponse, translateStreamChunk, createStreamState } from '../translator/openai-to-anthropic.js';
+import { translateResponse, translateStreamChunk, createStreamState, StreamState } from '../translator/openai-to-anthropic.js';
 
 export class GenericOpenAIProvider implements Provider {
   name: string;
@@ -18,7 +19,6 @@ export class GenericOpenAIProvider implements Provider {
   constructor(config: ProviderConfig, prefix?: string | string[]) {
     this.name = config.name;
     this.config = config;
-    // prefer explicit constructor arg, fall back to config field
     this.prefix = prefix ?? config.prefix;
   }
 
@@ -51,8 +51,11 @@ export class GenericOpenAIProvider implements Provider {
     return translateResponse(raw, originalModel);
   }
 
-  parseStreamChunk(chunk: OpenAIStreamChunk, originalModel: string): AnthropicStreamEvent[] {
-    const state = createStreamState(originalModel);
-    return translateStreamChunk(chunk, originalModel, state);
+  createStreamContext(originalModel: string): StreamContext {
+    return { initialized: true, state: createStreamState(originalModel) };
+  }
+
+  parseStreamChunk(chunk: OpenAIStreamChunk, originalModel: string, ctx: StreamContext): AnthropicStreamEvent[] {
+    return translateStreamChunk(chunk, originalModel, ctx.state as StreamState);
   }
 }

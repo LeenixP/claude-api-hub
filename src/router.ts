@@ -18,26 +18,37 @@ export class ModelRouter {
     this.providers.clear();
   }
 
+  replaceAll(providers: Provider[]): void {
+    const newMap = new Map<string, Provider>();
+    for (const p of providers) newMap.set(p.name, p);
+    this.providers = newMap;
+  }
+
   route(model: string): RouteResult {
     const originalModel = model;
-    // Resolve alias by tier pattern matching (case-insensitive)
-    const lc = model.toLowerCase();
-    if (lc.includes('haiku') && this.aliases['haiku']) {
-      model = this.aliases['haiku'];
-    } else if (lc.includes('sonnet') && this.aliases['sonnet']) {
-      model = this.aliases['sonnet'];
-    } else if (lc.includes('opus') && this.aliases['opus']) {
-      model = this.aliases['opus'];
+
+    // Exact alias match first
+    if (this.aliases[model]) {
+      model = this.aliases[model];
+    } else {
+      // Tier pattern matching — only for claude-* model names
+      const lc = model.toLowerCase();
+      if (lc.startsWith('claude')) {
+        for (const [tier, target] of Object.entries(this.aliases)) {
+          if (lc.includes(tier)) {
+            model = target;
+            break;
+          }
+        }
+      }
     }
 
-    // Use each provider's matchModel to find the right provider
     for (const provider of this.providers.values()) {
       if (provider.config.enabled && provider.matchModel(model)) {
         return { provider, resolvedModel: provider.resolveModel(model), originalModel };
       }
     }
 
-    // Fallback to default provider
     const defaultProvider = this.providers.get(this.defaultProviderName);
     if (!defaultProvider) {
       throw new Error(`Default provider "${this.defaultProviderName}" not registered`);

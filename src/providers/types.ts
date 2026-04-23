@@ -241,6 +241,11 @@ export interface OpenAIStreamChoice {
 
 // ─── Provider Interface ───
 
+export interface StreamContext {
+  initialized: boolean;
+  [key: string]: unknown;
+}
+
 export interface Provider {
   name: string;
   config: ProviderConfig;
@@ -248,7 +253,8 @@ export interface Provider {
   resolveModel(model: string): string;
   buildRequest(req: AnthropicRequest): { url: string; headers: Record<string, string>; body: string };
   parseResponse(raw: OpenAIResponse, originalModel: string): AnthropicResponse;
-  parseStreamChunk(chunk: OpenAIStreamChunk, originalModel: string): AnthropicStreamEvent[];
+  createStreamContext(originalModel: string): StreamContext;
+  parseStreamChunk(chunk: OpenAIStreamChunk, originalModel: string, ctx: StreamContext): AnthropicStreamEvent[];
 }
 
 // ─── Router Types ───

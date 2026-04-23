@@ -1,6 +1,7 @@
 import type {
   Provider,
   ProviderConfig,
+  StreamContext,
   AnthropicRequest,
   AnthropicResponse,
   AnthropicStreamEvent,
@@ -64,7 +65,11 @@ export class ClaudeProvider implements Provider {
     return raw as unknown as AnthropicResponse;
   }
 
-  parseStreamChunk(chunk: OpenAIStreamChunk, _originalModel: string): AnthropicStreamEvent[] {
+  createStreamContext(_originalModel: string): StreamContext {
+    return { initialized: true };
+  }
+
+  parseStreamChunk(chunk: OpenAIStreamChunk, _originalModel: string, _ctx: StreamContext): AnthropicStreamEvent[] {
     return [chunk as unknown as AnthropicStreamEvent];
   }
 }
