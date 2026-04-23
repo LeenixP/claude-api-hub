@@ -371,7 +371,7 @@ button {
 /* ── Alias Mapping ── */
 .alias-row {
   display: grid;
-  grid-template-columns: 80px 1fr 80px 120px;
+  grid-template-columns: 80px 1fr 90px 120px;
   gap: 10px;
   align-items: center;
   padding: 10px 0;
@@ -379,7 +379,7 @@ button {
 }
 .alias-row:last-of-type { border-bottom: none; }
 .timeout-input {
-  width: 80px;
+  width: 70px;
   padding: 6px 8px;
   background: var(--surface);
   border: 1px solid var(--border);
@@ -388,9 +388,22 @@ button {
   font-size: 12px;
   text-align: center;
   outline: none;
+  -moz-appearance: textfield;
+}
+.timeout-input::-webkit-inner-spin-button,
+.timeout-input::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
 }
 .timeout-input:focus { border-color: var(--primary); }
 .timeout-input::placeholder { color: var(--text-muted); font-size: 11px; }
+.timeout-wrap {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
 .alias-label { font-weight: 700; font-size: 16px; }
 .alias-label.haiku { color: var(--cyan); }
 .alias-label.sonnet { color: var(--violet); }
@@ -713,7 +726,7 @@ button {
               <input type="text" id="alias-haiku" placeholder="Type or select a model..." autocomplete="off">
               <div class="combo-panel" id="panel-haiku"></div>
             </div>
-            <input type="number" id="timeout-haiku" class="timeout-input" placeholder="Timeout(s)" title="Request timeout in seconds">
+            <div class="timeout-wrap"><input type="number" id="timeout-haiku" class="timeout-input" placeholder="120" min="1">s</div>
             <div class="alias-provider" id="alias-haiku-provider"></div>
           </div>
           <div class="alias-row">
@@ -722,7 +735,7 @@ button {
               <input type="text" id="alias-sonnet" placeholder="Type or select a model..." autocomplete="off">
               <div class="combo-panel" id="panel-sonnet"></div>
             </div>
-            <input type="number" id="timeout-sonnet" class="timeout-input" placeholder="Timeout(s)" title="Request timeout in seconds">
+            <div class="timeout-wrap"><input type="number" id="timeout-sonnet" class="timeout-input" placeholder="120" min="1">s</div>
             <div class="alias-provider" id="alias-sonnet-provider"></div>
           </div>
           <div class="alias-row">
@@ -731,7 +744,7 @@ button {
               <input type="text" id="alias-opus" placeholder="Type or select a model..." autocomplete="off">
               <div class="combo-panel" id="panel-opus"></div>
             </div>
-            <input type="number" id="timeout-opus" class="timeout-input" placeholder="Timeout(s)" title="Request timeout in seconds">
+            <div class="timeout-wrap"><input type="number" id="timeout-opus" class="timeout-input" placeholder="300" min="1">s</div>
             <div class="alias-provider" id="alias-opus-provider"></div>
           </div>
           <div style="margin-top: 12px; display: flex; justify-content: flex-end;">

@@ -363,9 +363,9 @@ export function createServer(router: ModelRouter, config: GatewayConfig): http.S
 
       const tierKey = claudeModel.toLowerCase();
       const tierTimeout = config.tierTimeouts?.[tierKey];
-      const reqTimeoutMs = tierTimeout?.timeoutMs ?? config.streamTimeoutMs ?? 120000;
-      const reqStreamTimeoutMs = tierTimeout?.streamTimeoutMs ?? config.streamTimeoutMs ?? 30000;
-      const reqStreamIdleMs = tierTimeout?.streamIdleTimeoutMs ?? config.streamIdleTimeoutMs ?? 60000;
+      const reqTimeoutMs = tierTimeout?.timeoutMs ?? config.streamTimeoutMs ?? 300000;
+      const reqStreamTimeoutMs = tierTimeout?.streamTimeoutMs ?? config.streamTimeoutMs ?? 120000;
+      const reqStreamIdleMs = tierTimeout?.streamIdleTimeoutMs ?? config.streamIdleTimeoutMs ?? 120000;
 
       let routeResult;
       try { routeResult = router.route(anthropicReq.model); } catch (err) {
