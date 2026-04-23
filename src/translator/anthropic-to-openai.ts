@@ -191,6 +191,9 @@ export function translateRequest(req: AnthropicRequest, targetModel: string): Op
 
   if (req.temperature !== undefined) result.temperature = req.temperature;
   if (req.top_p !== undefined) result.top_p = req.top_p;
+  if (req.top_k !== undefined) {
+    (result as unknown as Record<string, unknown>).top_k = req.top_k;
+  }
   if (req.stream !== undefined) {
     result.stream = req.stream;
     if (req.stream) {
@@ -199,6 +202,12 @@ export function translateRequest(req: AnthropicRequest, targetModel: string): Op
   }
   if (req.stop_sequences && req.stop_sequences.length > 0) {
     result.stop = req.stop_sequences;
+  }
+  if (req.thinking?.type === 'enabled') {
+    (result as unknown as Record<string, unknown>).reasoning_effort = 'high';
+    if (req.thinking.budget_tokens) {
+      result.max_completion_tokens = req.thinking.budget_tokens + (req.max_tokens || 4096);
+    }
   }
 
   const tools = convertTools(req.tools);
