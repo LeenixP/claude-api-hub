@@ -191,7 +191,12 @@ export function translateRequest(req: AnthropicRequest, targetModel: string): Op
 
   if (req.temperature !== undefined) result.temperature = req.temperature;
   if (req.top_p !== undefined) result.top_p = req.top_p;
-  if (req.stream !== undefined) result.stream = req.stream;
+  if (req.stream !== undefined) {
+    result.stream = req.stream;
+    if (req.stream) {
+      (result as unknown as Record<string, unknown>).stream_options = { include_usage: true };
+    }
+  }
   if (req.stop_sequences && req.stop_sequences.length > 0) {
     result.stop = req.stop_sequences;
   }
