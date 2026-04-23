@@ -30,7 +30,7 @@
       "apiKey": "${MOONSHOT_API_KEY}",
       "models": ["kimi-k2.6", "kimi-k2.5", "kimi-k2"],
       "defaultModel": "kimi-k2.6",
-      "enabled": true,
+      "enabled": false,
       "prefix": "kimi-"
     },
     "minimax": {
@@ -39,7 +39,7 @@
       "apiKey": "${MINIMAX_API_KEY}",
       "models": ["MiniMax-M2.7", "MiniMax-M2.5", "MiniMax-M2.1", "MiniMax-M1"],
       "defaultModel": "MiniMax-M2.7",
-      "enabled": true,
+      "enabled": false,
       "prefix": ["minimax-", "MiniMax-"]
     },
     "glm": {
@@ -48,7 +48,7 @@
       "apiKey": "${ZHIPUAI_API_KEY}",
       "models": ["glm-4-plus", "glm-4", "glm-4-air", "glm-4-flash", "glm-4-long"],
       "defaultModel": "glm-4-plus",
-      "enabled": true,
+      "enabled": false,
       "prefix": "glm-"
     },
     "deepseek": {

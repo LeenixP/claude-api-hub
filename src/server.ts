@@ -40,6 +40,7 @@ export function createServer(router: ModelRouter, config: GatewayConfig, logMana
   }
 
   return http.createServer(async (req, res) => {
+   try {
     const origin = req.headers['origin'] as string | undefined;
     const cors = getCorsHeaders(config, origin);
 
@@ -541,5 +542,11 @@ export function createServer(router: ModelRouter, config: GatewayConfig, logMana
     }
 
     sendError(res, 404, 'not_found_error', `Unknown endpoint: ${req.method} ${pathname}`, config, origin);
+   } catch (err) {
+    logger.error(`Unhandled request error: ${(err as Error).message}`);
+    if (!res.headersSent) {
+      try { sendError(res, 500, 'internal_error', 'Internal server error'); } catch {}
+    }
+   }
   });
 }

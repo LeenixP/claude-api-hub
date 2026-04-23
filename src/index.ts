@@ -14,19 +14,50 @@ import { LogManager } from './services/log-manager.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
+function parseArgs(): { port?: number; host?: string; config?: string } {
+  const args = process.argv.slice(2);
+  const result: { port?: number; host?: string; config?: string } = {};
+  for (let i = 0; i < args.length; i++) {
+    if ((args[i] === '--port' || args[i] === '-p') && args[i + 1]) {
+      result.port = parseInt(args[++i]);
+    } else if ((args[i] === '--host' || args[i] === '-h') && args[i + 1]) {
+      result.host = args[++i];
+    } else if ((args[i] === '--config' || args[i] === '-c') && args[i + 1]) {
+      result.config = args[++i];
+    } else if (args[i] === '--help') {
+      console.log(`Usage: claude-api-hub [options]
+
+Options:
+  -p, --port <port>    Port to listen on (default: from config)
+  -h, --host <host>    Host to bind to (default: from config)
+  -c, --config <path>  Path to config file
+  --help               Show this help message
+
+Environment variables:
+  API_HUB_PORT         Override port
+  API_HUB_HOST         Override host
+  ADMIN_TOKEN          Admin authentication token`);
+      process.exit(0);
+    }
+  }
+  return result;
+}
+
 function createProvider(key: string, config: import('./providers/types.js').ProviderConfig): Provider {
-  if (config.passthrough) {
-    return new ClaudeProvider(config);
-  }
-  if (key === 'claude' && !('passthrough' in config)) {
-    logger.warn(`Provider "${key}" looks like Anthropic but missing passthrough:true — using OpenAI translation.`);
-  }
+  if (config.passthrough) return new ClaudeProvider(config);
   return new GenericOpenAIProvider(config);
 }
 
 async function main(): Promise<void> {
-  const config = loadConfig();
+  const args = parseArgs();
+  const config = loadConfig(args.config);
   if (config.logLevel) setLogLevel(config.logLevel);
+
+  if (args.port) config.port = args.port;
+  if (args.host) config.host = args.host;
+  if (process.env.API_HUB_PORT) config.port = parseInt(process.env.API_HUB_PORT);
+  if (process.env.API_HUB_HOST) config.host = process.env.API_HUB_HOST;
+
   try {
     const pkg = JSON.parse(readFileSync(join(__dirname, '../package.json'), 'utf-8'));
     config.version = pkg.version;
@@ -47,8 +78,20 @@ async function main(): Promise<void> {
   const logManager = new LogManager();
   const server = createServer(router, config, logManager);
 
+  server.on('error', (err: NodeJS.ErrnoException) => {
+    if (err.code === 'EADDRINUSE') {
+      logger.error(`Port ${config.port} is already in use. Try a different port with --port <port> or API_HUB_PORT env var.`);
+    } else if (err.code === 'EACCES') {
+      logger.error(`Permission denied for port ${config.port}. Try a port > 1024.`);
+    } else {
+      logger.error(`Server error: ${err.message}`);
+    }
+    process.exit(1);
+  });
+
   server.listen(config.port, config.host, () => {
-    logger.info(`api-hub listening on http://${config.host}:${config.port}`);
+    logger.info(`api-hub v${config.version || '?'} listening on http://${config.host}:${config.port}`);
+    logger.info(`Dashboard: http://localhost:${config.port}`);
     logger.info(`Providers: ${providers.map(p => p.name).join(', ')}`);
     if (config.aliases) {
       const aliasStr = Object.entries(config.aliases).map(([k, v]) => `${k}→${v}`).join(', ');
@@ -56,13 +99,15 @@ async function main(): Promise<void> {
     }
   });
 
+  let isShuttingDown = false;
   function gracefulShutdown(signal: string): void {
+    if (isShuttingDown) return;
+    isShuttingDown = true;
     logger.info(`Received ${signal}, shutting down gracefully...`);
     server.close(() => {
       logger.info('All connections closed.');
       destroyAgents();
       logManager.close();
-      logger.info('Cleanup complete, exiting.');
       process.exit(0);
     });
     setTimeout(() => {
@@ -75,6 +120,13 @@ async function main(): Promise<void> {
 
   process.on('SIGINT', () => gracefulShutdown('SIGINT'));
   process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+  process.on('uncaughtException', (err) => {
+    logger.error(`Uncaught exception: ${err.message}`);
+    gracefulShutdown('uncaughtException');
+  });
+  process.on('unhandledRejection', (reason) => {
+    logger.error(`Unhandled rejection: ${reason}`);
+  });
 }
 
 main().catch((err) => {
