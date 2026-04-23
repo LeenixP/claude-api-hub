@@ -1305,7 +1305,7 @@ let editingProvider = null;
 let logFilter = 'all';
 let healthCache = {};
 let adminToken = localStorage.getItem('adminToken') || '';
-let authDismissed = false;
+let authRequired = false;
 
 function apiHeaders(extra) {
   const h = extra || {};
@@ -1313,24 +1313,39 @@ function apiHeaders(extra) {
   return h;
 }
 
+function showAuthBanner() {
+  if (document.getElementById('auth-banner')) return;
+  const banner = document.createElement('div');
+  banner.id = 'auth-banner';
+  banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:200;background:var(--danger);color:#fff;text-align:center;padding:10px;font-size:13px;display:flex;align-items:center;justify-content:center;gap:10px';
+  banner.innerHTML = 'Admin token required. <button onclick="promptToken()" style="background:#fff;color:var(--danger);border:none;padding:4px 12px;border-radius:4px;cursor:pointer;font-weight:600">Enter Token</button>';
+  document.body.prepend(banner);
+}
+
+function promptToken() {
+  const token = prompt('Enter admin token:');
+  if (token) {
+    adminToken = token;
+    localStorage.setItem('adminToken', token);
+    const banner = document.getElementById('auth-banner');
+    if (banner) banner.remove();
+    authRequired = false;
+    load();
+  }
+}
+
 async function apiFetch(url, options) {
+  if (authRequired && !adminToken) return new Response('{}', { status: 401 });
   const opts = options || {};
   opts.headers = apiHeaders(opts.headers || {});
   const res = await fetch(url, opts);
-  if (res.status === 401 && !authDismissed) {
+  if (res.status === 401) {
     if (adminToken) {
       adminToken = '';
       localStorage.removeItem('adminToken');
     }
-    const token = prompt('This dashboard requires an admin token:');
-    if (token) {
-      adminToken = token;
-      localStorage.setItem('adminToken', token);
-      opts.headers['x-admin-token'] = token;
-      return fetch(url, opts);
-    } else {
-      authDismissed = true;
-    }
+    authRequired = true;
+    showAuthBanner();
   }
   return res;
 }
