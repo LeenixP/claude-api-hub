@@ -178,11 +178,18 @@ export class LogManager {
     try { this.db.close(); } catch {}
   }
 
+  private logCount = -1;
+
   private trimLogs(): void {
     try {
-      const row = this.stmtCount.get() as { cnt: number };
-      if (row.cnt > this.maxLogs) {
-        this.stmtTrim.run(row.cnt - this.maxLogs);
+      if (this.logCount < 0) {
+        const row = this.stmtCount.get() as { cnt: number };
+        this.logCount = row.cnt;
+      }
+      this.logCount++;
+      if (this.logCount > this.maxLogs + 500) {
+        this.stmtTrim.run(this.logCount - this.maxLogs);
+        this.logCount = this.maxLogs;
       }
     } catch {}
   }

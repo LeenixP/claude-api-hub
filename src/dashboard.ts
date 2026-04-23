@@ -1304,12 +1304,35 @@ let fetchedModels = {};
 let editingProvider = null;
 let logFilter = 'all';
 let healthCache = {};
+let adminToken = localStorage.getItem('adminToken') || '';
+
+function apiHeaders(extra) {
+  const h = extra || {};
+  if (adminToken) h['x-admin-token'] = adminToken;
+  return h;
+}
+
+async function apiFetch(url, options) {
+  const opts = options || {};
+  opts.headers = apiHeaders(opts.headers || {});
+  const res = await fetch(url, opts);
+  if (res.status === 401) {
+    const token = prompt('Enter admin token to access the dashboard:');
+    if (token) {
+      adminToken = token;
+      localStorage.setItem('adminToken', token);
+      opts.headers['x-admin-token'] = token;
+      return fetch(url, opts);
+    }
+  }
+  return res;
+}
 
 // ── Init ──
 async function load() {
   try {
     const [cfgRes, modelsRes] = await Promise.all([
-      fetch('/api/config').then(r => r.json()),
+      apiFetch('/api/config').then(r => r.json()),
       fetch('/v1/models').then(r => r.json())
     ]);
     config = cfgRes;
@@ -1317,7 +1340,7 @@ async function load() {
     updateHeaderStats();
     renderProviders();
     try {
-      fetchedModels = await fetch('/api/fetch-models').then(r => r.json());
+      fetchedModels = await apiFetch('/api/fetch-models').then(r => r.json());
     } catch (e) {
       fetchedModels = {};
     }
@@ -1422,13 +1445,13 @@ async function saveAliases() {
     }
   });
   try {
-    await fetch('/api/aliases', {
+    await apiFetch('/api/aliases', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(aliases)
     });
     if (Object.keys(tierTimeouts).length > 0) {
-      await fetch('/api/tier-timeouts', {
+      await apiFetch('/api/tier-timeouts', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(tierTimeouts)
@@ -1549,7 +1572,7 @@ async function toggleProtocol(key) {
   const p = config.providers[key];
   const newVal = !p.passthrough;
   try {
-    await fetch('/api/config/providers/' + encodeURIComponent(key), {
+    await apiFetch('/api/config/providers/' + encodeURIComponent(key), {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ passthrough: newVal })
@@ -1565,7 +1588,7 @@ async function toggleEnabled(key) {
   const p = config.providers[key];
   const newVal = !p.enabled;
   try {
-    await fetch('/api/config/providers/' + encodeURIComponent(key), {
+    await apiFetch('/api/config/providers/' + encodeURIComponent(key), {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ enabled: newVal })
@@ -1616,7 +1639,7 @@ async function fetchAndAddModels() {
   const isPassthrough = existingProvider ? existingProvider.passthrough : false;
   toast('Fetching models...', 'info');
   try {
-    const res = await fetch('/api/probe-models', {
+    const res = await apiFetch('/api/probe-models', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ baseUrl, apiKey: realKey, passthrough: isPassthrough })
@@ -1709,7 +1732,7 @@ async function saveProvider() {
     if (editingProvider) {
       const body = { name, baseUrl, models, defaultModel, enabled, prefix: prefix || undefined };
       if (apiKey) body.apiKey = apiKey;
-      await fetch('/api/config/providers/' + encodeURIComponent(key), {
+      await apiFetch('/api/config/providers/' + encodeURIComponent(key), {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body)
@@ -1717,7 +1740,7 @@ async function saveProvider() {
       toast('Provider updated', 'success');
     } else {
       if (!apiKey) { toast('API Key is required for new providers', 'error'); return; }
-      await fetch('/api/config/providers', {
+      await apiFetch('/api/config/providers', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name, baseUrl, apiKey, models, defaultModel, enabled, passthrough: false, prefix: prefix || undefined })
@@ -1735,7 +1758,7 @@ async function deleteProvider(key) {
 
   if (!confirm('Delete provider "' + key + '"?')) return;
   try {
-    await fetch('/api/config/providers/' + encodeURIComponent(key), { method: 'DELETE' });
+    await apiFetch('/api/config/providers/' + encodeURIComponent(key), { method: 'DELETE' });
     toast('Provider deleted', 'success');
     load();
   } catch (e) {
@@ -1748,7 +1771,7 @@ let openLogIds = new Set();
 
 async function loadLogs() {
   try {
-    const logs = await fetch('/api/logs').then(r => r.json());
+    const logs = await apiFetch('/api/logs').then(r => r.json());
     updateStats(logs || []);
     drawTrendChart(logs || []);
     drawTokenChart(logs || []);
@@ -1835,7 +1858,7 @@ function setLogFilter(f, btn) {
 
 async function clearLogs() {
   try {
-    await fetch('/api/logs/clear', { method: 'POST' });
+    await apiFetch('/api/logs/clear', { method: 'POST' });
     loadLogs();
     toast('Logs cleared', 'success');
   } catch (e) {
@@ -1845,7 +1868,7 @@ async function clearLogs() {
 
 async function toggleFileLog() {
   try {
-    const res = await fetch('/api/logs/file-toggle', { method: 'PUT' }).then(r => r.json());
+    const res = await apiFetch('/api/logs/file-toggle', { method: 'PUT' }).then(r => r.json());
     const btn = document.getElementById('file-log-btn');
     btn.textContent = 'File Log: ' + (res.enabled ? 'ON' : 'OFF');
     btn.style.background = res.enabled ? 'var(--success)' : '';
@@ -1859,7 +1882,7 @@ async function toggleFileLog() {
 
 async function loadFileLogStatus() {
   try {
-    const res = await fetch('/api/logs/file-status').then(r => r.json());
+    const res = await apiFetch('/api/logs/file-status').then(r => r.json());
     const btn = document.getElementById('file-log-btn');
     btn.textContent = 'File Log: ' + (res.enabled ? 'ON (' + res.fileCount + ')' : 'OFF');
     btn.style.background = res.enabled ? 'var(--success)' : '';
