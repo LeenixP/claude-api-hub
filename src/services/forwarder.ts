@@ -62,6 +62,7 @@ export function forwardRequest(
           body: Buffer.concat(chunks).toString('utf-8'),
         });
       });
+      res.on('error', reject);
     });
 
     req.on('timeout', () => { req.destroy(); reject(new Error(`Upstream timeout after ${timeoutMs}ms`)); });
@@ -93,6 +94,7 @@ export function httpGet(
       const chunks: Buffer[] = [];
       res.on('data', (chunk: Buffer) => chunks.push(chunk));
       res.on('end', () => resolve(Buffer.concat(chunks).toString('utf-8')));
+      res.on('error', reject);
     });
     req.on('timeout', () => { req.destroy(); reject(new Error('timeout')); });
     req.on('error', reject);

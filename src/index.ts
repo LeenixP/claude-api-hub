@@ -9,6 +9,7 @@ import { Provider } from './providers/types.js';
 import { ClaudeProvider } from './providers/claude.js';
 import { GenericOpenAIProvider } from './providers/generic.js';
 import { logger, setLogLevel } from './logger.js';
+import { destroyAgents } from './services/forwarder.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -55,6 +56,7 @@ async function main(): Promise<void> {
 
   function gracefulShutdown(signal: string): void {
     logger.info(`Received ${signal}, shutting down gracefully...`);
+    destroyAgents();
     server.close(() => {
       logger.info('All connections closed, exiting.');
       process.exit(0);
