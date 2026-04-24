@@ -235,7 +235,7 @@ export function App() {
         {page === 'aliases' && (
           <div>
             <h1 class="section-title" style="margin-bottom:28px">Alias Mapping</h1>
-            <AliasMapping config={config} />
+            <AliasMapping config={config} onSaved={refreshConfig} />
           </div>
         )}
         {page === 'logs' && <LogPanel logs={logs} connected={connected} />}

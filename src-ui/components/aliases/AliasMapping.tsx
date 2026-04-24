@@ -12,9 +12,10 @@ const TIERS = [
 
 interface AliasMappingProps {
   config: GatewayConfig | null;
+  onSaved?: () => void;
 }
 
-export function AliasMapping({ config }: AliasMappingProps) {
+export function AliasMapping({ config, onSaved }: AliasMappingProps) {
   const providers = config ? Object.entries(config.providers) : [];
   const allModels = useMemo(() => {
     const map: Record<string, string[]> = {};
@@ -61,6 +62,7 @@ export function AliasMapping({ config }: AliasMappingProps) {
       });
       await saveTierTimeouts(tierTimeouts);
       showToast('Aliases saved', 'success');
+      onSaved?.();
     } catch (err) {
       showToast((err as Error).message, 'error');
     } finally {
