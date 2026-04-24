@@ -7,11 +7,6 @@ dist
 .github
 test
 reviews
-vitest.config.ts
-tsconfig.json
-eslint.config.mjs
-postcss.config.js
-tailwind.config.js
 *.tgz
 .omc
 .vscode
