@@ -175,6 +175,10 @@ export async function handleAdminConfigRoutes(
         (filtered as unknown as Record<string, unknown>)[k] = v;
       }
     }
+    // Preserve real API key if frontend sends masked value
+    if (filtered.apiKey && filtered.apiKey.includes('***')) {
+      delete filtered.apiKey;
+    }
     config.providers[providerName] = { ...config.providers[providerName], ...filtered };
     saveConfig(config);
     rebuildProviders(router, config);
@@ -247,6 +251,14 @@ export async function handleAdminConfigRoutes(
       sendError(res, 400, 'invalid_request_error', 'Config must contain a providers object', config, origin); return true;
     }
     try {
+      // Preserve real API keys when frontend sends masked values back
+      if (newConfig.providers) {
+        for (const [key, p] of Object.entries(newConfig.providers)) {
+          if (p.apiKey && p.apiKey.includes('***') && config.providers[key]) {
+            p.apiKey = config.providers[key].apiKey;
+          }
+        }
+      }
       Object.assign(config, newConfig);
       saveConfig(config);
       router.setAliases(config.aliases ?? {});
