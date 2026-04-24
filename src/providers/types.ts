@@ -3,6 +3,10 @@
 
 // ─── Provider Configuration ───
 
+/**
+ * Configuration for a single provider instance.
+ * Defines the endpoint, credentials, models, and routing behavior.
+ */
 export interface ProviderConfig {
   name: string;
   baseUrl: string;
@@ -13,11 +17,12 @@ export interface ProviderConfig {
   apiKeys?: string[];
   prefix?: string | string[];
   passthrough?: boolean;
-  authMode?: 'apikey' | 'oauth';
+  authMode?: 'apikey' | 'oauth' | 'anthropic' | 'openai';
   providerType?: 'standard' | 'kiro';
   kiroAuthMethod?: 'social' | 'builder-id';
   kiroRegion?: string;
   kiroCredsPath?: string;
+  kiroStartUrl?: string;
   [key: string]: unknown;
 }
 
@@ -265,15 +270,59 @@ export interface StreamContext {
   [key: string]: unknown;
 }
 
+/**
+ * Provider interface that all provider implementations must satisfy.
+ * Handles model matching, request building, and response/stream parsing.
+ */
 export interface Provider {
   name: string;
   config: ProviderConfig;
+
+  /**
+   * Determine whether this provider can handle the given model name.
+   * @param model - The model name from the incoming request
+   * @returns true if this provider should handle the model
+   */
   matchModel(model: string): boolean;
+
+  /**
+   * Resolve the model name to the actual model ID used by the upstream API.
+   * @param model - The model name from the incoming request
+   * @returns The resolved model ID for the upstream provider
+   */
   resolveModel(model: string): string;
+
+  /**
+   * Build the upstream HTTP request from an Anthropic-format request.
+   * @param req - The incoming Anthropic request
+   * @returns URL, headers, and JSON body for the upstream API call
+   */
   buildRequest(req: AnthropicRequest): { url: string; headers: Record<string, string>; body: string };
+
+  /**
+   * Parse an OpenAI-format response back into Anthropic format.
+   * @param raw - The raw OpenAI response from the upstream
+   * @param originalModel - The original model name from the client request
+   * @returns An Anthropic-format response
+   */
   parseResponse(raw: OpenAIResponse, originalModel: string): AnthropicResponse;
+
+  /**
+   * Create a fresh stream context for tracking streaming state.
+   * @param originalModel - The original model name from the client request
+   * @returns A new StreamContext instance
+   */
   createStreamContext(originalModel: string): StreamContext;
+
+  /**
+   * Parse a single OpenAI streaming chunk into Anthropic stream events.
+   * @param chunk - One SSE chunk from the upstream
+   * @param originalModel - The original model name from the client request
+   * @param ctx - Mutable stream context tracking accumulated state
+   * @returns Array of Anthropic stream events to emit
+   */
   parseStreamChunk(chunk: OpenAIStreamChunk, originalModel: string, ctx: StreamContext): AnthropicStreamEvent[];
+
   isHealthy?(): boolean;
 }
 

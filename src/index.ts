@@ -58,7 +58,7 @@ async function main(): Promise<void> {
   try {
     const pkg = JSON.parse(readFileSync(join(__dirname, '../package.json'), 'utf-8'));
     config.version = pkg.version;
-  } catch { /* ignore */ }
+  } catch (err) { logger.warn('Failed to read package.json', { error: (err as Error).message }); }
 
   const providers = Object.entries(config.providers)
     .filter(([, pc]) => pc.enabled)

@@ -11,7 +11,7 @@ const THINKING_END = '</thinking>';
 // ─── AWS Event Stream Parser ───
 
 interface ParsedEvent {
-  type: 'content' | 'toolUse' | 'toolUseInput' | 'toolUseStop';
+  type: 'content' | 'toolUse' | 'toolUseInput' | 'toolUseStop' | 'contextUsage';
   data: unknown;
 }
 
@@ -52,8 +52,10 @@ function parseAwsEvents(raw: string): { events: ParsedEvent[]; remaining: string
         events.push({ type: 'toolUseInput', data: { input: parsed.input } });
       } else if (parsed.stop !== undefined && parsed.contextUsagePercentage === undefined) {
         events.push({ type: 'toolUseStop', data: null });
+      } else if (parsed.contextUsagePercentage !== undefined) {
+        events.push({ type: 'contextUsage', data: { percentage: parsed.contextUsagePercentage } });
       }
-    } catch { /* skip */ }
+    } catch { /* skip malformed JSON in stream */ }
 
     pos = jsonEnd + 1;
   }
@@ -90,6 +92,7 @@ export function parseKiroResponse(responseBody: string, originalModel: string): 
   let fullContent = '';
   const toolCalls: Array<{ id: string; name: string; input: unknown }> = [];
   let curTool: { id: string; name: string; input: string } | null = null;
+  let contextUsagePct = 0;
 
   const finishTool = () => {
     if (!curTool) return;
@@ -112,6 +115,8 @@ export function parseKiroResponse(responseBody: string, originalModel: string): 
       curTool.input += (ev.data as { input: string }).input || '';
     } else if (ev.type === 'toolUseStop') {
       finishTool();
+    } else if (ev.type === 'contextUsage') {
+      contextUsagePct = (ev.data as { percentage: number }).percentage;
     }
   }
   finishTool();
@@ -131,6 +136,14 @@ export function parseKiroResponse(responseBody: string, originalModel: string): 
     });
   }
 
+  const outputTokens = Math.ceil((fullContent.length + toolCalls.reduce((s, t) => s + JSON.stringify(t.input).length, 0)) / 4);
+  let inputTokens = 0;
+  if (contextUsagePct > 0) {
+    const contextWindow = 200000;
+    const totalTokens = Math.round(contextWindow * contextUsagePct / 100);
+    inputTokens = Math.max(0, totalTokens - outputTokens);
+  }
+
   return {
     id: `msg_${crypto.randomUUID()}`,
     type: 'message',
@@ -139,7 +152,7 @@ export function parseKiroResponse(responseBody: string, originalModel: string): 
     model: originalModel,
     stop_reason: toolCalls.length > 0 ? 'tool_use' : 'end_turn',
     stop_sequence: null,
-    usage: { input_tokens: 0, output_tokens: 0 },
+    usage: { input_tokens: inputTokens, output_tokens: outputTokens },
   };
 }
 

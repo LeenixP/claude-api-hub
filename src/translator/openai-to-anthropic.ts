@@ -32,6 +32,11 @@ export interface StreamState {
   finished: boolean;
 }
 
+/**
+ * Create a fresh StreamState for tracking an OpenAI-to-Anthropic streaming session.
+ * @param model - The original model name from the client request
+ * @returns A new StreamState with default values
+ */
 export function createStreamState(model: string): StreamState {
   return {
     messageId: `msg_${Date.now()}`,
@@ -61,6 +66,12 @@ function mapFinishReason(
   return 'end_turn';
 }
 
+/**
+ * Translate a complete OpenAI Chat Completions response into Anthropic Messages format.
+ * @param res - The OpenAI response from the upstream
+ * @param originalModel - The original model name from the client request
+ * @returns An Anthropic-format response
+ */
 export function translateResponse(
   res: OpenAIResponse,
   originalModel: string
@@ -131,6 +142,13 @@ export function translateResponse(
 
 // ─── Streaming response translation ───
 
+/**
+ * Translate a single OpenAI streaming chunk into Anthropic stream events.
+ * @param chunk - One SSE chunk from the upstream
+ * @param originalModel - The original model name from the client request
+ * @param state - Mutable stream state tracking accumulated content blocks
+ * @returns Array of Anthropic stream events to emit to the client
+ */
 export function translateStreamChunk(
   chunk: OpenAIStreamChunk,
   originalModel: string,

@@ -2,6 +2,7 @@ import http from 'http';
 import crypto from 'crypto';
 import type { GatewayConfig } from '../providers/types.js';
 import { sendError } from '../utils/http.js';
+import { logger } from '../logger.js';
 
 // ─── Per-IP Rate Limiter ───
 
@@ -40,18 +41,63 @@ export class PerIpRateLimiter {
   }
 }
 
-// ─── Session Token Store ───
+// ─── Session Manager ───
 
-const sessionTokens = new Set<string>();
+interface SessionEntry {
+  token: string;
+  createdAt: number;
+}
+
+class SessionManager {
+  private sessions = new Map<string, SessionEntry>();
+  private cleanupInterval: NodeJS.Timeout;
+  private readonly maxAgeMs = 24 * 60 * 60 * 1000; // 24 hours
+  private readonly cleanupIntervalMs = 60 * 60 * 1000; // 1 hour
+
+  constructor() {
+    this.cleanupInterval = setInterval(() => this.cleanup(), this.cleanupIntervalMs);
+    this.cleanupInterval.unref();
+  }
+
+  create(): string {
+    const token = crypto.randomUUID();
+    this.sessions.set(token, { token, createdAt: Date.now() });
+    return token;
+  }
+
+  isValid(token: string): boolean {
+    const entry = this.sessions.get(token);
+    if (!entry) return false;
+    if (Date.now() - entry.createdAt > this.maxAgeMs) {
+      this.sessions.delete(token);
+      return false;
+    }
+    return true;
+  }
+
+  cleanup(): void {
+    const now = Date.now();
+    for (const [token, entry] of this.sessions) {
+      if (now - entry.createdAt > this.maxAgeMs) {
+        this.sessions.delete(token);
+      }
+    }
+  }
+
+  destroy(): void {
+    clearInterval(this.cleanupInterval);
+    this.sessions.clear();
+  }
+}
+
+const sessionManager = new SessionManager();
 
 export function createSessionToken(): string {
-  const token = crypto.randomUUID();
-  sessionTokens.add(token);
-  return token;
+  return sessionManager.create();
 }
 
 export function isValidSession(token: string): boolean {
-  return sessionTokens.has(token);
+  return sessionManager.isValid(token);
 }
 
 // ─── Admin Auth ───

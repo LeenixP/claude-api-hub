@@ -1,0 +1,75 @@
+import http from 'http';
+import { sendJson } from '../utils/http.js';
+import { dashboardHtml } from '../dashboard.js';
+import type { RouteContext } from './types.js';
+
+export function registerPublicRoutes(ctx: RouteContext): void {
+  const { config, router, eventBus } = ctx;
+  const cachedDashboard = dashboardHtml(config.version || '');
+
+  return; // routes are registered inline in the main handler below
+}
+
+export async function handlePublicRoutes(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  ctx: RouteContext,
+  pathname: string,
+  cors: Record<string, string>,
+  origin: string | undefined,
+): Promise<boolean> {
+  const { config, router, eventBus } = ctx;
+  const cachedDashboard = dashboardHtml(config.version || '');
+
+  if (req.method === 'GET' && pathname === '/') {
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', ...cors });
+    res.end(cachedDashboard);
+    return true;
+  }
+
+  if (req.method === 'GET' && pathname === '/health') {
+    sendJson(res, 200, { status: 'ok', timestamp: new Date().toISOString() }, config, origin);
+    return true;
+  }
+
+  if (req.method === 'GET' && pathname === '/api/auth/check') {
+    const password = config.password;
+    sendJson(res, 200, { required: !!password }, config, origin);
+    return true;
+  }
+
+  if (req.method === 'POST' && pathname === '/api/auth/login') {
+    // handled inline in server.ts because it needs createSessionToken
+    return false;
+  }
+
+  if (req.method === 'GET' && pathname === '/api/events' && eventBus) {
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+      ...cors,
+    });
+    res.write(':\n\n');
+    const onEvent = (event: { type: string; data: unknown }) => {
+      res.write(`event: ${event.type}\ndata: ${JSON.stringify(event.data)}\n\n`);
+    };
+    eventBus.subscribe(onEvent);
+    req.on('close', () => eventBus.unsubscribe(onEvent));
+    return true;
+  }
+
+  if (req.method === 'GET' && pathname === '/v1/models') {
+    const models: Array<{ id: string; object: string; owned_by: string }> = [];
+    for (const provider of router.getProviders()) {
+      if (!provider.config.enabled) continue;
+      for (const model of provider.config.models) {
+        models.push({ id: model, object: 'model', owned_by: provider.name });
+      }
+    }
+    sendJson(res, 200, { object: 'list', data: models }, config, origin);
+    return true;
+  }
+
+  return false;
+}

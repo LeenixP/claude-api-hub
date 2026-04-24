@@ -597,7 +597,7 @@ async function findAvailablePort(start: number, end: number): Promise<number> {
         });
       });
       return port;
-    } catch { /* port in use */ }
+    } catch { /* port in use — expected, no logging needed */ }
   }
   throw new Error('All callback ports are in use');
 }
@@ -610,7 +610,7 @@ async function closeCallbackServer(key: string): Promise<void> {
       const timeout = setTimeout(() => reject(new Error('timeout')), 2000);
       existing.server.close(() => { clearTimeout(timeout); resolve(); });
     });
-  } catch { /* ignore */ }
+  } catch (err) { logger.warn('Failed to close callback server', { error: (err as Error).message }); }
   activeServers.delete(key);
 }
 

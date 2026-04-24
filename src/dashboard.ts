@@ -1,16 +1,28 @@
-import { readFileSync } from 'fs';
+import { readFileSync, existsSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
+import { logger } from './logger.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 let cached: string | null = null;
 
 export function dashboardHtml(version: string = ''): string {
   if (!cached) {
-    const html = readFileSync(join(__dirname, '../static/index.html'), 'utf-8');
-    const css = readFileSync(join(__dirname, '../static/style.css'), 'utf-8');
-    const js = readFileSync(join(__dirname, '../static/app.js'), 'utf-8');
-    cached = html.replace('<link rel="stylesheet" href="style.css">', '<style>' + css + '</style>').replace('<script src="app.js"></script>', '<script>' + js + '</script>');
+    const htmlPath = join(__dirname, '../static/index.html');
+    const cssPath = join(__dirname, '../static/style.css');
+    const jsPath = join(__dirname, '../static/bundle.js');
+
+    if (!existsSync(cssPath) || !existsSync(jsPath)) {
+      logger.warn('Dashboard assets not found. Run `npm run build:ui` first.');
+    }
+
+    const html = readFileSync(htmlPath, 'utf-8');
+    const css = existsSync(cssPath) ? readFileSync(cssPath, 'utf-8') : '';
+    const js = existsSync(jsPath) ? readFileSync(jsPath, 'utf-8') : '';
+
+    cached = html
+      .replace('<link rel="stylesheet" href="style.css">', () => '<style>' + css + '</style>')
+      .replace('<script src="bundle.js"></script>', () => '<script>' + js + '</script>');
   }
   return cached.replace(/\{\{VERSION\}\}/g, version);
 }
