@@ -23,8 +23,6 @@ RUN mkdir -p /home/hub/.claude-api-hub && chown -R hub:hub /home/hub /app
 USER hub
 
 ENV NODE_ENV=production
-ENV API_HUB_HOST=0.0.0.0
-ENV API_HUB_PORT=9800
 
 EXPOSE 9800
 
