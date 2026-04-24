@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'preact/hooks';
 import type { LogEntry } from '../types.js';
+import { getLogs } from '../lib/api.js';
 
 interface UseSSEReturn {
   logs: LogEntry[];
@@ -15,14 +16,19 @@ export function useSSE(): UseSSEReturn {
 
   useEffect(() => {
     mounted.current = true;
+
+    getLogs().then(history => {
+      if (mounted.current && history.length > 0) {
+        setLogs(history.slice(0, 500));
+      }
+    }).catch(() => {});
+
     let retryDelay = 1000;
     const maxDelay = 30000;
 
     function connect() {
       if (!mounted.current) return;
-      if (esRef.current) {
-        esRef.current.close();
-      }
+      if (esRef.current) esRef.current.close();
 
       const token = localStorage.getItem('adminToken') || '';
       const url = token ? `/api/events?token=${encodeURIComponent(token)}` : '/api/events';
@@ -39,13 +45,8 @@ export function useSSE(): UseSSEReturn {
         if (!mounted.current) return;
         try {
           const entry: LogEntry = JSON.parse(e.data);
-          setLogs(prev => {
-            const next = [entry, ...prev];
-            return next.slice(0, 500);
-          });
-        } catch {
-          // ignore malformed events
-        }
+          setLogs(prev => [entry, ...prev].slice(0, 500));
+        } catch {}
       });
 
       es.onerror = () => {
@@ -62,13 +63,8 @@ export function useSSE(): UseSSEReturn {
 
     return () => {
       mounted.current = false;
-      if (reconnectTimer.current) {
-        clearTimeout(reconnectTimer.current);
-      }
-      if (esRef.current) {
-        esRef.current.close();
-        esRef.current = null;
-      }
+      if (reconnectTimer.current) clearTimeout(reconnectTimer.current);
+      if (esRef.current) { esRef.current.close(); esRef.current = null; }
     };
   }, []);
 

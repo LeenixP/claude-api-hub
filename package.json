@@ -1,6 +1,6 @@
 {
   "name": "claude-api-hub",
-  "version": "4.0.2",
+  "version": "4.0.3",
   "description": "Multi-provider API gateway for Claude Code — route requests to any LLM provider with zero config switching",
   "type": "module",
   "main": "dist/index.js",
