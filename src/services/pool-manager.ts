@@ -1,3 +1,5 @@
+import { KEY_POOL_ERROR_THRESHOLD, KEY_POOL_RECOVERY_MS, KEY_POOL_RECOVERY_CHECK_MS } from '../constants.js';
+
 interface KeyState {
   key: string;
   healthy: boolean;
@@ -12,7 +14,7 @@ export class KeyPool {
 
   constructor(apiKeys: string[]) {
     this.keys = apiKeys.map(key => ({ key, healthy: true, errorCount: 0, unhealthySince: 0 }));
-    this.timer = setInterval(() => this.recover(), 10_000);
+    this.timer = setInterval(() => this.recover(), KEY_POOL_RECOVERY_CHECK_MS);
   }
 
   getKey(): string | null {
@@ -31,7 +33,7 @@ export class KeyPool {
     const state = this.keys.find(k => k.key === key);
     if (!state) return;
     state.errorCount++;
-    if (state.errorCount >= 5) {
+    if (state.errorCount >= KEY_POOL_ERROR_THRESHOLD) {
       state.healthy = false;
       state.unhealthySince = Date.now();
     }
@@ -56,7 +58,7 @@ export class KeyPool {
   private recover(): void {
     const now = Date.now();
     for (const state of this.keys) {
-      if (!state.healthy && now - state.unhealthySince >= 60_000) {
+      if (!state.healthy && now - state.unhealthySince >= KEY_POOL_RECOVERY_MS) {
         state.healthy = true;
         state.errorCount = 0;
         state.unhealthySince = 0;

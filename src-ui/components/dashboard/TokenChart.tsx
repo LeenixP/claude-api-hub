@@ -1,22 +1,20 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'preact/hooks';
 import type { LogEntry } from '../../types.js';
+import { formatTokens } from '../../lib/utils.js';
 
 interface TokenChartProps {
   logs: LogEntry[];
   rangeHours: number;
 }
 
-interface TokenBucket {
-  time: number;
-  input: number;
-  output: number;
-}
+interface TokenBucket { time: number; input: number; output: number; }
 
 export function TokenChart({ logs, rangeHours }: TokenChartProps) {
   const [range, setRange] = useState(rangeHours);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const [tooltip, setTooltip] = useState<{ x: number; y: number; bucket: TokenBucket } | null>(null);
+  const rafRef = useRef<number>(0);
+  const prevDataRef = useRef<{ logs: LogEntry[]; range: number } | null>(null);
 
   const buckets = useMemo(() => {
     const now = Date.now();
@@ -48,7 +46,7 @@ export function TokenChart({ logs, rangeHours }: TokenChartProps) {
     const dpr = window.devicePixelRatio || 1;
     const rect = container.getBoundingClientRect();
     const w = rect.width;
-    const h = 220;
+    const h = 200;
     canvas.width = w * dpr;
     canvas.height = h * dpr;
     canvas.style.width = w + 'px';
@@ -57,141 +55,109 @@ export function TokenChart({ logs, rangeHours }: TokenChartProps) {
     if (!ctx) return;
     ctx.scale(dpr, dpr);
 
-    const padding = { top: 20, right: 16, bottom: 32, left: 48 };
-    const chartW = w - padding.left - padding.right;
-    const chartH = h - padding.top - padding.bottom;
-
+    const pad = { top: 12, right: 12, bottom: 28, left: 42 };
+    const cw = w - pad.left - pad.right;
+    const ch = h - pad.top - pad.bottom;
     const maxVal = Math.max(1, ...buckets.map(b => b.input + b.output));
 
     ctx.clearRect(0, 0, w, h);
 
-    // Grid lines
-    ctx.strokeStyle = 'var(--color-border)';
+    const style = getComputedStyle(document.documentElement);
+    const gridColor = style.getPropertyValue('--color-border').trim() || 'rgba(255,255,255,0.07)';
+    const mutedColor = style.getPropertyValue('--color-text-muted').trim() || '#5c6370';
+    const primaryColor = style.getPropertyValue('--color-primary').trim() || '#26a9c9';
+    const successColor = style.getPropertyValue('--color-success').trim() || '#2da44e';
+
+    // Grid
+    ctx.strokeStyle = gridColor;
     ctx.lineWidth = 1;
     for (let i = 0; i <= 4; i++) {
-      const y = padding.top + (chartH / 4) * i;
-      ctx.beginPath();
-      ctx.moveTo(padding.left, y);
-      ctx.lineTo(padding.left + chartW, y);
-      ctx.stroke();
-      const label = Math.round(maxVal * (1 - i / 4));
-      ctx.fillStyle = 'var(--color-text-muted)';
-      ctx.font = '11px sans-serif';
+      const y = pad.top + (ch / 4) * i;
+      ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(pad.left + cw, y); ctx.stroke();
+      ctx.fillStyle = mutedColor;
+      ctx.font = '10px -apple-system, sans-serif';
       ctx.textAlign = 'right';
-      ctx.fillText(label >= 1000 ? (label / 1000).toFixed(1) + 'K' : String(label), padding.left - 6, y + 3);
+      ctx.fillText(formatTokens(Math.round(maxVal * (1 - i / 4))), pad.left - 6, y + 3);
     }
 
     if (buckets.length === 0) return;
 
-    const barW = (chartW / buckets.length) * 0.7;
-    const gap = (chartW / buckets.length) * 0.3;
+    const barW = Math.max(2, cw / buckets.length - 2);
 
     buckets.forEach((b, i) => {
-      const x = padding.left + i * (barW + gap) + gap / 2;
-      const inputH = (b.input / maxVal) * chartH;
-      const outputH = (b.output / maxVal) * chartH;
+      const x = pad.left + i * (barW + 2) + 1;
+      const totalH = ((b.input + b.output) / maxVal) * ch;
+      const inputH = (b.input / maxVal) * ch;
 
-      // Input tokens (cyan)
-      ctx.fillStyle = 'rgba(42,162,193,0.7)';
-      ctx.fillRect(x, padding.top + chartH - inputH, barW / 2, inputH);
-
-      // Output tokens (violet)
-      ctx.fillStyle = 'rgba(139,92,246,0.7)';
-      ctx.fillRect(x + barW / 2, padding.top + chartH - outputH, barW / 2, outputH);
+      if (inputH > 1) {
+        ctx.fillStyle = primaryColor + '70';
+        ctx.fillRect(x, pad.top + ch - totalH, barW, inputH);
+      }
+      if (totalH - inputH > 1) {
+        ctx.fillStyle = successColor + '60';
+        ctx.fillRect(x, pad.top + ch - totalH + inputH, barW, totalH - inputH);
+      }
     });
 
-    // X-axis labels
-    ctx.fillStyle = 'var(--color-text-muted)';
-    ctx.font = '11px sans-serif';
+    // X-axis
+    ctx.fillStyle = mutedColor;
+    ctx.font = '10px -apple-system, sans-serif';
     ctx.textAlign = 'center';
-    const labelCount = range === 1 ? 4 : range === 6 ? 6 : 8;
+    const labelCount = range === 1 ? 4 : 6;
     for (let i = 0; i < labelCount; i++) {
       const idx = Math.floor((buckets.length - 1) * (i / (labelCount - 1)));
-      const b = buckets[idx];
-      const x = padding.left + idx * (barW + gap) + gap / 2 + barW / 2;
-      const d = new Date(b.time);
-      const label = range === 1
-        ? d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-        : d.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-      ctx.fillText(label, x, h - 10);
+      const x = pad.left + idx * (barW + 2) + barW / 2;
+      const d = new Date(buckets[idx].time);
+      ctx.fillText(d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), x, h - 8);
     }
   }, [buckets, range]);
 
   useEffect(() => {
-    draw();
-    const onResize = () => draw();
+    const dataChanged = !prevDataRef.current || prevDataRef.current.logs !== logs || prevDataRef.current.range !== range;
+    prevDataRef.current = { logs, range };
+    if (!dataChanged) return;
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    rafRef.current = requestAnimationFrame(() => { draw(); rafRef.current = 0; });
+    const onResize = () => {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      rafRef.current = requestAnimationFrame(() => { draw(); rafRef.current = 0; });
+    };
     window.addEventListener('resize', onResize);
-    return () => window.removeEventListener('resize', onResize);
-  }, [draw]);
-
-  const handleMouseMove = useCallback((e: MouseEvent) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const rect = canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const padding = { top: 20, right: 16, bottom: 32, left: 48 };
-    const chartW = rect.width - padding.left - padding.right;
-    const barW = (chartW / buckets.length) * 0.7;
-    const gap = (chartW / buckets.length) * 0.3;
-    const idx = Math.floor((x - padding.left - gap / 2) / (barW + gap));
-    if (idx >= 0 && idx < buckets.length) {
-      setTooltip({ x: e.clientX - rect.left, y: e.clientY - rect.top, bucket: buckets[idx] });
-    } else {
-      setTooltip(null);
-    }
-  }, [buckets]);
-
-  const handleMouseLeave = useCallback(() => setTooltip(null), []);
+    return () => { window.removeEventListener('resize', onResize); if (rafRef.current) cancelAnimationFrame(rafRef.current); };
+  }, [draw, logs, range]);
 
   return (
-    <div class="card overflow-hidden">
-      <div class="flex items-center justify-between mb-4">
-        <div class="flex items-center gap-3">
-          <h3 class="text-sm font-semibold" style="color:var(--color-text)">Token Usage</h3>
-          <div class="flex items-center gap-3">
-            <span class="flex items-center gap-1 text-xs" style="color:var(--color-text-dim)">
-              <span class="inline-block w-2 h-2 rounded-full" style="background:var(--color-primary)" />
-              Input
-            </span>
-            <span class="flex items-center gap-1 text-xs" style="color:var(--color-text-dim)">
-              <span class="inline-block w-2 h-2 rounded-full" style="background:#8B5CF6" />
-              Output
-            </span>
+    <div class="card" style="overflow:hidden">
+      <div class="flex items-center justify-between mb-2">
+        <div>
+          <span style="font-size:13px;font-weight:600;color:var(--color-text)">Tokens</span>
+          <span style="font-size:12px;color:var(--color-text-muted);margin-left:8px">last {range}h</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:12px;font-size:11px;color:var(--color-text-muted)">
+          <span style="display:flex;align-items:center;gap:4px"><span style="width:8px;height:8px;border-radius:2px;background:var(--color-primary);opacity:0.7" /> Input</span>
+          <span style="display:flex;align-items:center;gap:4px"><span style="width:8px;height:8px;border-radius:2px;background:var(--color-success);opacity:0.6" /> Output</span>
+          <div class="flex gap-1">
+            {[1, 6, 24].map(h => (
+              <button key={h} onClick={() => setRange(h)}
+                style={`padding:3px 10px;border-radius:5px;font-size:11px;font-weight:600;cursor:pointer;border:none;${
+                  range === h ? 'background:var(--color-primary);color:#fff' : 'background:none;color:var(--color-text-muted)'
+                }`}>
+                {h}h
+              </button>
+            ))}
           </div>
         </div>
-        <div class="flex gap-1">
-          {[1, 6, 24].map(h => (
-            <button
-              key={h}
-              onClick={() => setRange(h)}
-              class="px-2 py-1 rounded text-xs font-medium transition-colors"
-              style={range === h
-                ? 'background:var(--color-primary);color:#fff'
-                : 'background:var(--color-bg);color:var(--color-text-dim)'
-              }
-            >
-              {h}H
-            </button>
-          ))}
+      </div>
+      {logs.length === 0 ? (
+        <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:180px;color:var(--color-text-muted);font-size:13px">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom:8px;opacity:0.3">
+            <rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/>
+          </svg>
+          No data yet
         </div>
-      </div>
-      <div ref={containerRef} class="relative" onMouseMove={handleMouseMove} onMouseLeave={handleMouseLeave}>
-        <canvas ref={canvasRef} />
-        {tooltip && (
-          <div
-            class="absolute pointer-events-none rounded-lg px-3 py-2 text-xs shadow-lg z-10"
-            style="background:var(--color-surface-hover);border:1px solid var(--color-border);transform:translate(-50%, -110%);left:50%"
-          >
-            <div class="font-medium mb-1" style="color:var(--color-text)">
-              {new Date(tooltip.bucket.time).toLocaleString()}
-            </div>
-            <div class="flex items-center gap-3">
-              <span style="color:var(--color-primary)">Input: {tooltip.bucket.input.toLocaleString()}</span>
-              <span style="color:#8B5CF6">Output: {tooltip.bucket.output.toLocaleString()}</span>
-            </div>
-          </div>
-        )}
-      </div>
+      ) : (
+        <div ref={containerRef}><canvas ref={canvasRef} style="display:block;width:100%" /></div>
+      )}
     </div>
   );
 }

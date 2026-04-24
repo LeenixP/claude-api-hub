@@ -35,6 +35,7 @@ export function ProviderModal({ open, onClose, onSaved, editId, editConfig }: Pr
   const [oauthStatus, setOauthStatus] = useState<'idle' | 'pending' | 'success' | 'error'>('idle');
   const [oauthError, setOauthError] = useState('');
   const pollRef = useRef<number | null>(null);
+  const [showApiKey, setShowApiKey] = useState(false);
 
   useEffect(() => {
     if (open) {
@@ -236,7 +237,7 @@ export function ProviderModal({ open, onClose, onSaved, editId, editConfig }: Pr
         <div style="display:flex;align-items:center;gap:10px">
           <input type="checkbox" id="modal-enabled" checked={form.enabled}
             onChange={e => updateField('enabled', (e.target as HTMLInputElement).checked)}
-            style="width:18px;height:18px;border-radius:4px" />
+            class="checkbox-custom" />
           <label for="modal-enabled" style="font-size:14px;color:var(--color-text);cursor:pointer">Enabled</label>
         </div>
 
@@ -254,12 +255,22 @@ export function ProviderModal({ open, onClose, onSaved, editId, editConfig }: Pr
         )}
 
         {form.providerType !== 'kiro' && (
-          <div>
+          <div style="position:relative">
             <label class="form-label">API Key</label>
-            <input type="password" class="form-input"
+            <input type={showApiKey ? 'text' : 'password'} class="form-input"
               value={form.apiKey || ''}
               onInput={e => updateField('apiKey', (e.target as HTMLInputElement).value)}
-              placeholder="sk-..." />
+              placeholder="sk-..."
+              style="padding-right:40px" />
+            <button type="button" onClick={() => setShowApiKey(v => !v)}
+              style="position:absolute;right:8px;bottom:10px;background:none;border:none;cursor:pointer;color:var(--color-text-muted);padding:4px;display:flex;align-items:center"
+              title={showApiKey ? 'Hide API key' : 'Show API key'}>
+              {showApiKey ? (
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+              ) : (
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+              )}
+            </button>
           </div>
         )}
 
@@ -372,7 +383,11 @@ export function ProviderModal({ open, onClose, onSaved, editId, editConfig }: Pr
           <label class="form-label">Prefix (optional)</label>
           <input type="text" class="form-input"
             value={Array.isArray(form.prefix) ? form.prefix.join(', ') : form.prefix || ''}
-            onInput={e => updateField('prefix', (e.target as HTMLInputElement).value)}
+            onInput={e => {
+              const val = (e.target as HTMLInputElement).value;
+              const parts = val.split(',').map(s => s.trim()).filter(Boolean);
+              updateField('prefix', parts.length > 1 ? parts as any : (parts[0] || '') as any);
+            }}
             placeholder="prefix-" />
         </div>
       </div>

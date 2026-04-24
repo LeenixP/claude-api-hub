@@ -3,6 +3,7 @@ import crypto from 'crypto';
 import type { GatewayConfig } from '../providers/types.js';
 import { sendError } from '../utils/http.js';
 import { logger } from '../logger.js';
+import { SESSION_MAX_AGE_MS, SESSION_CLEANUP_MS, RATE_LIMIT_WINDOW_MS } from '../constants.js';
 
 // ─── Per-IP Rate Limiter ───
 
@@ -10,7 +11,7 @@ export class PerIpRateLimiter {
   private windows = new Map<string, { count: number; resetAt: number }>();
   private cleanupTimer: NodeJS.Timeout;
   constructor(private rpm: number, private windowMs = 60000) {
-    this.cleanupTimer = setInterval(() => this.cleanup(Date.now()), 60000);
+    this.cleanupTimer = setInterval(() => this.cleanup(Date.now()), RATE_LIMIT_WINDOW_MS);
     this.cleanupTimer.unref();
   }
 
@@ -51,8 +52,8 @@ interface SessionEntry {
 class SessionManager {
   private sessions = new Map<string, SessionEntry>();
   private cleanupInterval: NodeJS.Timeout;
-  private readonly maxAgeMs = 24 * 60 * 60 * 1000; // 24 hours
-  private readonly cleanupIntervalMs = 60 * 60 * 1000; // 1 hour
+  private readonly maxAgeMs = SESSION_MAX_AGE_MS;
+  private readonly cleanupIntervalMs = SESSION_CLEANUP_MS;
 
   constructor() {
     this.cleanupInterval = setInterval(() => this.cleanup(), this.cleanupIntervalMs);
@@ -133,5 +134,5 @@ export function setSecurityHeaders(res: http.ServerResponse): void {
   res.setHeader('X-Frame-Options', 'DENY');
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
   res.setHeader('Content-Security-Policy',
-    "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'");
+    "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' http: https:; frame-ancestors 'none'");
 }

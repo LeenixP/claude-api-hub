@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'preact/hooks';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'preact/hooks';
 
 interface Option {
   value: string;
@@ -18,11 +18,21 @@ export function Select({ value, options, onChange, placeholder = 'Select...', er
   const [open, setOpen] = useState(false);
   const [dropUp, setDropUp] = useState(false);
   const [kbIdx, setKbIdx] = useState(-1);
+  const [search, setSearch] = useState('');
   const rootRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   const selected = options.find(o => o.value === value);
+  const showSearch = options.length > 8;
+
+  // Filtered options
+  const filteredOptions = useMemo(() => {
+    if (!search.trim()) return options;
+    const q = search.toLowerCase();
+    return options.filter(o => o.label.toLowerCase().includes(q));
+  }, [options, search]);
 
   // Close on outside click
   useEffect(() => {
@@ -34,7 +44,7 @@ export function Select({ value, options, onChange, placeholder = 'Select...', er
     return () => document.removeEventListener('mousedown', handler);
   }, [open]);
 
-  // Determine drop direction + reset keyboard index on open
+  // Determine drop direction + reset keyboard index + focus search on open
   useEffect(() => {
     if (!open || !triggerRef.current) return;
     const rect = triggerRef.current.getBoundingClientRect();
@@ -42,7 +52,12 @@ export function Select({ value, options, onChange, placeholder = 'Select...', er
     const spaceAbove = rect.top;
     setDropUp(spaceBelow < 280 && spaceAbove > spaceBelow);
     setKbIdx(-1);
-  }, [open]);
+    setSearch('');
+    // Auto-focus search input when shown
+    if (showSearch) {
+      requestAnimationFrame(() => searchInputRef.current?.focus());
+    }
+  }, [open, showSearch]);
 
   // Prevent scroll leak from dropdown list
   const handleListWheel = useCallback((e: WheelEvent) => {
@@ -71,7 +86,7 @@ export function Select({ value, options, onChange, placeholder = 'Select...', er
       case 'ArrowDown':
         e.preventDefault();
         setKbIdx(i => {
-          const next = Math.min(i + 1, options.length - 1);
+          const next = Math.min(i + 1, filteredOptions.length - 1);
           scrollToIdx(next);
           return next;
         });
@@ -86,13 +101,13 @@ export function Select({ value, options, onChange, placeholder = 'Select...', er
         break;
       case 'Enter':
         e.preventDefault();
-        if (kbIdx >= 0 && kbIdx < options.length) {
-          onChange(options[kbIdx].value);
+        if (kbIdx >= 0 && kbIdx < filteredOptions.length) {
+          onChange(filteredOptions[kbIdx].value);
           setOpen(false);
         }
         break;
     }
-  }, [open, kbIdx, options, onChange]);
+  }, [open, kbIdx, filteredOptions, onChange]);
 
   const scrollToIdx = (idx: number) => {
     if (!listRef.current) return;
@@ -108,10 +123,20 @@ export function Select({ value, options, onChange, placeholder = 'Select...', er
     setOpen(false);
   }, [onChange]);
 
-  // Build grouped options
+  const handleSearchKeyDown = useCallback((e: KeyboardEvent) => {
+    if (e.key === 'Enter' && filteredOptions.length > 0) {
+      e.preventDefault();
+      onChange(filteredOptions[0].value);
+      setOpen(false);
+    }
+    // Stop propagation to prevent root keydown from double-handling
+    e.stopPropagation();
+  }, [filteredOptions, onChange]);
+
+  // Build grouped options from filtered list
   const groups = new Map<string, Option[]>();
   const ungrouped: Option[] = [];
-  for (const o of options) {
+  for (const o of filteredOptions) {
     if (o.group) {
       if (!groups.has(o.group)) groups.set(o.group, []);
       groups.get(o.group)!.push(o);
@@ -127,7 +152,7 @@ export function Select({ value, options, onChange, placeholder = 'Select...', er
     const isKb = idx === kbIdx;
     return (
       <div key={o.value} data-idx={idx}
-        onClick={() => handleSelect(o.value)}
+        onClick={(e) => { e.stopPropagation(); handleSelect(o.value); }}
         style={`padding:10px 14px;cursor:pointer;font-size:14px;border-radius:6px;margin:2px 4px;${
           isKb ? 'background:var(--color-surface-hover);' : ''
         }${isActive ? 'color:var(--color-primary);font-weight:600;' : 'color:var(--color-text);'}`}>
@@ -169,8 +194,21 @@ export function Select({ value, options, onChange, placeholder = 'Select...', er
       </div>
       {open && (
         <div ref={listRef} style={listStyle} onWheel={handleListWheel}>
-          {options.length === 0 ? (
-            <div style="padding:12px 14px;font-size:13px;color:var(--color-text-muted)">No options</div>
+          {showSearch && (
+            <div style="padding:6px 8px;border-bottom:1px solid var(--color-border)">
+              <input
+                ref={searchInputRef}
+                type="text"
+                value={search}
+                onInput={(e) => { setSearch((e.target as HTMLInputElement).value); setKbIdx(-1); }}
+                onKeyDown={handleSearchKeyDown}
+                placeholder="Filter options..."
+                style="width:100%;padding:6px 10px;border-radius:6px;border:1px solid var(--color-border);background:var(--color-bg);color:var(--color-text);font-size:13px;outline:none;box-sizing:border-box"
+              />
+            </div>
+          )}
+          {filteredOptions.length === 0 ? (
+            <div style="padding:12px 14px;font-size:13px;color:var(--color-text-muted)">{search ? 'No matches' : 'No options'}</div>
           ) : renderList()}
         </div>
       )}

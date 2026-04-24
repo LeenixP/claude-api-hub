@@ -1,11 +1,13 @@
-import type { GatewayConfig } from '../../types.js';
+import type { GatewayConfig, LogEntry } from '../../types.js';
 import { ProviderCard } from './ProviderCard.js';
+import { relativeTime } from '../../lib/utils.js';
 
 interface ProviderListProps {
   config: GatewayConfig | null;
   fetchedModels: Record<string, string[]>;
   testAllResults: Record<string, { success: boolean; error?: string }>;
   testingAll: boolean;
+  logs: LogEntry[];
   onEdit: (id: string) => void;
   onDelete: (id: string) => void;
   onTest: (id: string) => Promise<{ success: boolean; error?: string }>;
@@ -13,8 +15,21 @@ interface ProviderListProps {
   onTestAll: () => void;
 }
 
-export function ProviderList({ config, fetchedModels, testAllResults, testingAll, onEdit, onDelete, onTest, onAdd, onTestAll }: ProviderListProps) {
+export function ProviderList({ config, fetchedModels, testAllResults, testingAll, logs, onEdit, onDelete, onTest, onAdd, onTestAll }: ProviderListProps) {
   const providers = config ? Object.entries(config.providers) : [];
+
+  // Compute last-used times per provider from logs
+  const lastUsedMap: Record<string, string | undefined> = {};
+  for (const [id] of providers) {
+    const providerLogs = logs.filter(l => l.provider === id);
+    if (providerLogs.length > 0) {
+      const latest = providerLogs.reduce((a, b) =>
+        new Date(a.time) > new Date(b.time) ? a : b
+      );
+      const rel = relativeTime(latest.time);
+      if (rel) lastUsedMap[id] = rel;
+    }
+  }
 
   return (
     <div>
@@ -85,6 +100,7 @@ export function ProviderList({ config, fetchedModels, testAllResults, testingAll
               onEdit={onEdit}
               onDelete={onDelete}
               onTest={onTest}
+              lastUsedTime={lastUsedMap[id]}
             />
           ))}
         </div>

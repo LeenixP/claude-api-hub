@@ -1,5 +1,7 @@
 import http from 'http';
+import zlib from 'zlib';
 import type { GatewayConfig } from '../providers/types.js';
+import { MAX_BODY_SIZE } from '../constants.js';
 
 export function getCorsHeaders(config: GatewayConfig, reqOrigin?: string): Record<string, string> {
   const origins = config.corsOrigins;
@@ -23,18 +25,53 @@ export function getCorsHeaders(config: GatewayConfig, reqOrigin?: string): Recor
   return headers;
 }
 
+/**
+ * Compress a string body if the client accepts gzip or deflate encoding.
+ * Returns the compressed buffer and the content-encoding value, or the original
+ * buffer plus undefined if compression is skipped (body too small, SSE, etc.).
+ */
+export function compressBody(
+  body: string,
+  acceptEncoding: string,
+  contentType: string,
+): { buffer: Buffer; encoding?: string } {
+  // Skip for SSE streams
+  if (contentType.startsWith('text/event-stream')) {
+    return { buffer: Buffer.from(body) };
+  }
+  // Skip for bodies under 1KB
+  if (Buffer.byteLength(body) < 1024) {
+    return { buffer: Buffer.from(body) };
+  }
+  // Check accepted encodings (prefer gzip over deflate)
+  const encodings = acceptEncoding.split(',').map(s => s.trim().toLowerCase());
+  if (encodings.includes('gzip') || encodings.includes('*')) {
+    return { buffer: zlib.gzipSync(body), encoding: 'gzip' };
+  }
+  if (encodings.includes('deflate')) {
+    return { buffer: zlib.deflateSync(body), encoding: 'deflate' };
+  }
+  return { buffer: Buffer.from(body) };
+}
+
 export function sendJson(res: http.ServerResponse, status: number, body: unknown, config?: GatewayConfig, origin?: string): void {
   const payload = JSON.stringify(body);
   const cors = config ? getCorsHeaders(config, origin) : { 'Access-Control-Allow-Origin': '*' };
-  res.writeHead(status, { 'Content-Type': 'application/json', ...cors });
-  res.end(payload);
+  const acceptEncoding = (res.req?.headers['accept-encoding'] as string) || '';
+  const compressed = compressBody(payload, acceptEncoding, 'application/json');
+  const headers: Record<string, string> = { 'Content-Type': 'application/json', ...cors };
+  if (compressed.encoding) {
+    headers['Content-Encoding'] = compressed.encoding;
+  }
+  res.writeHead(status, headers);
+  res.end(compressed.buffer);
 }
 
 export function sendError(res: http.ServerResponse, status: number, type: string, message: string, config?: GatewayConfig, origin?: string): void {
   sendJson(res, status, { type: 'error', error: { type, message } }, config, origin);
 }
 
-export function readBody(req: http.IncomingMessage, maxBytes = 10 * 1024 * 1024): Promise<string> {
+export function readBody(req: http.IncomingMessage, maxBytes = MAX_BODY_SIZE): Promise<string> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
     let size = 0;

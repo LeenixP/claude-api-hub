@@ -10,6 +10,7 @@ import { TokenRefresher } from './services/token-refresher.js';
 import { createProvider } from './providers/factory.js';
 import { logger, setLogLevel } from './logger.js';
 import { destroyAgents } from './services/forwarder.js';
+import { DEFAULT_TOKEN_REFRESH_MINUTES } from './constants.js';
 import { LogManager } from './services/log-manager.js';
 import { EventBus } from './services/event-bus.js';
 import { RateTracker } from './services/rate-tracker.js';
@@ -76,7 +77,7 @@ async function main(): Promise<void> {
   const server = createServer(router, config, logManager, eventBus, rateTracker);
 
   // Auto-refresh OAuth tokens (default 30 min, configurable via tokenRefreshMinutes)
-  const refreshMinutes = config.tokenRefreshMinutes || 30;
+  const refreshMinutes = config.tokenRefreshMinutes || DEFAULT_TOKEN_REFRESH_MINUTES;
   const tokenRefresher = new TokenRefresher(router, config, rebuildProviders, refreshMinutes);
   tokenRefresher.start();
 

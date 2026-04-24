@@ -72,4 +72,4 @@ export interface Stats {
 }
 
 export type Theme = 'system' | 'dark' | 'light';
-export type Page = 'dashboard' | 'providers' | 'aliases' | 'logs' | 'config' | 'guide';
+export type Page = 'dashboard' | 'providers' | 'aliases' | 'logs' | 'config';

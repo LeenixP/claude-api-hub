@@ -12,9 +12,10 @@ interface ProviderCardProps {
   onEdit: (id: string) => void;
   onDelete: (id: string) => void;
   onTest: (id: string) => Promise<{ success: boolean; error?: string }>;
+  lastUsedTime?: string;
 }
 
-export function ProviderCard({ id, config, fetchedModels, externalTestResult, testDisabled, onEdit, onDelete, onTest }: ProviderCardProps) {
+export function ProviderCard({ id, config, fetchedModels, externalTestResult, testDisabled, onEdit, onDelete, onTest, lastUsedTime }: ProviderCardProps) {
   const [testing, setTesting] = useState(false);
   const [localTestResult, setLocalTestResult] = useState<{ success: boolean; error?: string } | null>(null);
   const [showDelete, setShowDelete] = useState(false);
@@ -81,6 +82,15 @@ export function ProviderCard({ id, config, fetchedModels, externalTestResult, te
             </svg>
             <span>{config.apiKey ? 'API Key configured' : 'No API key'}</span>
           </div>
+          {lastUsedTime && (
+            <div style="display:flex;align-items:center;gap:10px;font-size:13px;color:var(--color-text-dim)">
+              <svg style="flex-shrink:0" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10" />
+                <polyline points="12 6 12 12 16 14" />
+              </svg>
+              <span>Last used: {lastUsedTime}</span>
+            </div>
+          )}
         </div>
 
         <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:20px">

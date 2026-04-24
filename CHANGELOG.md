@@ -7,6 +7,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.1.1] - 2026-04-24
+
+### Added
+- Docker support: Dockerfile, docker-compose.yml, .dockerignore
+- JSON Schema for config validation (`config/providers.schema.json`)
+- `.env.example` for environment variable reference
+- Named constants file (`src/constants.ts`) replacing all magic numbers
+- Config validation: 10+ new rules (enabled providers, rate limits, CORS, timeouts)
+- Gzip/deflate response compression for JSON and HTML
+- ETag + Cache-Control headers for dashboard
+- Per-host HTTPS connection pooling with keep-alive
+- SSE reconnection jitter (±25%) to prevent thundering herd
+- Canvas chart performance: requestAnimationFrame + change detection
+- Loading skeleton with API Hub branding on initial load
+- Keyboard shortcuts: `?` help dialog, `1-5` page navigation, `Esc` close
+- Dynamic page titles (`Dashboard — API Hub`)
+- Scroll-to-top floating button
+- Custom checkbox styling
+- Password and API key show/hide toggle (eye icon)
+- Toast notifications with progress bar and hover-to-pause
+- Select dropdown search/filter for 8+ options
+- Provider card "last used" relative timestamp
+- Relative timestamps throughout (logs, charts)
+- Version number links to GitHub Releases
+- Welcome banner with gateway URL and setup steps
+- Global JS error handler for debugging
+
+### Changed
+- **Dashboard redesign**: unified single-accent color scheme (GitHub Dark style), cleaner stat cards, theme-aware canvas charts, cohesive spacing
+- **Config page rewrite**: clearer Form/JSON mode toggle, section descriptions, merged redundant cards, removed confusing syntax highlighting, proper spacing
+- **Logs page rewrite**: simplified toolbar (removed fake File Log/Auto-scroll buttons), cleaner log rows, Clear All now instantly clears UI
+- **Login page**: white card on dark background for maximum contrast
+- Removed Guide page (content merged into Dashboard welcome banner)
+- Dark theme colors refined for better contrast and cohesion
+- Border radius reduced from 12px to 8px for modern feel
+- GuidePage now shows dynamic port from config (was hardcoded 3456)
+
+### Fixed
+- **Critical: TDZ error** — keyboard shortcut useEffect referenced `navigate` before declaration, causing blank page
+- LogPanel "Clear" button now properly clears server logs (was only clearing search)
+- ProviderModal prefix field now correctly parses comma-separated arrays
+- ConfigEditor OAuth check no longer loops on mount
+- Login now directly fetches config (no manual refresh needed)
+- Clear All logs now instantly clears frontend SSE buffer
+
 ## [2.0.0] - 2026-04-23
 
 ### Added

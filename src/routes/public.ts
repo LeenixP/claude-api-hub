@@ -1,6 +1,7 @@
 import http from 'http';
-import { sendJson } from '../utils/http.js';
-import { dashboardHtml } from '../dashboard.js';
+import { sendJson, compressBody } from '../utils/http.js';
+import { dashboardHtml, dashboardETag } from '../dashboard.js';
+import { DASHBOARD_CACHE_MAX_AGE } from '../constants.js';
 import type { RouteContext } from './types.js';
 
 export function registerPublicRoutes(ctx: RouteContext): void {
@@ -19,11 +20,35 @@ export async function handlePublicRoutes(
   origin: string | undefined,
 ): Promise<boolean> {
   const { config, router, eventBus } = ctx;
-  const cachedDashboard = dashboardHtml(config.version || '');
 
   if (req.method === 'GET' && pathname === '/') {
-    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', ...cors });
-    res.end(cachedDashboard);
+    // ETag support
+    const etag = dashboardETag();
+    const ifNoneMatch = req.headers['if-none-match'];
+    if (ifNoneMatch === etag) {
+      res.writeHead(304, {
+        'Cache-Control': `public, max-age=${DASHBOARD_CACHE_MAX_AGE}`,
+        'ETag': etag,
+        ...cors,
+      });
+      res.end();
+      return true;
+    }
+
+    const html = dashboardHtml(config.version || '');
+    const acceptEncoding = (req.headers['accept-encoding'] as string) || '';
+    const compressed = compressBody(html, acceptEncoding, 'text/html; charset=utf-8');
+    const headers: Record<string, string> = {
+      'Content-Type': 'text/html; charset=utf-8',
+      'Cache-Control': `public, max-age=${DASHBOARD_CACHE_MAX_AGE}`,
+      'ETag': etag,
+      ...cors,
+    };
+    if (compressed.encoding) {
+      headers['Content-Encoding'] = compressed.encoding;
+    }
+    res.writeHead(200, headers);
+    res.end(compressed.buffer);
     return true;
   }
 

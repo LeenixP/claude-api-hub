@@ -5,6 +5,7 @@ import { join } from 'path';
 import { logger } from '../logger.js';
 import { DatabaseSync } from 'node:sqlite';
 import type { EventBus } from './event-bus.js';
+import { MAX_LOG_ROWS, MAX_LOG_FILES } from '../constants.js';
 
 export interface LogEntry {
   time: string;
@@ -45,7 +46,7 @@ export class LogManager {
 
   private eventBus?: EventBus;
 
-  constructor(maxLogs = 10000, maxLogFiles = 4096, dbPath?: string, eventBus?: EventBus) {
+  constructor(maxLogs = MAX_LOG_ROWS, maxLogFiles = MAX_LOG_FILES, dbPath?: string, eventBus?: EventBus) {
     this.eventBus = eventBus;
     this.maxLogs = maxLogs;
     this.maxLogFiles = maxLogFiles;

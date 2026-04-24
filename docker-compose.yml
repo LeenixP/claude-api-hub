@@ -1,0 +1,23 @@
+services:
+  hub:
+    build: .
+    container_name: claude-api-hub
+    ports:
+      - "9800:9800"
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-}
+      - MOONSHOT_API_KEY=${MOONSHOT_API_KEY:-}
+      - MINIMAX_API_KEY=${MINIMAX_API_KEY:-}
+      - ZHIPUAI_API_KEY=${ZHIPUAI_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - ADMIN_TOKEN=${ADMIN_TOKEN:-}
+      - API_HUB_PORT=9800
+      - API_HUB_HOST=0.0.0.0
+    volumes:
+      - hub-data:/home/hub/.claude-api-hub
+      - ./config/providers.json:/app/config/providers.json:ro
+    restart: unless-stopped
+
+volumes:
+  hub-data:

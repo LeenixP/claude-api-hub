@@ -1,4 +1,5 @@
 {
+  "$schema": "./providers.schema.json",
   "password": "",
   "port": 9800,
   "host": "0.0.0.0",

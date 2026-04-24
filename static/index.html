@@ -3,11 +3,15 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%232AA2C1'/><text x='16' y='22' font-size='18' font-family='sans-serif' font-weight='bold' text-anchor='middle' fill='white'>H</text></svg>">
 <title>API Hub</title>
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<div id="app"></div>
+<div id="app"><div style="display:flex;align-items:center;justify-content:center;height:100vh;color:#fff;font-family:system-ui,sans-serif;font-size:16px;background:var(--color-bg)">Loading...</div></div>
+<script>
+window.onerror=function(m,u,l){var a=document.getElementById('app');if(a)a.innerHTML='<div style="max-width:700px;margin:40px auto;padding:24px;border-radius:12px;background:#fff;color:#1a1d23;font-family:system-ui,sans-serif;font-size:14px;box-shadow:0 2px 20px rgba(0,0,0,0.3)"><strong style="color:#d1242f">Application Error</strong><pre style="margin:12px 0 0;font-size:12px;color:#656d76;white-space:pre-wrap">'+m.replace(/</g,'&lt;')+' at line '+l+'</pre></div>'};
+</script>
 <script src="bundle.js"></script>
 </body>
 </html>

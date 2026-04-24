@@ -8,84 +8,56 @@ interface QuickStartProps {
 
 export function QuickStart({ config }: QuickStartProps) {
   const [dismissed, setDismissed] = useState(() => {
-    return localStorage.getItem('quickStartDismissed') === 'true';
+    return localStorage.getItem('quickstartDismissed') === 'true';
   });
 
-  if (dismissed) return null;
-  if (!config) return null;
-  const providerCount = Object.keys(config.providers || {}).length;
-  if (providerCount > 0) return null;
+  if (dismissed || !config) return null;
 
   const gatewayUrl = `${window.location.protocol}//${window.location.host}`;
-  const claudeConfig = JSON.stringify({
-    apiUrl: `${gatewayUrl}/v1`,
-    apiKey: config.adminToken || 'your-token',
-  }, null, 2);
+  const providerCount = Object.keys(config.providers || {}).length;
+  const activeProviders = Object.values(config.providers || {}).filter(p => p.enabled).length;
 
   const handleDismiss = () => {
-    localStorage.setItem('quickStartDismissed', 'true');
+    localStorage.setItem('quickstartDismissed', 'true');
     setDismissed(true);
   };
 
   return (
-    <div class="card mb-6">
-      <div class="flex items-center justify-between mb-4">
-        <div class="flex items-center gap-3">
-          <div class="w-8 h-8 rounded-lg flex items-center justify-center" style="background:rgba(42,162,193,0.15)">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--color-primary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <circle cx="12" cy="12" r="10" />
-              <line x1="12" y1="16" x2="12" y2="12" />
-              <line x1="12" y1="8" x2="12.01" y2="8" />
-            </svg>
+    <div class="welcome-banner" style="margin-bottom:24px">
+      <div class="flex items-start justify-between gap-4">
+        <div class="flex-1">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+            <div style="width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;background:var(--color-primary);color:#fff">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
+              </svg>
+            </div>
+            <div>
+              <div style="font-size:15px;font-weight:700;color:var(--color-text)">Welcome to API Hub</div>
+              <div style="font-size:12px;color:var(--color-text-dim)">
+                {activeProviders} of {providerCount} providers active · Gateway running at <code style="font-size:11px;padding:1px 6px;border-radius:4px;background:var(--color-bg);color:var(--color-primary)">{gatewayUrl}</code>
+              </div>
+            </div>
           </div>
-          <div>
-            <h3 class="text-sm font-semibold" style="color:var(--color-text)">Quick Start</h3>
-            <p class="text-xs" style="color:var(--color-text-muted)">Get up and running in 3 steps</p>
-          </div>
-        </div>
-        <button
-          onClick={handleDismiss}
-          class="p-1 rounded transition-colors hover:opacity-80"
-          style="color:var(--color-text-muted)"
-          aria-label="Dismiss quick start"
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="18" y1="6" x2="6" y2="18" />
-            <line x1="6" y1="6" x2="18" y2="18" />
-          </svg>
-        </button>
-      </div>
-
-      <div class="space-y-4">
-        <div class="flex gap-3">
-          <div class="flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold" style="background:var(--color-primary);color:#fff">1</div>
-          <div class="flex-1">
-            <div class="text-sm font-medium mb-1" style="color:var(--color-text)">Gateway URL</div>
-            <div class="flex items-center gap-2">
-              <code class="flex-1 px-3 py-1.5 rounded text-xs font-mono" style="background:var(--color-bg);color:var(--color-text-dim)">{gatewayUrl}</code>
+          <div style="display:flex;flex-wrap:wrap;gap:8px">
+            <div style="display:flex;align-items:center;gap:6px;padding:6px 12px;border-radius:6px;background:var(--color-bg);font-size:12px;color:var(--color-text-dim)">
+              <span style="display:flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;background:var(--color-primary);color:#fff;font-size:10px;font-weight:700">1</span>
+              Configure providers
+            </div>
+            <div style="display:flex;align-items:center;gap:6px;padding:6px 12px;border-radius:6px;background:var(--color-bg);font-size:12px;color:var(--color-text-dim)">
+              <span style="display:flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;background:var(--color-primary);color:#fff;font-size:10px;font-weight:700">2</span>
+              Set up aliases
+            </div>
+            <div style="display:flex;align-items:center;gap:6px;padding:6px 12px;border-radius:6px;background:var(--color-bg);font-size:12px;color:var(--color-text-dim)">
+              <span style="display:flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;background:var(--color-primary);color:#fff;font-size:10px;font-weight:700">3</span>
+              Point Claude Code at {gatewayUrl}
               <CopyButton text={gatewayUrl} />
             </div>
           </div>
         </div>
-
-        <div class="flex gap-3">
-          <div class="flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold" style="background:var(--color-primary);color:#fff">2</div>
-          <div class="flex-1">
-            <div class="text-sm font-medium mb-1" style="color:var(--color-text)">Configure Claude Code</div>
-            <div class="flex items-start gap-2">
-              <pre class="flex-1 px-3 py-2 rounded text-xs font-mono overflow-x-auto" style="background:var(--color-bg);color:var(--color-text-dim)">{claudeConfig}</pre>
-              <CopyButton text={claudeConfig} />
-            </div>
-          </div>
-        </div>
-
-        <div class="flex gap-3">
-          <div class="flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold" style="background:var(--color-primary);color:#fff">3</div>
-          <div class="flex-1">
-            <div class="text-sm font-medium mb-1" style="color:var(--color-text)">Restart Claude Code</div>
-            <p class="text-xs" style="color:var(--color-text-muted)">Restart Claude Code to pick up the new configuration. Then add a provider below.</p>
-          </div>
-        </div>
+        <button onClick={handleDismiss} style="background:none;border:none;cursor:pointer;color:var(--color-text-muted);padding:4px;flex-shrink:0" title="Dismiss">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
       </div>
     </div>
   );

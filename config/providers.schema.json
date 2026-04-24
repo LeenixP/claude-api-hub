@@ -1,0 +1,146 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/LeenixP/claude-api-hub/schema/providers.schema.json",
+  "title": "Claude API Hub Provider Configuration",
+  "description": "Configuration schema for claude-api-hub providers.json",
+  "type": "object",
+  "required": ["port", "host", "defaultProvider", "providers"],
+  "properties": {
+    "port": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 65535,
+      "default": 9800,
+      "description": "Port to listen on"
+    },
+    "host": {
+      "type": "string",
+      "default": "0.0.0.0",
+      "description": "Host to bind to"
+    },
+    "logLevel": {
+      "type": "string",
+      "enum": ["debug", "info", "warn", "error"],
+      "default": "info"
+    },
+    "password": {
+      "type": "string",
+      "description": "Admin dashboard password"
+    },
+    "adminToken": {
+      "type": "string",
+      "description": "Admin API token (alternative to password)"
+    },
+    "defaultProvider": {
+      "type": "string",
+      "description": "Default provider ID to use when no alias matches"
+    },
+    "rateLimitRpm": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Per-IP rate limit in requests per minute (0 = unlimited)"
+    },
+    "streamTimeoutMs": {
+      "type": "integer",
+      "minimum": 1000,
+      "default": 120000,
+      "description": "Stream request timeout in milliseconds"
+    },
+    "streamIdleTimeoutMs": {
+      "type": "integer",
+      "minimum": 1000,
+      "default": 30000,
+      "description": "Stream idle timeout in milliseconds"
+    },
+    "maxResponseBytes": {
+      "type": "integer",
+      "minimum": 0,
+      "default": 0,
+      "description": "Maximum upstream response size (0 = unlimited)"
+    },
+    "tokenRefreshMinutes": {
+      "type": "integer",
+      "minimum": 1,
+      "default": 30,
+      "description": "OAuth token refresh interval in minutes"
+    },
+    "trustProxy": {
+      "type": "boolean",
+      "default": false,
+      "description": "Trust X-Forwarded-For header"
+    },
+    "corsOrigins": {
+      "type": "array",
+      "items": { "type": "string" },
+      "default": ["*"],
+      "description": "Allowed CORS origins"
+    },
+    "aliases": {
+      "type": "object",
+      "description": "Model alias mapping (tier → model)",
+      "additionalProperties": { "type": "string" }
+    },
+    "tierTimeouts": {
+      "type": "object",
+      "description": "Per-tier timeout overrides",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["timeoutMs"],
+        "properties": {
+          "timeoutMs": { "type": "integer", "minimum": 1000 },
+          "streamTimeoutMs": { "type": "integer", "minimum": 1000 },
+          "streamIdleTimeoutMs": { "type": "integer", "minimum": 1000 }
+        }
+      }
+    },
+    "fallbackChain": {
+      "type": "object",
+      "description": "Provider fallback chain (provider → fallback-provider)",
+      "additionalProperties": { "type": "string" }
+    },
+    "providers": {
+      "type": "object",
+      "description": "Provider configurations keyed by provider ID",
+      "minProperties": 1,
+      "additionalProperties": {
+        "type": "object",
+        "required": ["name", "baseUrl", "models", "defaultModel"],
+        "properties": {
+          "name": { "type": "string", "description": "Display name" },
+          "baseUrl": { "type": "string", "format": "uri", "description": "API base URL" },
+          "apiKey": { "type": "string", "description": "API key (supports ${ENV_VAR} interpolation)" },
+          "models": {
+            "type": "array",
+            "items": { "type": "string" },
+            "minItems": 1,
+            "description": "Supported model IDs"
+          },
+          "defaultModel": { "type": "string", "description": "Default model to use" },
+          "enabled": { "type": "boolean", "default": true },
+          "passthrough": { "type": "boolean", "description": "Use Anthropic protocol passthrough" },
+          "authMode": {
+            "type": "string",
+            "enum": ["anthropic", "openai", "oauth"],
+            "description": "Authentication / protocol mode"
+          },
+          "providerType": {
+            "type": "string",
+            "enum": ["standard", "kiro"],
+            "default": "standard"
+          },
+          "prefix": {
+            "oneOf": [
+              { "type": "string" },
+              { "type": "array", "items": { "type": "string" } }
+            ],
+            "description": "Model prefix(es) for routing to this provider"
+          },
+          "kiroAuthMethod": { "type": "string" },
+          "kiroRegion": { "type": "string" },
+          "kiroCredsPath": { "type": "string" },
+          "kiroStartUrl": { "type": "string" }
+        }
+      }
+    }
+  }
+}

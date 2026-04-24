@@ -135,4 +135,46 @@ describe('config', () => {
     loadConfig(path);
     expect(getConfigPath()).toBe(path);
   });
+
+  it('throws when no providers are enabled', () => {
+    const cfg = {
+      ...validConfig,
+      providers: {
+        test: { ...validConfig.providers.test, enabled: false },
+      },
+    };
+    const path = writeTestConfig(cfg);
+    expect(() => loadConfig(path)).toThrow('at least one provider must be enabled');
+  });
+
+  it('throws on negative rateLimitRpm', () => {
+    const cfg = { ...validConfig, rateLimitRpm: -1 };
+    const path = writeTestConfig(cfg);
+    expect(() => loadConfig(path)).toThrow('rateLimitRpm');
+  });
+
+  it('throws on streamTimeoutMs below minimum', () => {
+    const cfg = { ...validConfig, streamTimeoutMs: 500 };
+    const path = writeTestConfig(cfg);
+    expect(() => loadConfig(path)).toThrow('streamTimeoutMs');
+  });
+
+  it('throws on invalid CORS origin', () => {
+    const cfg = { ...validConfig, corsOrigins: ['not a valid url'] };
+    const path = writeTestConfig(cfg);
+    expect(() => loadConfig(path)).toThrow('CORS origin');
+  });
+
+  it('accepts wildcard CORS origin', () => {
+    const cfg = { ...validConfig, corsOrigins: ['*'] };
+    const path = writeTestConfig(cfg);
+    const config = loadConfig(path);
+    expect(config.corsOrigins).toEqual(['*']);
+  });
+
+  it('throws on invalid tier timeout', () => {
+    const cfg = { ...validConfig, tierTimeouts: { haiku: { timeoutMs: 'not-a-number' as unknown as number } } };
+    const path = writeTestConfig(cfg);
+    expect(() => loadConfig(path)).toThrow('timeoutMs');
+  });
 });
