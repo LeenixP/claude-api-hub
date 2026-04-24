@@ -234,7 +234,7 @@ export async function handleAdminConfigRoutes(
     return true;
   }
 
-  if (req.method === 'POST' && pathname === '/api/config/import') {
+  if (req.method === 'POST' && (pathname === '/api/config' || pathname === '/api/config/import')) {
     let bodyStr: string;
     try { bodyStr = await readBody(req); } catch {
       sendError(res, 400, 'invalid_request_error', 'Failed to read request body', config, origin); return true;

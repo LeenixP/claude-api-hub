@@ -3,6 +3,7 @@ import type { GatewayConfig } from '../../types.js';
 import { showToast } from '../common/Toast.js';
 import { apiFetch } from '../../hooks/useApi.js';
 import { Select } from '../common/Select.js';
+import { getKiroAuthStatus } from '../../lib/api.js';
 
 interface ConfigEditorProps {
   config: GatewayConfig | null;
@@ -28,6 +29,8 @@ export function ConfigEditor({ config, onSaved }: ConfigEditorProps) {
   const [maxResponseBytes, setMaxResponseBytes] = useState(config?.maxResponseBytes ?? 0);
   const [corsOrigins, setCorsOrigins] = useState(config?.corsOrigins?.join('\n') ?? '*');
   const [trustProxy, setTrustProxy] = useState(config?.trustProxy ?? false);
+  const [refreshingOAuth, setRefreshingOAuth] = useState(false);
+  const [oauthStatus, setOauthStatus] = useState<{ valid: boolean; expiresAt?: string; authMethod?: string } | null>(null);
 
   // JSON state
   const [jsonText, setJsonText] = useState('');
@@ -141,6 +144,37 @@ export function ConfigEditor({ config, onSaved }: ConfigEditorProps) {
       setHasChanges(false);
     }
   }, [config]);
+
+  const handleCheckOAuth = useCallback(async () => {
+    try {
+      const status = await getKiroAuthStatus();
+      setOauthStatus(status);
+    } catch { setOauthStatus(null); }
+  }, []);
+
+  const handleRefreshOAuth = useCallback(async () => {
+    setRefreshingOAuth(true);
+    try {
+      const res = await apiFetch('/api/oauth/kiro/refresh', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      if (res.ok) {
+        showToast('OAuth token refreshed', 'success');
+        handleCheckOAuth();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        showToast(data.error?.message || 'Refresh failed', 'error');
+      }
+    } catch (err) {
+      showToast((err as Error).message, 'error');
+    } finally {
+      setRefreshingOAuth(false);
+    }
+  }, [handleCheckOAuth]);
+
+  useEffect(() => { handleCheckOAuth(); }, [handleCheckOAuth]);
 
   const inputClass = "form-input";
   const inputStyle = "";
@@ -314,6 +348,31 @@ export function ConfigEditor({ config, onSaved }: ConfigEditorProps) {
                   />
                   Trust Proxy
                 </label>
+              </div>
+            </div>
+          </div>
+
+          {/* OAuth */}
+          <div class="card">
+            <h3 class="text-sm font-semibold mb-3" style="color:var(--color-text)">Kiro OAuth Credentials</h3>
+            <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+              <div style="display:flex;align-items:center;gap:8px">
+                <span style={`display:inline-block;width:10px;height:10px;border-radius:50%;background:${oauthStatus?.valid ? 'var(--color-success)' : 'var(--color-danger)'}`} />
+                <span style="font-size:14px;color:var(--color-text)">
+                  {oauthStatus ? (oauthStatus.valid ? 'Valid' : 'Expired') : 'Unknown'}
+                </span>
+              </div>
+              {oauthStatus?.authMethod && (
+                <span style="font-size:13px;color:var(--color-text-muted)">Method: {oauthStatus.authMethod}</span>
+              )}
+              {oauthStatus?.expiresAt && (
+                <span style="font-size:13px;color:var(--color-text-muted)">Expires: {new Date(oauthStatus.expiresAt).toLocaleString()}</span>
+              )}
+              <div style="margin-left:auto;display:flex;gap:8px">
+                <button onClick={handleCheckOAuth} class="btn btn-ghost">Check</button>
+                <button onClick={handleRefreshOAuth} disabled={refreshingOAuth} class="btn btn-primary">
+                  {refreshingOAuth ? 'Refreshing...' : 'Refresh Token'}
+                </button>
               </div>
             </div>
           </div>
