@@ -50,11 +50,11 @@ export class LogManager {
     this.maxLogs = maxLogs;
     this.maxLogFiles = maxLogFiles;
     this.logDir = join(homedir(), '.claude-api-hub', 'logs');
-    try { mkdirSync(this.logDir, { recursive: true }); } catch {}
+    try { mkdirSync(this.logDir, { recursive: true }); } catch (err) { logger.warn('Failed to create log directory', { error: (err as Error).message }); }
 
     const resolvedDbPath = dbPath ?? join(homedir(), '.claude-api-hub', 'data.db');
     if (resolvedDbPath !== ':memory:') {
-      try { mkdirSync(join(homedir(), '.claude-api-hub'), { recursive: true }); } catch {}
+      try { mkdirSync(join(homedir(), '.claude-api-hub'), { recursive: true }); } catch (err) { logger.warn('Failed to create data directory', { error: (err as Error).message }); }
     }
 
     this.db = new DatabaseSync(resolvedDbPath);
@@ -128,7 +128,7 @@ export class LogManager {
       const filepath = join(this.logDir, filename);
       appendFile(filepath, JSON.stringify({ ...entry, ...detail }, null, 2), 'utf-8')
         .then(() => { entry.logFile = filepath; })
-        .catch(() => {});
+        .catch((err) => { logger.warn('Failed to write log file', { error: (err as Error).message }); });
     }
 
     try {
@@ -151,27 +151,28 @@ export class LogManager {
   }
 
   clearLogs(): void {
-    try { this.stmtClear.run(); } catch {}
+    try { this.stmtClear.run(); } catch (err) { logger.warn('Failed to clear logs', { error: (err as Error).message }); }
+    this.logCount = -1;
   }
 
   isFileLogging(): boolean {
     try {
       const row = this.stmtGetSetting.get('logToFile') as { value: string } | undefined;
       return row?.value === 'true';
-    } catch { return false; }
+    } catch (err) { logger.warn('Failed to read log setting', { error: (err as Error).message }); return false; }
   }
 
   toggleFileLogging(): boolean {
     const current = this.isFileLogging();
     const next = !current;
-    try { this.stmtSetSetting.run('logToFile', next.toString()); } catch {}
+    try { this.stmtSetSetting.run('logToFile', next.toString()); } catch (err) { logger.warn('Failed to toggle file logging', { error: (err as Error).message }); }
     return next;
   }
 
   getFileCount(): number {
     try {
       return readdirSync(this.logDir).filter(f => f.endsWith('.json')).length;
-    } catch { return 0; }
+    } catch (err) { logger.warn('Failed to count log files', { error: (err as Error).message }); return 0; }
   }
 
   get maxFiles(): number {
@@ -179,7 +180,7 @@ export class LogManager {
   }
 
   close(): void {
-    try { this.db.close(); } catch {}
+    try { this.db.close(); } catch (err) { logger.warn('Failed to close database', { error: (err as Error).message }); }
   }
 
   private logCount = -1;
@@ -195,7 +196,7 @@ export class LogManager {
         this.stmtTrim.run(this.logCount - this.maxLogs);
         this.logCount = this.maxLogs;
       }
-    } catch {}
+    } catch (err) { logger.warn('Failed to trim logs', { error: (err as Error).message }); }
   }
 
   private cleanLogDir(): void {
@@ -204,7 +205,7 @@ export class LogManager {
       if (jsonFiles.length < this.maxLogFiles) return;
       jsonFiles.sort();
       const toDelete = jsonFiles.slice(0, Math.floor(jsonFiles.length / 2));
-      Promise.all(toDelete.map(f => unlink(join(this.logDir, f)).catch(() => {}))).catch(() => {});
-    }).catch(() => {});
+      Promise.all(toDelete.map(f => unlink(join(this.logDir, f)).catch((err) => { logger.warn(`Failed to delete log file ${f}`, { error: (err as Error).message }); }))).catch((err) => { logger.warn('Failed to clean log directory', { error: (err as Error).message }); });
+    }).catch((err) => { logger.warn('Failed to read log directory', { error: (err as Error).message }); });
   }
 }

@@ -15,6 +15,16 @@
 
 A local API gateway that lets Claude Code route requests to any LLM provider via model aliases (haiku / sonnet / opus). Manage everything from a Web dashboard — no config files needed.
 
+## What's New in v4.0.0
+
+- **Redesigned Dashboard** — Preact + Tailwind CSS, Traefik-inspired dark theme with proper card layout, custom dropdowns, and responsive design
+- **Full Anthropic Protocol Passthrough** — Requests using Anthropic protocol are forwarded as-is, including thinking mode, tools, and all parameters
+- **Kiro OAuth Integration** — Google, GitHub, and AWS Builder ID authentication with Start URL support for organization SSO
+- **Improved Provider Management** — Protocol badges (Anthropic/OpenAI/OAuth), test results with error details, Test All with progress
+- **Alias Mapping** — Dedicated page with custom dropdown selectors, model-name based routing
+- **Smart Model Probing** — Automatic fallback for providers that don't support model listing
+- **Better Error Handling** — Response body validation for test endpoints, graceful error messages
+
 ## Why Claude API Hub?
 
 - **Use any LLM with Claude Code** — Route Sonnet requests to Kimi, GLM, MiniMax, DeepSeek, or any OpenAI-compatible API
@@ -57,7 +67,7 @@ The gateway intercepts Anthropic Messages API requests from Claude Code, resolve
 
 ## Features
 
-- **Web Dashboard**: Split-panel layout — providers & aliases on the left, live request logs on the right
+- **Web Dashboard**: Traefik-inspired design with sidebar navigation, built with Preact components
 - **Navigation Tabs**: Dashboard, Config Editor, and Setup Guide tabs in the management panel
 - **SSE Real-Time Push**: Live event stream via `/api/events` for real-time dashboard updates
 - **Multi-Key Pool**: Round-robin key rotation with automatic health tracking and recovery per provider
@@ -98,7 +108,15 @@ The gateway intercepts Anthropic Messages API requests from Claude Code, resolve
 
 - Node.js >= 22
 
-### Install & Run
+### Option 1: Run with npx (no install)
+
+```bash
+npx claude-api-hub
+# ✓ api-hub listening on http://0.0.0.0:9800
+# ✓ Open http://localhost:9800 for the web dashboard
+```
+
+### Option 2: Install globally
 
 ```bash
 npm install -g claude-api-hub
@@ -141,7 +159,7 @@ If `sonnet` is aliased to `kimi-k2.6`, the request is auto-routed to Kimi with p
 
 ## Web Dashboard
 
-Access `http://localhost:9800` — split into two panels:
+Access `http://localhost:9800` — a Traefik-inspired dashboard with sidebar navigation, built with Preact components:
 
 **Left Panel:**
 - **Quick Start**: 3-step setup guide with copyable config snippet
@@ -386,9 +404,12 @@ See [SECURITY.md](SECURITY.md) for vulnerability reporting.
 ## Development
 
 ```bash
-npm run dev      # Dev mode (hot reload)
-npm run build    # Compile TypeScript
-npm test         # Run tests (100+ tests)
+npm run dev         # Dev mode (hot reload)
+npm run dev:ui      # Frontend watch mode
+npm run build       # Compile TypeScript
+npm run build:ui    # Production frontend build
+npm test            # Run tests (100+ tests)
+npm run test:coverage # Run tests with coverage report
 ```
 
 ## Contributing

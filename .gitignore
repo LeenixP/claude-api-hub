@@ -9,5 +9,7 @@ coverage/
 .env.local
 .omc/
 reviews/
+static/bundle.js
+static/style.css
 .vscode/
 .idea/

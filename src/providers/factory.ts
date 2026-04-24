@@ -21,7 +21,8 @@ export function createProvider(config: ProviderConfig): Provider {
   if (explicitType && registry.has(explicitType)) {
     return registry.get(explicitType)!(config);
   }
-  const type = config.passthrough ? 'passthrough' : 'openai';
+  const isAnthropicMode = config.passthrough || config.authMode === 'anthropic';
+  const type = isAnthropicMode ? 'passthrough' : 'openai';
   const factory = registry.get(type);
   if (!factory) throw new Error(`Unknown provider type: ${type}`);
   return factory(config);

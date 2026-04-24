@@ -230,7 +230,7 @@ export function convertToCodeWhisperer(
 
   const lastMsg = messages[messages.length - 1];
   let currentContent = '';
-  let currentToolResults: KiroToolResult[] = [];
+  const currentToolResults: KiroToolResult[] = [];
   const currentImages: { format: string; source: { bytes: string } }[] = [];
 
   if (lastMsg.role === 'assistant') {

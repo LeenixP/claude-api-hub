@@ -2,6 +2,7 @@ import * as https from 'https';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
+import { logger } from '../logger.js';
 
 interface KiroCredentials {
   accessToken?: string;
@@ -34,7 +35,8 @@ export class KiroAuth {
     try {
       const raw = fs.readFileSync(this.credsPath, 'utf-8');
       this.creds = JSON.parse(raw);
-    } catch {
+    } catch (err) {
+      logger.warn('Failed to load Kiro credentials', { error: (err as Error).message, path: this.credsPath });
       throw new Error(`Failed to load Kiro credentials from ${this.credsPath}`);
     }
     if (!this.creds.region) this.creds.region = this.region;
@@ -135,10 +137,10 @@ export class KiroAuth {
       let existing: Record<string, unknown> = {};
       try {
         existing = JSON.parse(fs.readFileSync(this.credsPath, 'utf-8'));
-      } catch { /* new file */ }
+      } catch { /* new file — expected on first save */ }
       const merged = { ...existing, ...this.creds };
       fs.writeFileSync(this.credsPath, JSON.stringify(merged, null, 2), 'utf-8');
-    } catch { /* best effort */ }
+    } catch (err) { logger.warn('Failed to save Kiro credentials', { error: (err as Error).message, path: this.credsPath }); }
   }
 
   static async refreshCredentials(credsPath: string): Promise<KiroCredentials> {
@@ -157,7 +159,8 @@ export class KiroAuth {
         creds.authMethod === 'social' || (!!creds.clientId && !!creds.clientSecret)
       );
       return { valid: !expired, expiresAt: creds.expiresAt, authMethod: creds.authMethod, canRefresh };
-    } catch {
+    } catch (err) {
+      logger.warn('Failed to get credential status', { error: (err as Error).message, path: credsPath });
       return { valid: false, canRefresh: false };
     }
   }
@@ -183,7 +186,7 @@ export class KiroAuth {
             return reject(new Error(`Token refresh failed: HTTP ${res.statusCode} - ${data}`));
           }
           try { resolve(JSON.parse(data) as Record<string, unknown>); }
-          catch { reject(new Error(`Invalid JSON in refresh response: ${data}`)); }
+          catch { reject(new Error(`Invalid JSON in refresh response: ${data}`)); /* rethrow pattern */ }
         });
       });
       req.on('error', reject);

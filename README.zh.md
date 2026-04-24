@@ -15,6 +15,16 @@
 
 本地 API 网关，让 Claude Code 通过模型别名（haiku / sonnet / opus）无缝路由到任意 LLM 厂商。通过 Web 面板管理一切，无需手写配置。
 
+## v4.0.0 更新内容
+
+- **全新 Dashboard** — Preact + Tailwind CSS 重构，Traefik 风格暗色主题，卡片布局、自定义下拉框、响应式设计
+- **Anthropic 协议完全透传** — 使用 Anthropic 协议的请求原样转发，包括 thinking 模式、tools 等所有参数
+- **Kiro OAuth 集成** — 支持 Google、GitHub、AWS Builder ID 认证，支持组织 SSO Start URL
+- **Provider 管理增强** — 协议徽章（Anthropic/OpenAI/OAuth）、测试结果含错误详情、Test All 带进度
+- **别名映射独立页面** — 自定义下拉选择器，基于模型名的路由
+- **智能模型探测** — 不支持模型列表的 Provider 自动 fallback
+- **更好的错误处理** — 测试端点验证响应体，友好的错误提示
+
 ## 为什么选择 Claude API Hub？
 
 - **Claude Code 接入任意模型** — 将 Sonnet 请求路由到 Kimi、GLM、MiniMax、DeepSeek 或任何 OpenAI 兼容 API
@@ -57,7 +67,7 @@ Claude Code ──► ANTHROPIC_BASE_URL=http://127.0.0.1:9800
 
 ## 核心特性
 
-- **Web 管理面板**：左右分栏布局 — 左侧 Provider 管理和别名映射，右侧实时请求日志
+- **Web 管理面板**：Traefik 风格设计，侧边栏导航，基于 Preact 组件构建
 - **导航标签页**：Dashboard、配置编辑器、使用指南三个标签页
 - **SSE 实时推送**：通过 `/api/events` 端点实时推送事件，驱动面板实时更新
 - **多 Key 池**：Round-Robin 轮询分配请求，自动健康检测与恢复
@@ -94,9 +104,25 @@ Claude Code ──► ANTHROPIC_BASE_URL=http://127.0.0.1:9800
 
 ## 快速开始
 
+### 前置条件
+
+- Node.js >= 22
+
+### 方式一：使用 npx（无需安装）
+
+```bash
+npx claude-api-hub
+# ✓ api-hub listening on http://0.0.0.0:9800
+# ✓ Open http://localhost:9800 for the web dashboard
+```
+
+### 方式二：全局安装
+
 ```bash
 npm install -g claude-api-hub
 claude-api-hub
+# ✓ api-hub listening on http://0.0.0.0:9800
+# ✓ Open http://localhost:9800 for the web dashboard
 ```
 
 打开 `http://localhost:9800` 访问 Web 管理面板。
@@ -113,9 +139,27 @@ claude-api-hub
 
 重启 Claude Code，所有请求将通过网关路由。
 
+### 验证
+
+```bash
+curl http://localhost:9800/health
+# {"status":"ok","timestamp":"..."}
+```
+
+### 示例请求
+
+```bash
+curl -X POST http://localhost:9800/v1/messages \
+  -H "Content-Type: application/json" \
+  -H "x-api-key: your-key" \
+  -d '{"model":"claude-sonnet-4-6","max_tokens":100,"messages":[{"role":"user","content":"Hello"}]}'
+```
+
+如果 `sonnet` 被映射到 `kimi-k2.6`，请求将自动路由到 Kimi 并完成协议转换。
+
 ## Web 管理面板
 
-访问 `http://localhost:9800`，左右分栏布局：
+访问 `http://localhost:9800`，Traefik 风格设计，侧边栏导航，基于 Preact 组件构建：
 
 **左栏：**
 - **Quick Start**：3 步引导，可复制的配置片段
@@ -345,6 +389,7 @@ Key 健康状态可在面板的 Provider 卡片中查看。
 
 ## 安全性
 
+- **密码登录门户**：配置 `adminToken` 后，面板显示登录页面。输入密码认证 — 凭据存储在 localStorage 中，后续请求通过 `x-admin-token` 头发送
 - **Admin 认证**：在配置中设置 `adminToken` 或环境变量 `ADMIN_TOKEN` 保护管理 API
 - **Per-IP 速率限制**：配置 `rateLimitRpm` 限制每 IP 每分钟请求数
 - **CORS 限制**：默认只允许 localhost；通过 `corsOrigins` 配置允许的来源
@@ -357,9 +402,12 @@ Key 健康状态可在面板的 Provider 卡片中查看。
 ## 开发
 
 ```bash
-npm run dev      # 开发模式（热重载）
-npm run build    # 编译
-npm test         # 测试（100+ 个测试用例）
+npm run dev         # 开发模式（热重载）
+npm run dev:ui      # 前端 watch 模式
+npm run build       # 编译 TypeScript
+npm run build:ui    # 生产前端构建
+npm test            # 测试（100+ 个测试用例）
+npm run test:coverage # 运行测试并生成覆盖率报告
 ```
 
 ## 贡献

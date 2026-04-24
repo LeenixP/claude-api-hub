@@ -1,10 +1,16 @@
 {
   "name": "claude-api-hub",
-  "version": "3.0.0",
-  "description": "Multi-provider API gateway for Claude Code - routes requests to Claude/Kimi/MiniMax/GLM based on model ID",
+  "version": "4.0.0",
+  "description": "Multi-provider API gateway for Claude Code — route requests to any LLM provider with zero config switching",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
   "bin": {
     "claude-api-hub": "dist/index.js"
   },
@@ -15,10 +21,15 @@
     "README.md"
   ],
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && node scripts/build-ui.mjs",
+    "build:ui": "node scripts/build-ui.mjs",
+    "build:ts": "tsc",
     "start": "node dist/index.js",
     "dev": "tsx watch src/index.ts",
+    "dev:ui": "node scripts/build-ui.mjs --watch",
     "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "lint": "eslint src/",
     "prepublishOnly": "npm run build && npm test"
   },
   "keywords": [
@@ -30,10 +41,13 @@
     "glm",
     "zhipu",
     "moonshot",
+    "deepseek",
+    "kiro",
     "anthropic",
     "openai-compatible",
     "llm",
-    "multi-provider"
+    "multi-provider",
+    "proxy"
   ],
   "author": "LeenixP",
   "license": "MIT",
@@ -48,11 +62,21 @@
   "engines": {
     "node": ">=22"
   },
-  "dependencies": {},
   "devDependencies": {
-    "typescript": "^5.8.0",
+    "@eslint/js": "^9.22.0",
+    "@tailwindcss/cli": "^4.2.4",
+    "@tailwindcss/postcss": "^4.1.0",
+    "@types/node": "^22.0.0",
+    "@vitest/coverage-v8": "^3.1.0",
+    "esbuild": "^0.25.0",
+    "eslint": "^9.22.0",
+    "htm": "^3.1.1",
+    "postcss": "^8.5.0",
+    "preact": "^10.26.0",
+    "tailwindcss": "^4.1.0",
     "tsx": "^4.19.0",
-    "vitest": "^3.1.0",
-    "@types/node": "^22.0.0"
+    "typescript": "^5.8.0",
+    "typescript-eslint": "^8.26.0",
+    "vitest": "^3.1.0"
   }
 }

@@ -164,6 +164,12 @@ function convertToolChoice(
   return undefined;
 }
 
+/**
+ * Translate an Anthropic Messages API request into an OpenAI Chat Completions request.
+ * @param req - The incoming Anthropic request
+ * @param targetModel - The resolved upstream model ID
+ * @returns An OpenAI-format request ready to send to the provider
+ */
 export function translateRequest(req: AnthropicRequest, targetModel: string): OpenAIRequest {
   const messages: OpenAIMessage[] = [];
 
