@@ -1,23 +1,21 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'preact/hooks';
 import type { LogEntry } from '../../types.js';
+import { formatRelativeTime } from '../../lib/utils.js';
 
 interface TrendChartProps {
   logs: LogEntry[];
   rangeHours: number;
 }
 
-interface Bucket {
-  time: number;
-  ok: number;
-  errors: number;
-  total: number;
-}
+interface Bucket { time: number; ok: number; errors: number; total: number; }
 
 export function TrendChart({ logs, rangeHours }: TrendChartProps) {
   const [range, setRange] = useState(rangeHours);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [tooltip, setTooltip] = useState<{ x: number; y: number; bucket: Bucket } | null>(null);
+  const rafRef = useRef<number>(0);
+  const prevDataRef = useRef<{ logs: LogEntry[]; range: number } | null>(null);
 
   const buckets = useMemo(() => {
     const now = Date.now();
@@ -46,7 +44,7 @@ export function TrendChart({ logs, rangeHours }: TrendChartProps) {
     const dpr = window.devicePixelRatio || 1;
     const rect = container.getBoundingClientRect();
     const w = rect.width;
-    const h = 220;
+    const h = 200;
     canvas.width = w * dpr;
     canvas.height = h * dpr;
     canvas.style.width = w + 'px';
@@ -55,177 +53,138 @@ export function TrendChart({ logs, rangeHours }: TrendChartProps) {
     if (!ctx) return;
     ctx.scale(dpr, dpr);
 
-    const padding = { top: 20, right: 16, bottom: 32, left: 40 };
-    const chartW = w - padding.left - padding.right;
-    const chartH = h - padding.top - padding.bottom;
-
+    const pad = { top: 12, right: 12, bottom: 28, left: 36 };
+    const cw = w - pad.left - pad.right;
+    const ch = h - pad.top - pad.bottom;
     const maxTotal = Math.max(1, ...buckets.map(b => b.total));
-    const maxErrors = Math.max(1, ...buckets.map(b => b.errors));
 
     ctx.clearRect(0, 0, w, h);
 
-    // Grid lines
-    ctx.strokeStyle = 'var(--color-border)';
+    // Grid
+    const style = getComputedStyle(document.documentElement);
+    const gridColor = style.getPropertyValue('--color-border').trim() || 'rgba(255,255,255,0.07)';
+    const mutedColor = style.getPropertyValue('--color-text-muted').trim() || '#5c6370';
+    const primaryColor = style.getPropertyValue('--color-primary').trim() || '#26a9c9';
+    const dangerColor = style.getPropertyValue('--color-danger').trim() || '#e74c3c';
+
+    ctx.strokeStyle = gridColor;
     ctx.lineWidth = 1;
     for (let i = 0; i <= 4; i++) {
-      const y = padding.top + (chartH / 4) * i;
-      ctx.beginPath();
-      ctx.moveTo(padding.left, y);
-      ctx.lineTo(padding.left + chartW, y);
-      ctx.stroke();
-      const label = Math.round(maxTotal * (1 - i / 4));
-      ctx.fillStyle = 'var(--color-text-muted)';
-      ctx.font = '11px sans-serif';
+      const y = pad.top + (ch / 4) * i;
+      ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(pad.left + cw, y); ctx.stroke();
+      ctx.fillStyle = mutedColor;
+      ctx.font = '10px -apple-system, sans-serif';
       ctx.textAlign = 'right';
-      ctx.fillText(String(label), padding.left - 6, y + 3);
+      ctx.fillText(String(Math.round(maxTotal * (1 - i / 4))), pad.left - 6, y + 3);
     }
 
     if (buckets.length === 0) return;
 
-    const barW = chartW / buckets.length;
+    const barW = cw / buckets.length;
 
-    // OK area gradient
-    const okGrad = ctx.createLinearGradient(0, padding.top, 0, padding.top + chartH);
-    okGrad.addColorStop(0, 'rgba(42,162,193,0.35)');
-    okGrad.addColorStop(1, 'rgba(42,162,193,0.02)');
-
-    // Draw OK area
+    // Area fill
+    const grad = ctx.createLinearGradient(0, pad.top, 0, pad.top + ch);
+    grad.addColorStop(0, primaryColor + '30');
+    grad.addColorStop(1, primaryColor + '02');
     ctx.beginPath();
-    ctx.moveTo(padding.left, padding.top + chartH);
+    ctx.moveTo(pad.left, pad.top + ch);
     buckets.forEach((b, i) => {
-      const x = padding.left + i * barW + barW / 2;
-      const y = padding.top + chartH - (b.total / maxTotal) * chartH;
-      if (i === 0) ctx.lineTo(x, y);
-      else ctx.lineTo(x, y);
+      const x = pad.left + i * barW + barW / 2;
+      ctx.lineTo(x, pad.top + ch - (b.total / maxTotal) * ch);
     });
-    ctx.lineTo(padding.left + chartW, padding.top + chartH);
+    ctx.lineTo(pad.left + cw, pad.top + ch);
     ctx.closePath();
-    ctx.fillStyle = okGrad;
+    ctx.fillStyle = grad;
     ctx.fill();
 
-    // Draw OK line
+    // Line
     ctx.beginPath();
-    ctx.strokeStyle = 'var(--color-primary)';
+    ctx.strokeStyle = primaryColor;
     ctx.lineWidth = 2;
+    ctx.lineJoin = 'round';
     buckets.forEach((b, i) => {
-      const x = padding.left + i * barW + barW / 2;
-      const y = padding.top + chartH - (b.total / maxTotal) * chartH;
-      if (i === 0) ctx.moveTo(x, y);
-      else ctx.lineTo(x, y);
+      const x = pad.left + i * barW + barW / 2;
+      const y = pad.top + ch - (b.total / maxTotal) * ch;
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
     });
     ctx.stroke();
 
-    // Error area
-    if (maxErrors > 0) {
-      const errGrad = ctx.createLinearGradient(0, padding.top, 0, padding.top + chartH);
-      errGrad.addColorStop(0, 'rgba(255,82,82,0.25)');
-      errGrad.addColorStop(1, 'rgba(255,82,82,0.02)');
-      ctx.beginPath();
-      ctx.moveTo(padding.left, padding.top + chartH);
-      buckets.forEach((b, i) => {
-        const x = padding.left + i * barW + barW / 2;
-        const y = padding.top + chartH - (b.errors / maxTotal) * chartH;
-        if (i === 0) ctx.lineTo(x, y);
-        else ctx.lineTo(x, y);
-      });
-      ctx.lineTo(padding.left + chartW, padding.top + chartH);
-      ctx.closePath();
-      ctx.fillStyle = errGrad;
-      ctx.fill();
-
-      ctx.beginPath();
-      ctx.strokeStyle = 'var(--color-danger)';
-      ctx.lineWidth = 1.5;
-      buckets.forEach((b, i) => {
-        const x = padding.left + i * barW + barW / 2;
-        const y = padding.top + chartH - (b.errors / maxTotal) * chartH;
-        if (i === 0) ctx.moveTo(x, y);
-        else ctx.lineTo(x, y);
-      });
-      ctx.stroke();
-    }
-
-    // X-axis labels
-    ctx.fillStyle = 'var(--color-text-muted)';
-    ctx.font = '11px sans-serif';
+    // X-axis
+    ctx.fillStyle = mutedColor;
+    ctx.font = '10px -apple-system, sans-serif';
     ctx.textAlign = 'center';
-    const labelCount = range === 1 ? 4 : range === 6 ? 6 : 8;
+    const labelCount = range === 1 ? 4 : 6;
     for (let i = 0; i < labelCount; i++) {
       const idx = Math.floor((buckets.length - 1) * (i / (labelCount - 1)));
-      const b = buckets[idx];
-      const x = padding.left + idx * barW + barW / 2;
-      const d = new Date(b.time);
-      const label = range === 1
-        ? d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-        : d.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-      ctx.fillText(label, x, h - 10);
+      const x = pad.left + idx * barW + barW / 2;
+      const d = new Date(buckets[idx].time);
+      const label = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      ctx.fillText(label, x, h - 8);
     }
   }, [buckets, range]);
 
   useEffect(() => {
-    draw();
-    const onResize = () => draw();
+    const dataChanged = !prevDataRef.current || prevDataRef.current.logs !== logs || prevDataRef.current.range !== range;
+    prevDataRef.current = { logs, range };
+    if (!dataChanged) return;
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    rafRef.current = requestAnimationFrame(() => { draw(); rafRef.current = 0; });
+    const onResize = () => {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      rafRef.current = requestAnimationFrame(() => { draw(); rafRef.current = 0; });
+    };
     window.addEventListener('resize', onResize);
-    return () => window.removeEventListener('resize', onResize);
-  }, [draw]);
-
-  const handleMouseMove = useCallback((e: MouseEvent) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const rect = canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const padding = { top: 20, right: 16, bottom: 32, left: 40 };
-    const chartW = rect.width - padding.left - padding.right;
-    const barW = chartW / buckets.length;
-    const idx = Math.floor((x - padding.left) / barW);
-    if (idx >= 0 && idx < buckets.length) {
-      const bucket = buckets[idx];
-      setTooltip({ x: e.clientX - rect.left, y: e.clientY - rect.top, bucket });
-    } else {
-      setTooltip(null);
-    }
-  }, [buckets]);
-
-  const handleMouseLeave = useCallback(() => setTooltip(null), []);
+    return () => { window.removeEventListener('resize', onResize); if (rafRef.current) cancelAnimationFrame(rafRef.current); };
+  }, [draw, logs, range]);
 
   return (
-    <div class="card overflow-hidden">
-      <div class="flex items-center justify-between mb-4">
-        <h3 class="text-sm font-semibold" style="color:var(--color-text)">Request Trend</h3>
+    <div class="card" style="overflow:hidden">
+      <div class="flex items-center justify-between mb-2">
+        <div>
+          <span style="font-size:13px;font-weight:600;color:var(--color-text)">Requests</span>
+          <span style="font-size:12px;color:var(--color-text-muted);margin-left:8px">last {range}h</span>
+        </div>
         <div class="flex gap-1">
           {[1, 6, 24].map(h => (
-            <button
-              key={h}
-              onClick={() => setRange(h)}
-              class="px-2 py-1 rounded text-xs font-medium transition-colors"
-              style={range === h
-                ? 'background:var(--color-primary);color:#fff'
-                : 'background:var(--color-bg);color:var(--color-text-dim)'
-              }
-            >
-              {h}H
+            <button key={h} onClick={() => setRange(h)}
+              style={`padding:3px 10px;border-radius:5px;font-size:11px;font-weight:600;cursor:pointer;border:none;${
+                range === h ? 'background:var(--color-primary);color:#fff' : 'background:none;color:var(--color-text-muted)'
+              }`}>
+              {h}h
             </button>
           ))}
         </div>
       </div>
-      <div ref={containerRef} class="relative" onMouseMove={handleMouseMove} onMouseLeave={handleMouseLeave}>
-        <canvas ref={canvasRef} />
-        {tooltip && (
-          <div
-            class="absolute pointer-events-none rounded-lg px-3 py-2 text-xs shadow-lg z-10"
-            style="background:var(--color-surface-hover);border:1px solid var(--color-border);transform:translate(-50%, -110%);left:50%"
-          >
-            <div class="font-medium mb-1" style="color:var(--color-text)">
-              {new Date(tooltip.bucket.time).toLocaleString()}
+      {logs.length === 0 ? (
+        <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:180px;color:var(--color-text-muted);font-size:13px">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom:8px;opacity:0.3">
+            <path d="M3 3v18h18"/><path d="M7 16l4-8 4 4 4-8"/>
+          </svg>
+          No data yet
+        </div>
+      ) : (
+        <div ref={containerRef} style="position:relative"
+          onMouseMove={e => {
+            const canvas = canvasRef.current; if (!canvas) return;
+            const rect = canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const pad = { left: 36, right: 12 };
+            const cw = rect.width - pad.left - pad.right;
+            const barW = cw / buckets.length;
+            const idx = Math.floor((x - pad.left) / barW);
+            if (idx >= 0 && idx < buckets.length) setTooltip({ x: e.clientX - rect.left, y: e.clientY - rect.top, bucket: buckets[idx] });
+            else setTooltip(null);
+          }}
+          onMouseLeave={() => setTooltip(null)}>
+          <canvas ref={canvasRef} style="display:block;width:100%" />
+          {tooltip && (
+            <div style="position:absolute;pointer-events:none;left:50%;transform:translate(-50%,-110%);top:0;padding:6px 12px;border-radius:6px;background:var(--color-surface-hover);border:1px solid var(--color-border);font-size:12px;z-index:10;white-space:nowrap">
+              <span style="color:var(--color-text-dim)">{formatRelativeTime(new Date(tooltip.bucket.time).toISOString())}</span>
+              <span style="color:var(--color-text);margin-left:8px;font-weight:600">Requests: {tooltip.bucket.total}</span>
             </div>
-            <div class="flex items-center gap-3">
-              <span style="color:var(--color-primary)">OK: {tooltip.bucket.ok}</span>
-              <span style="color:var(--color-danger)">Errors: {tooltip.bucket.errors}</span>
-              <span style="color:var(--color-text-dim)">Total: {tooltip.bucket.total}</span>
-            </div>
-          </div>
-        )}
-      </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

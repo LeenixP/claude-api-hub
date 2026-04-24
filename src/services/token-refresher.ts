@@ -2,6 +2,7 @@ import type { ModelRouter } from '../router.js';
 import type { GatewayConfig, ProviderConfig } from '../providers/types.js';
 import { refreshCredentials, getCredentialStatus, getDefaultCredsPath } from '../providers/kiro-oauth.js';
 import { logger } from '../logger.js';
+import { DEFAULT_TOKEN_REFRESH_MINUTES } from '../constants.js';
 
 export class TokenRefresher {
   private timer: ReturnType<typeof setInterval> | null = null;
@@ -14,7 +15,7 @@ export class TokenRefresher {
     router: ModelRouter,
     config: GatewayConfig,
     rebuildFn: (router: ModelRouter, config: GatewayConfig) => void,
-    intervalMinutes = 50,
+    intervalMinutes = DEFAULT_TOKEN_REFRESH_MINUTES,
   ) {
     this.router = router;
     this.config = config;

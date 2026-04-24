@@ -1,10 +1,11 @@
-import { useState, useEffect, useRef } from 'preact/hooks';
+import { useState, useEffect, useRef, useCallback } from 'preact/hooks';
 import type { LogEntry } from '../types.js';
 import { getLogs } from '../lib/api.js';
 
 interface UseSSEReturn {
   logs: LogEntry[];
   connected: boolean;
+  clearLogs: () => void;
 }
 
 export function useSSE(): UseSSEReturn {
@@ -54,8 +55,11 @@ export function useSSE(): UseSSEReturn {
         setConnected(false);
         es.close();
         esRef.current = null;
+        // Add ±25% jitter to prevent thundering herd
+        const jitter = retryDelay * 0.25 * (Math.random() * 2 - 1);
+        const delay = retryDelay + jitter;
         retryDelay = Math.min(retryDelay * 2, maxDelay);
-        reconnectTimer.current = setTimeout(connect, retryDelay);
+        reconnectTimer.current = setTimeout(connect, delay);
       };
     }
 
@@ -68,5 +72,7 @@ export function useSSE(): UseSSEReturn {
     };
   }, []);
 
-  return { logs, connected };
+  const clearLogs = useCallback(() => setLogs([]), []);
+
+  return { logs, connected, clearLogs };
 }

@@ -70,6 +70,36 @@ function validateConfig(config: GatewayConfig): void {
       console.warn(`[warn] Provider "${name}" has empty apiKey — check environment variables`);
     }
   }
+  const enabledCount = Object.values(config.providers as Record<string, ProviderConfig>).filter(p => p.enabled).length;
+  if (enabledCount === 0) {
+    throw new Error('Config: at least one provider must be enabled');
+  }
+  if (config.rateLimitRpm !== undefined && (typeof config.rateLimitRpm !== 'number' || config.rateLimitRpm < 0)) {
+    throw new Error('Config: "rateLimitRpm" must be a non-negative number');
+  }
+  if (config.streamTimeoutMs !== undefined && (typeof config.streamTimeoutMs !== 'number' || config.streamTimeoutMs < 1000)) {
+    throw new Error('Config: "streamTimeoutMs" must be at least 1000ms');
+  }
+  if (config.streamIdleTimeoutMs !== undefined && (typeof config.streamIdleTimeoutMs !== 'number' || config.streamIdleTimeoutMs < 1000)) {
+    throw new Error('Config: "streamIdleTimeoutMs" must be at least 1000ms');
+  }
+  if (config.tokenRefreshMinutes !== undefined && (typeof config.tokenRefreshMinutes !== 'number' || config.tokenRefreshMinutes < 1)) {
+    throw new Error('Config: "tokenRefreshMinutes" must be at least 1');
+  }
+  if (config.corsOrigins) {
+    for (const origin of config.corsOrigins) {
+      if (origin !== '*') {
+        try { new URL(origin); } catch {
+          throw new Error(`Config: invalid CORS origin "${origin}"`);
+        }
+      }
+    }
+  }
+  for (const [tier, timeout] of Object.entries(config.tierTimeouts ?? {})) {
+    if (!timeout || typeof timeout.timeoutMs !== 'number') {
+      throw new Error(`Config: tier "${tier}" missing valid timeoutMs`);
+    }
+  }
 }
 
 let resolvedConfigPath: string | null = null;

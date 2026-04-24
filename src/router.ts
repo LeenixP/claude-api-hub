@@ -1,5 +1,6 @@
 import { Provider, RouteResult } from './providers/types.js';
 
+/** Routes Claude model names to configured providers via alias resolution and fallback chains. */
 export class ModelRouter {
   private providers: Map<string, Provider> = new Map();
   private defaultProviderName: string;
@@ -26,6 +27,7 @@ export class ModelRouter {
     this.providers = newMap;
   }
 
+  /** Resolve a model name through aliases, tier matching, provider lookup, and fallback chain. */
   route(model: string): RouteResult {
     const originalModel = model;
 

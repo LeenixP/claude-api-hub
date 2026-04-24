@@ -1,39 +1,47 @@
 import { useState } from 'preact/hooks';
+import type { GatewayConfig } from '../../types.js';
 import { CopyButton } from '../common/CopyButton.js';
 
-const STEPS = [
-  {
-    num: 1,
-    title: 'Install & Start',
-    subtitle: 'Get the gateway running locally',
-    code: 'npm install -g claude-api-hub\nclaude-api-hub',
-    note: 'The gateway will start on port 3456 by default. Visit http://localhost:3456 to access the dashboard.',
-  },
-  {
-    num: 2,
-    title: 'Configure Claude Code',
-    subtitle: 'Point Claude Code to your gateway',
-    code: JSON.stringify({
-      apiUrl: 'http://localhost:3456/v1',
-      apiKey: 'your-admin-token-or-provider-key',
-    }, null, 2),
-    note: 'Add this to your Claude Code config file (~/.claude/config.json) or set CLAUDE_API_URL and CLAUDE_API_KEY env vars.',
-  },
-  {
-    num: 3,
-    title: 'Add Provider',
-    subtitle: 'Connect your first LLM provider',
-    code: '# In the dashboard, go to Providers → Add Provider\n# Fill in: Name, Base URL, API Key, Protocol, Models',
-    note: 'Supported protocols: Anthropic, OpenAI-compatible. You can add multiple providers and the gateway will route between them.',
-  },
-  {
-    num: 4,
-    title: 'Set Up Aliases',
-    subtitle: 'Map Claude tiers to your models',
-    code: '# Go to Aliases in the dashboard\n# Map Haiku → fast/cheap model\n# Map Sonnet → balanced model\n# Map Opus → powerful model',
-    note: 'Aliases let Claude Code request "claude-sonnet" and have it automatically routed to your preferred provider/model.',
-  },
-];
+interface GuidePageProps {
+  config: GatewayConfig | null;
+}
+
+function getSteps(port: number) {
+  const baseUrl = `http://localhost:${port}`;
+  return [
+    {
+      num: 1,
+      title: 'Install & Start',
+      subtitle: 'Get the gateway running locally',
+      code: `npm install -g claude-api-hub\nclaude-api-hub --port ${port}`,
+      note: `The gateway starts on port ${port} by default. Visit ${baseUrl} to access the dashboard.`,
+    },
+    {
+      num: 2,
+      title: 'Configure Claude Code',
+      subtitle: 'Point Claude Code to your gateway',
+      code: JSON.stringify({
+        apiUrl: `${baseUrl}/v1`,
+        apiKey: 'your-admin-token-or-provider-key',
+      }, null, 2),
+      note: 'Add this to your Claude Code config file (~/.claude/config.json) or set CLAUDE_API_URL and CLAUDE_API_KEY env vars.',
+    },
+    {
+      num: 3,
+      title: 'Add Provider',
+      subtitle: 'Connect your first LLM provider',
+      code: '# In the dashboard, go to Providers → Add Provider\n# Fill in: Name, Base URL, API Key, Protocol, Models',
+      note: 'Supported protocols: Anthropic, OpenAI-compatible. You can add multiple providers and the gateway will route between them.',
+    },
+    {
+      num: 4,
+      title: 'Set Up Aliases',
+      subtitle: 'Map Claude tiers to your models',
+      code: '# Go to Aliases in the dashboard\n# Map Haiku → fast/cheap model\n# Map Sonnet → balanced model\n# Map Opus → powerful model',
+      note: 'Aliases let Claude Code request "claude-sonnet" and have it automatically routed to your preferred provider/model.',
+    },
+  ];
+}
 
 const FAQS = [
   {
@@ -58,8 +66,10 @@ const FAQS = [
   },
 ];
 
-export function GuidePage() {
+export function GuidePage({ config }: GuidePageProps) {
   const [openFaq, setOpenFaq] = useState<number | null>(null);
+  const port = config?.port || 9800;
+  const steps = getSteps(port);
 
   return (
     <div>
@@ -81,7 +91,7 @@ export function GuidePage() {
 
       {/* Steps Grid */}
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
-        {STEPS.map(step => (
+        {steps.map(step => (
           <div
             key={step.num}
             class="rounded-lg p-5 transition-all duration-200"
