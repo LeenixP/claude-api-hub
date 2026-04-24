@@ -1,5 +1,5 @@
 {
-  "password": "claude",
+  "password": "",
   "port": 9800,
   "host": "0.0.0.0",
   "logLevel": "info",
@@ -18,48 +18,52 @@
     "claude": {
       "name": "Claude (Anthropic)",
       "baseUrl": "https://api.anthropic.com",
-      "apiKey": "${ANTHROPIC_AUTH_TOKEN}",
+      "apiKey": "${ANTHROPIC_API_KEY}",
       "models": ["claude-opus-4-6", "claude-sonnet-4-6", "claude-haiku-4-5"],
       "defaultModel": "claude-sonnet-4-6",
       "enabled": true,
-      "prefix": "claude-",
-      "passthrough": true
-    },
-    "kimi": {
-      "name": "Kimi (Moonshot AI)",
-      "baseUrl": "https://api.moonshot.cn/v1",
-      "apiKey": "${MOONSHOT_API_KEY}",
-      "models": ["kimi-k2.6", "kimi-k2.5", "kimi-k2"],
-      "defaultModel": "kimi-k2.6",
-      "enabled": false,
-      "prefix": "kimi-"
-    },
-    "minimax": {
-      "name": "MiniMax",
-      "baseUrl": "https://api.minimaxi.com/v1",
-      "apiKey": "${MINIMAX_API_KEY}",
-      "models": ["MiniMax-M2.7", "MiniMax-M2.5", "MiniMax-M2.1", "MiniMax-M1"],
-      "defaultModel": "MiniMax-M2.7",
-      "enabled": false,
-      "prefix": ["minimax-", "MiniMax-"]
-    },
-    "glm": {
-      "name": "GLM (Zhipu AI)",
-      "baseUrl": "https://open.bigmodel.cn/api/paas/v4",
-      "apiKey": "${ZHIPUAI_API_KEY}",
-      "models": ["glm-4-plus", "glm-4", "glm-4-air", "glm-4-flash", "glm-4-long"],
-      "defaultModel": "glm-4-plus",
-      "enabled": false,
-      "prefix": "glm-"
+      "passthrough": true,
+      "prefix": "claude-"
     },
     "deepseek": {
       "name": "DeepSeek",
-      "baseUrl": "https://api.deepseek.com/v1",
+      "baseUrl": "https://api.deepseek.com/anthropic",
       "apiKey": "${DEEPSEEK_API_KEY}",
       "models": ["deepseek-chat", "deepseek-reasoner"],
       "defaultModel": "deepseek-chat",
       "enabled": false,
+      "passthrough": true,
       "prefix": "deepseek-"
+    },
+    "kimi": {
+      "name": "Kimi (Moonshot AI)",
+      "baseUrl": "https://api.kimi.com/coding",
+      "apiKey": "${MOONSHOT_API_KEY}",
+      "models": ["kimi-k2.6", "kimi-k2.5", "kimi-k2"],
+      "defaultModel": "kimi-k2.6",
+      "enabled": false,
+      "passthrough": true,
+      "prefix": "kimi-"
+    },
+    "minimax": {
+      "name": "MiniMax",
+      "baseUrl": "https://api.minimaxi.com/anthropic",
+      "apiKey": "${MINIMAX_API_KEY}",
+      "models": ["MiniMax-M2.7", "MiniMax-M2.5", "MiniMax-M2.1", "MiniMax-M1"],
+      "defaultModel": "MiniMax-M2.7",
+      "enabled": false,
+      "passthrough": true,
+      "prefix": ["minimax-", "MiniMax-"]
+    },
+    "glm": {
+      "name": "GLM (Zhipu AI)",
+      "baseUrl": "https://open.bigmodel.cn/api/anthropic",
+      "apiKey": "${ZHIPUAI_API_KEY}",
+      "models": ["glm-4-plus", "glm-4", "glm-4-air", "glm-4-flash", "glm-4-long"],
+      "defaultModel": "glm-4-plus",
+      "enabled": false,
+      "passthrough": true,
+      "prefix": "glm-"
     }
   }
 }
