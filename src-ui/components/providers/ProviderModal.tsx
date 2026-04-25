@@ -38,13 +38,17 @@ export function ProviderModal({ open, onClose, onSaved, editId, editConfig }: Pr
   const [oauthError, setOauthError] = useState('');
   const pollRef = useRef<number | null>(null);
   const [showApiKey, setShowApiKey] = useState(false);
+  const wasOpenRef = useRef(false);
+  const editConfigRef = useRef(editConfig);
+  editConfigRef.current = editConfig;
 
   useEffect(() => {
-    if (open) {
-      if (editConfig) {
-        const authMode = editConfig.authMode
-          || (editConfig.passthrough ? 'anthropic' : 'anthropic');
-        setForm({ ...editConfig, authMode });
+    if (open && !wasOpenRef.current) {
+      const cfg = editConfigRef.current;
+      if (cfg) {
+        const authMode = cfg.authMode
+          || (cfg.passthrough ? 'anthropic' : 'anthropic');
+        setForm({ ...cfg, authMode });
       } else {
         setForm({ ...emptyConfig });
       }
@@ -53,8 +57,9 @@ export function ProviderModal({ open, onClose, onSaved, editId, editConfig }: Pr
       setOauthStatus('idle');
       setOauthError('');
     }
-    return () => { if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; } };
-  }, [open, editConfig]);
+    wasOpenRef.current = open;
+    return () => { if (!open && pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; } };
+  }, [open]);
 
   const getOpt = (key: string): string => (form.options?.[key] as string) || '';
   const setOpt = (key: string, value: unknown) => setForm(prev => ({ ...prev, options: { ...prev.options, [key]: value } }));

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'preact/hooks';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'preact/hooks';
 import type { GatewayConfig } from '../../types.js';
 import { showToast } from '../common/Toast.js';
 import { apiFetch } from '../../hooks/useApi.js';
@@ -84,21 +84,27 @@ export function ConfigEditor({ config, onSaved }: ConfigEditorProps) {
   const [jsonText, setJsonText] = useState('');
   const [jsonValid, setJsonValid] = useState(true);
 
+  const configJsonRef = useRef('');
+
   useEffect(() => {
     if (config) {
-      setPort(config.port ?? 9800);
-      setHost(config.host ?? '0.0.0.0');
-      setLogLevel(config.logLevel ?? 'info');
-      setPassword(config.password ?? '');
-      setRateLimit(config.rateLimitRpm ?? 0);
-      setTokenRefresh(config.tokenRefreshMinutes ?? 30);
-      setStreamTimeout(config.streamTimeoutMs ?? 120000);
-      setStreamIdleTimeout(config.streamIdleTimeoutMs ?? 30000);
-      setMaxResponseBytes(config.maxResponseBytes ?? 0);
-      setCorsOrigins(config.corsOrigins?.join('\n') ?? '*');
-      setTrustProxy(config.trustProxy ?? false);
-      setJsonText(JSON.stringify(config, null, 2));
-      setHasChanges(false);
+      const json = JSON.stringify(config);
+      if (configJsonRef.current !== json) {
+        configJsonRef.current = json;
+        setPort(config.port ?? 9800);
+        setHost(config.host ?? '0.0.0.0');
+        setLogLevel(config.logLevel ?? 'info');
+        setPassword(config.password ?? '');
+        setRateLimit(config.rateLimitRpm ?? 0);
+        setTokenRefresh(config.tokenRefreshMinutes ?? 30);
+        setStreamTimeout(config.streamTimeoutMs ?? 120000);
+        setStreamIdleTimeout(config.streamIdleTimeoutMs ?? 30000);
+        setMaxResponseBytes(config.maxResponseBytes ?? 0);
+        setCorsOrigins(config.corsOrigins?.join('\n') ?? '*');
+        setTrustProxy(config.trustProxy ?? false);
+        setJsonText(JSON.stringify(config, null, 2));
+        setHasChanges(false);
+      }
     }
   }, [config]);
 
@@ -464,12 +470,12 @@ export function ConfigEditor({ config, onSaved }: ConfigEditorProps) {
 
   const visibleCards = useMemo(() => {
     const cards: { key: Section; el: preact.VNode }[] = [];
-    if (serverMatch) cards.push({ key: 'server', el: <ServerCard /> });
-    if (securityMatch) cards.push({ key: 'security', el: <SecurityCard /> });
-    if (timeoutsMatch) cards.push({ key: 'timeouts', el: <TimeoutsCard /> });
-    if (kiroMatch) cards.push({ key: 'kiro', el: <KiroCard /> });
-    if (corsMatch) cards.push({ key: 'cors', el: <CorsCard /> });
-    cards.push({ key: 'advanced', el: <AdvancedCard /> });
+    if (serverMatch) cards.push({ key: 'server', el: ServerCard() });
+    if (securityMatch) cards.push({ key: 'security', el: SecurityCard() });
+    if (timeoutsMatch) cards.push({ key: 'timeouts', el: TimeoutsCard() });
+    if (kiroMatch) cards.push({ key: 'kiro', el: KiroCard() });
+    if (corsMatch) cards.push({ key: 'cors', el: CorsCard() });
+    cards.push({ key: 'advanced', el: AdvancedCard() });
     return cards;
   }, [searchLower, port, host, logLevel, password, rateLimit, trustProxy, streamTimeout, streamIdleTimeout, maxResponseBytes, tokenRefresh, corsOrigins, jsonText, jsonValid, oauthStatuses, refreshingOAuth, kiroProviders]);
 
@@ -562,12 +568,12 @@ export function ConfigEditor({ config, onSaved }: ConfigEditorProps) {
           </div>
         ) : (
           <div style="display:flex;flex-direction:column;gap:32px">
-            {activeSection === 'server' && <ServerCard />}
-            {activeSection === 'security' && <SecurityCard />}
-            {activeSection === 'timeouts' && <TimeoutsCard />}
-            {activeSection === 'kiro' && <KiroCard />}
-            {activeSection === 'cors' && <CorsCard />}
-            {activeSection === 'advanced' && <AdvancedCard />}
+            {activeSection === 'server' && ServerCard()}
+            {activeSection === 'security' && SecurityCard()}
+            {activeSection === 'timeouts' && TimeoutsCard()}
+            {activeSection === 'kiro' && KiroCard()}
+            {activeSection === 'cors' && CorsCard()}
+            {activeSection === 'advanced' && AdvancedCard()}
           </div>
         )}
       </div>
