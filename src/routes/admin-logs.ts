@@ -80,7 +80,7 @@ export async function handleAdminLogsRoutes(
         const latency = Date.now() - start;
         if (upstream.status === 200) {
           let errMsg = '';
-          try { const j = JSON.parse(upstream.body); if (j.error) errMsg = j.error.message || JSON.stringify(j.error).slice(0, 200); } catch {}
+          try { const j = JSON.parse(upstream.body); if (j.error) errMsg = j.error.message || JSON.stringify(j.error).slice(0, 200); } catch { /* ignore */ }
           if (errMsg) {
             results[p.name || key] = { status: 'error', latencyMs: latency, error: errMsg };
           } else {

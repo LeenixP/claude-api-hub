@@ -42,22 +42,21 @@ export function destroyAgents(): void {
   agentPoolOrder.length = 0;
 }
 
-export function forwardRequest(
+export async function forwardRequest(
   url: string,
   headers: Record<string, string>,
   body: string,
   timeoutMs = 120000,
   maxResponseBytes = MAX_RESPONSE_SIZE,
 ): Promise<{ status: number; headers: http.IncomingHttpHeaders; body: string }> {
-  return new Promise(async (resolve, reject) => {
-    const parsed = new URL(url);
-    if (!await isSSRFSafe(parsed.hostname)) {
-      reject(new Error(`SSRF: blocked request to private address ${parsed.hostname}`));
-      return;
-    }
-    const isHttps = parsed.protocol === 'https:';
-    const lib = isHttps ? https : http;
+  const parsed = new URL(url);
+  if (!await isSSRFSafe(parsed.hostname)) {
+    throw new Error(`SSRF: blocked request to private address ${parsed.hostname}`);
+  }
+  const isHttps = parsed.protocol === 'https:';
+  const lib = isHttps ? https : http;
 
+  return new Promise((resolve, reject) => {
     const options: http.RequestOptions = {
       hostname: parsed.hostname,
       port: parsed.port || (isHttps ? 443 : 80),
@@ -97,20 +96,20 @@ export function forwardRequest(
   });
 }
 
-export function httpGet(
+export async function httpGet(
   url: string,
   headers: Record<string, string>,
   timeoutMs = 5000,
   maxResponseBytes = MAX_GET_SIZE,
 ): Promise<string> {
-  return new Promise(async (resolve, reject) => {
-    const parsed = new URL(url);
-    if (!await isSSRFSafe(parsed.hostname)) {
-      reject(new Error(`SSRF: blocked request to private address ${parsed.hostname}`));
-      return;
-    }
-    const isHttps = parsed.protocol === 'https:';
-    const lib = isHttps ? https : http;
+  const parsed = new URL(url);
+  if (!await isSSRFSafe(parsed.hostname)) {
+    throw new Error(`SSRF: blocked request to private address ${parsed.hostname}`);
+  }
+  const isHttps = parsed.protocol === 'https:';
+  const lib = isHttps ? https : http;
+
+  return new Promise((resolve, reject) => {
     const options: http.RequestOptions = {
       hostname: parsed.hostname,
       port: parsed.port || (isHttps ? 443 : 80),

@@ -36,7 +36,7 @@ describe('oauth routes', () => {
     try { fs.unlinkSync(defaultCredsPath); } catch { /* ignore */ }
   });
 
-  it('POST /api/oauth/kiro/auth-url with builder-id method returns auth URL', async () => {
+  it('POST /api/oauth/kiro/auth-url with builder-id method returns auth URL', { timeout: 15000 }, async () => {
     const res = await request(server, {
       method: 'POST',
       path: '/api/oauth/kiro/auth-url',

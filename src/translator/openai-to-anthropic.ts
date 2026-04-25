@@ -193,7 +193,7 @@ export function translateStreamChunk(
   const deltaRaw = delta as Record<string, unknown>;
 
   // Reasoning content delta (DeepSeek and similar)
-  if (deltaRaw.reasoning_content != null && deltaRaw.reasoning_content !== '') {
+  if (deltaRaw.reasoning_content) {
     if (!state.thinkingStarted) {
       state.thinkingBlockIndex = state.nextBlockIndex++;
       state.thinkingStarted = true;
@@ -211,7 +211,7 @@ export function translateStreamChunk(
   }
 
   // Text content delta
-  if (delta.content != null && delta.content !== '') {
+  if (delta.content) {
     if (!state.textStarted) {
       state.textBlockIndex = state.nextBlockIndex++;
       state.textStarted = true;
