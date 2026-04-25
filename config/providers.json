@@ -11,9 +11,9 @@
     "opus": "claude-opus-4-6"
   },
   "tierTimeouts": {
-    "haiku": { "timeoutMs": 120000 },
-    "sonnet": { "timeoutMs": 300000 },
-    "opus": { "timeoutMs": 600000 }
+    "haiku": { "timeoutMs": 300000 },
+    "sonnet": { "timeoutMs": 600000 },
+    "opus": { "timeoutMs": 900000 }
   },
   "providers": {
     "claude": {
@@ -66,5 +66,7 @@
       "passthrough": true,
       "prefix": "glm-"
     }
-  }
+  },
+  "streamTimeoutMs": 120000,
+  "streamIdleTimeoutMs": 90000
 }
