@@ -7,11 +7,10 @@ import { useLocale } from '../lib/i18n.js';
 interface SidebarProps {
   page: Page;
   navigate: (p: Page) => void;
-  onShowShortcuts: () => void;
   version?: string;
 }
 
-export function Sidebar({ page, navigate, onShowShortcuts, version }: SidebarProps) {
+export function Sidebar({ page, navigate, version }: SidebarProps) {
   const { t } = useLocale();
   return (
     <nav class="hidden lg:flex flex-col fixed h-screen" style="width:var(--sidebar-width);background:var(--color-surface);border-right:1px solid var(--color-border);z-index:50">
@@ -40,15 +39,10 @@ export function Sidebar({ page, navigate, onShowShortcuts, version }: SidebarPro
           </button>
         ))}
       </div>
-      <div style="padding:16px 20px;border-top:1px solid var(--color-border);display:flex;align-items:center;justify-content:space-evenly">
+      <div style="padding:16px 20px;border-top:1px solid var(--color-border);display:flex;align-items:center;justify-content:center;gap:16px">
         <ThemeToggle />
+        <div style="width:1px;height:20px;background:var(--color-border)" />
         <LanguageToggle />
-        <button onClick={onShowShortcuts}
-          class="btn btn-ghost" style="width:36px;height:36px;padding:0;justify-content:center;flex-shrink:0"
-          title={t('shortcuts.title')}
-          aria-label={t('shortcuts.title')}>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
-        </button>
       </div>
     </nav>
   );
