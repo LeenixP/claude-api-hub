@@ -470,12 +470,12 @@ export function ConfigEditor({ config, onSaved }: ConfigEditorProps) {
 
   const visibleCards = useMemo(() => {
     const cards: { key: Section; el: preact.VNode }[] = [];
-    if (serverMatch) cards.push({ key: 'server', el: <ServerCard /> });
-    if (securityMatch) cards.push({ key: 'security', el: <SecurityCard /> });
-    if (timeoutsMatch) cards.push({ key: 'timeouts', el: <TimeoutsCard /> });
-    if (kiroMatch) cards.push({ key: 'kiro', el: <KiroCard /> });
-    if (corsMatch) cards.push({ key: 'cors', el: <CorsCard /> });
-    cards.push({ key: 'advanced', el: <AdvancedCard /> });
+    if (serverMatch) cards.push({ key: 'server', el: ServerCard() });
+    if (securityMatch) cards.push({ key: 'security', el: SecurityCard() });
+    if (timeoutsMatch) cards.push({ key: 'timeouts', el: TimeoutsCard() });
+    if (kiroMatch) cards.push({ key: 'kiro', el: KiroCard() });
+    if (corsMatch) cards.push({ key: 'cors', el: CorsCard() });
+    cards.push({ key: 'advanced', el: AdvancedCard() });
     return cards;
   }, [searchLower, port, host, logLevel, password, rateLimit, trustProxy, streamTimeout, streamIdleTimeout, maxResponseBytes, tokenRefresh, corsOrigins, jsonText, jsonValid, oauthStatuses, refreshingOAuth, kiroProviders]);
 
@@ -568,12 +568,12 @@ export function ConfigEditor({ config, onSaved }: ConfigEditorProps) {
           </div>
         ) : (
           <div style="display:flex;flex-direction:column;gap:32px">
-            {activeSection === 'server' && <ServerCard />}
-            {activeSection === 'security' && <SecurityCard />}
-            {activeSection === 'timeouts' && <TimeoutsCard />}
-            {activeSection === 'kiro' && <KiroCard />}
-            {activeSection === 'cors' && <CorsCard />}
-            {activeSection === 'advanced' && <AdvancedCard />}
+            {activeSection === 'server' && ServerCard()}
+            {activeSection === 'security' && SecurityCard()}
+            {activeSection === 'timeouts' && TimeoutsCard()}
+            {activeSection === 'kiro' && KiroCard()}
+            {activeSection === 'cors' && CorsCard()}
+            {activeSection === 'advanced' && AdvancedCard()}
           </div>
         )}
       </div>
