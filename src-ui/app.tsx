@@ -18,7 +18,6 @@ import { ToastContainer } from './components/common/Toast.js';
 import { LoginScreen } from './components/LoginScreen.js';
 import { Sidebar } from './components/Sidebar.js';
 import { MobileNav } from './components/MobileNav.js';
-import { ShortcutsModal } from './components/ShortcutsModal.js';
 import { useSSE } from './hooks/useSSE.js';
 import { useApi } from './hooks/useApi.js';
 import { useAuth } from './hooks/useAuth.js';
@@ -50,7 +49,6 @@ function AppContent() {
   const [testAllResults, setTestAllResults] = useState<Record<string, { success: boolean; error?: string }>>({});
   const [testingAll, setTestingAll] = useState(false);
   const [showScrollTop, setShowScrollTop] = useState(false);
-  const [showShortcutsModal, setShowShortcutsModal] = useState(false);
 
   const { logs, connected, clearLogs } = useSSE(adminToken);
   const { data: stats } = useApi<Stats>('/api/stats', { immediate: true, pollIntervalMs: 5000 });
@@ -130,23 +128,13 @@ function AppContent() {
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement;
-      const isInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
-      if (e.key === '?') {
-        e.preventDefault();
-        setShowShortcutsModal(v => !v);
-      } else if (e.key === 'Escape') {
-        setShowShortcutsModal(false);
+      if (e.key === 'Escape') {
         setProviderModalOpen(false);
-      } else if (!isInput && e.key >= '1' && e.key <= '5') {
-        const idx = parseInt(e.key) - 1;
-        const pages: Page[] = ['dashboard', 'providers', 'aliases', 'logs', 'config'];
-        if (idx < pages.length) navigate(pages[idx]);
       }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [navigate]);
+  }, []);
 
   const handleLogin = useCallback((token: string) => {
     setAdminToken(token);
@@ -199,8 +187,8 @@ function AppContent() {
       <a href="#main-content" class="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-[60] focus:px-4 focus:py-2 focus:rounded-lg focus:bg-[var(--color-primary)] focus:text-white focus:font-medium" style="font-size:13px">
         {t('app.skipToContent')}
       </a>
-      <Sidebar page={page} navigate={navigate} onShowShortcuts={() => setShowShortcutsModal(true)} version={config.version} />
-      <MobileNav page={page} navigate={navigate} onShowShortcuts={() => setShowShortcutsModal(true)} />
+      <Sidebar page={page} navigate={navigate} version={config.version} />
+      <MobileNav page={page} navigate={navigate} />
 
       <main id="main-content" class="flex-1 pb-24 lg:pb-8 main-content" style="padding:32px;animation:fadeIn 0.25s ease">
         <style>{`
@@ -258,7 +246,6 @@ function AppContent() {
         </button>
       )}
 
-      <ShortcutsModal open={showShortcutsModal} onClose={() => setShowShortcutsModal(false)} />
       <ToastContainer />
     </div>
   );
