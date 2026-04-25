@@ -1,6 +1,6 @@
 {
   "name": "claude-api-hub",
-  "version": "6.1.0",
+  "version": "6.1.1",
   "description": "Multi-provider API gateway for Claude Code — route requests to any LLM provider with zero config switching",
   "type": "module",
   "main": "dist/index.js",
@@ -80,5 +80,8 @@
     "typescript": "^5.8.0",
     "typescript-eslint": "^8.26.0",
     "vitest": "^3.1.0"
+  },
+  "dependencies": {
+    "claude-api-hub": "^6.1.0"
   }
 }
