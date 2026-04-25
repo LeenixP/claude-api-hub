@@ -28,16 +28,17 @@ export function ThemeToggle() {
       </svg>
     );
 
+  const labels: Record<string, string> = { system: 'System', dark: 'Dark', light: 'Light' };
+
   return (
     <button
       onClick={cycleTheme}
-      class="flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-colors"
-      style="color:var(--color-text-muted);background:var(--color-bg)"
-      title={`Theme: ${theme}`}
-      aria-label={`Current theme: ${theme}. Click to cycle.`}
+      class="btn btn-ghost"
+      style="width:36px;height:36px;padding:0;justify-content:center;flex-shrink:0"
+      title={`Theme: ${labels[theme]}`}
+      aria-label={`Current theme: ${labels[theme]}. Click to cycle.`}
     >
       {icon}
-      <span class="capitalize">{theme}</span>
     </button>
   );
 }

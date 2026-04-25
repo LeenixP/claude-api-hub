@@ -3,6 +3,7 @@ import { resolve, dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { homedir } from 'os';
 import { GatewayConfig, ProviderConfig } from './providers/types.js';
+import { logger } from './logger.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -14,7 +15,7 @@ const ALLOWED_ENV_PREFIXES = [
 function interpolateEnvVars(value: string): string {
   return value.replace(/\$\{([^}]+)\}/g, (_, varName: string) => {
     if (!ALLOWED_ENV_PREFIXES.some(p => varName.startsWith(p))) {
-      console.warn(`[warn] Blocked env var interpolation: ${varName} (not in allowed prefixes)`);
+      logger.warn(`Blocked env var interpolation: ${varName} (not in allowed prefixes)`);
       return '';
     }
     return process.env[varName] ?? '';
@@ -67,12 +68,12 @@ function validateConfig(config: GatewayConfig): void {
       throw new Error(`Config: provider "${name}" missing "models"`);
     }
     if (!provider.apiKey || provider.apiKey.trim() === '') {
-      console.warn(`[warn] Provider "${name}" has empty apiKey — check environment variables`);
+      logger.warn(`Provider "${name}" has empty apiKey — check environment variables`);
     }
   }
   const enabledCount = Object.values(config.providers as Record<string, ProviderConfig>).filter(p => p.enabled).length;
   if (enabledCount === 0) {
-    throw new Error('Config: at least one provider must be enabled');
+    throw new Error('No enabled providers found. Add a provider via Dashboard at http://localhost:' + config.port + ' or edit ~/.claude-api-hub/providers.json');
   }
   if (config.rateLimitRpm !== undefined && (typeof config.rateLimitRpm !== 'number' || config.rateLimitRpm < 0)) {
     throw new Error('Config: "rateLimitRpm" must be a non-negative number');
@@ -111,6 +112,16 @@ export function getConfigPath(): string {
   return resolvedConfigPath;
 }
 
+/** Auto-fill passthrough for providers that use Anthropic protocol but didn't set it explicitly. */
+export function normalizeProviders(config: GatewayConfig): void {
+  for (const [name, pc] of Object.entries(config.providers)) {
+    if (pc.passthrough === undefined && pc.authMode === 'anthropic') {
+      pc.passthrough = true;
+      logger.info(`Provider "${name}": auto-set passthrough=true (authMode=anthropic)`);
+    }
+  }
+}
+
 export function loadConfig(configPath?: string): GatewayConfig {
   const candidates = configPath ? [configPath] : [
     join(homedir(), '.claude-api-hub/providers.json'),
@@ -126,6 +137,7 @@ export function loadConfig(configPath?: string): GatewayConfig {
   const raw = readFileSync(filePath, 'utf-8');
   const parsed = JSON.parse(raw);
   const config = interpolateConfig(parsed) as GatewayConfig;
+  normalizeProviders(config);
   validateConfig(config);
   return config;
 }

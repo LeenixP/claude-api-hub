@@ -1,11 +1,12 @@
 import http from 'http';
-import { sendJson, sendError, readBody } from '../utils/http.js';
+import { sendJson, sendError } from '../utils/http.js';
 import {
   handleSocialAuth, handleBuilderIDAuth, refreshCredentials,
   importAwsCredentials, getCredentialStatus, getLastOAuthResult, clearLastOAuthResult, cancelOAuth,
 } from '../providers/kiro-oauth.js';
 import { logger } from '../logger.js';
 import type { RouteContext } from './types.js';
+import { readJson } from './helpers.js';
 
 export async function handleOAuthRoutes(
   req: http.IncomingMessage,
@@ -18,14 +19,8 @@ export async function handleOAuthRoutes(
   const { config } = ctx;
 
   if (req.method === 'POST' && pathname === '/api/oauth/kiro/auth-url') {
-    let bodyStr: string;
-    try { bodyStr = await readBody(req); } catch {
-      sendError(res, 400, 'invalid_request_error', 'Failed to read request body', config, origin); return true;
-    }
-    let body: { method?: string; region?: string; startUrl?: string };
-    try { body = JSON.parse(bodyStr); } catch {
-      sendError(res, 400, 'invalid_request_error', 'Invalid JSON body', config, origin); return true;
-    }
+    const body = await readJson<{ method?: string; region?: string; startUrl?: string }>(req, res, config);
+    if (!body) return true;
     const method = body.method || 'google';
     const region = body.region || 'us-east-1';
     const startUrl = body.startUrl || undefined;
@@ -46,14 +41,8 @@ export async function handleOAuthRoutes(
   }
 
   if (req.method === 'POST' && pathname === '/api/oauth/kiro/import') {
-    let bodyStr: string;
-    try { bodyStr = await readBody(req); } catch {
-      sendError(res, 400, 'invalid_request_error', 'Failed to read request body', config, origin); return true;
-    }
-    let body: { clientId?: string; clientSecret?: string; accessToken?: string; refreshToken?: string; region?: string; authMethod?: string };
-    try { body = JSON.parse(bodyStr); } catch {
-      sendError(res, 400, 'invalid_request_error', 'Invalid JSON body', config, origin); return true;
-    }
+    const body = await readJson<{ clientId?: string; clientSecret?: string; accessToken?: string; refreshToken?: string; region?: string; authMethod?: string }>(req, res, config);
+    if (!body) return true;
     try {
       const result = await importAwsCredentials({
         clientId: body.clientId || '',
@@ -87,14 +76,8 @@ export async function handleOAuthRoutes(
   }
 
   if (req.method === 'POST' && pathname === '/api/oauth/kiro/refresh') {
-    let bodyStr: string;
-    try { bodyStr = await readBody(req); } catch {
-      sendError(res, 400, 'invalid_request_error', 'Failed to read request body', config, origin); return true;
-    }
-    let body: { credsPath?: string };
-    try { body = JSON.parse(bodyStr); } catch {
-      sendError(res, 400, 'invalid_request_error', 'Invalid JSON body', config, origin); return true;
-    }
+    const body = await readJson<{ credsPath?: string }>(req, res, config);
+    if (!body) return true;
     try {
       const refreshed = await refreshCredentials(body.credsPath);
       sendJson(res, 200, { success: true, expiresAt: refreshed.expiresAt }, config, origin);

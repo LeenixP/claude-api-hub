@@ -8,6 +8,7 @@
  * Defines the endpoint, credentials, models, and routing behavior.
  */
 export interface ProviderConfig {
+  key?: string;
   name: string;
   baseUrl: string;
   apiKey: string;
@@ -19,11 +20,8 @@ export interface ProviderConfig {
   passthrough?: boolean;
   authMode?: 'apikey' | 'oauth' | 'anthropic' | 'openai';
   providerType?: 'standard' | 'kiro';
-  kiroAuthMethod?: 'social' | 'builder-id';
-  kiroRegion?: string;
-  kiroCredsPath?: string;
-  kiroStartUrl?: string;
-  [key: string]: unknown;
+  options?: Record<string, unknown>;
+  sanitize?: string[];
 }
 
 export interface TierTimeout {
@@ -51,6 +49,8 @@ export interface GatewayConfig {
   fallbackChain?: Record<string, string>;
   password?: string;
   tokenRefreshMinutes?: number;
+  /** Override the anthropic-beta header for provider test probes. Auto-captured from real traffic if not set. */
+  codingAgentBetas?: string;
 }
 
 // ─── Anthropic API Types (incoming from Claude Code) ───
@@ -297,7 +297,7 @@ export interface Provider {
    * @param req - The incoming Anthropic request
    * @returns URL, headers, and JSON body for the upstream API call
    */
-  buildRequest(req: AnthropicRequest): { url: string; headers: Record<string, string>; body: string };
+  buildRequest(req: AnthropicRequest): { url: string; headers: Record<string, string>; body: string; usedKey: string };
 
   /**
    * Parse an OpenAI-format response back into Anthropic format.
@@ -323,6 +323,8 @@ export interface Provider {
    */
   parseStreamChunk(chunk: OpenAIStreamChunk, originalModel: string, ctx: StreamContext): AnthropicStreamEvent[];
 
+  reportSuccess?(key?: string): void;
+  reportError?(key?: string): void;
   isHealthy?(): boolean;
 }
 

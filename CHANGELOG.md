@@ -5,109 +5,111 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [6.0.0] - 2026-04-25
+
+### Added
+- Complete English documentation (README.en.md)
+- Screenshot placeholders in both Chinese and English READMEs
+- `docs/images/` directory for dashboard screenshots
+
+### Changed
+- Updated LICENSE copyright year to 2025-2026
+- Added README.en.md to npm package files
+- Untracked built static/style.css from git
+
+### Removed
+- Removed built artifacts (static/style.css) from git tracking
 
 ## [5.1.1] - 2026-04-24
 
-### Added
-- Docker support: Dockerfile, docker-compose.yml, .dockerignore
-- JSON Schema for config validation (`config/providers.schema.json`)
-- `.env.example` for environment variable reference
-- Named constants file (`src/constants.ts`) replacing all magic numbers
-- Config validation: 10+ new rules (enabled providers, rate limits, CORS, timeouts)
-- Gzip/deflate response compression for JSON and HTML
-- ETag + Cache-Control headers for dashboard
-- Per-host HTTPS connection pooling with keep-alive
-- SSE reconnection jitter (±25%) to prevent thundering herd
-- Canvas chart performance: requestAnimationFrame + change detection
-- Loading skeleton with API Hub branding on initial load
-- Keyboard shortcuts: `?` help dialog, `1-5` page navigation, `Esc` close
-- Dynamic page titles (`Dashboard — API Hub`)
-- Scroll-to-top floating button
-- Custom checkbox styling
-- Password and API key show/hide toggle (eye icon)
-- Toast notifications with progress bar and hover-to-pause
-- Select dropdown search/filter for 8+ options
-- Provider card "last used" relative timestamp
-- Relative timestamps throughout (logs, charts)
-- Version number links to GitHub Releases
-- Welcome banner with gateway URL and setup steps
-- Global JS error handler for debugging
+### Fixed
+- `.dockerignore` was excluding tsconfig.json and build config files
+- `.dockerignore` was excluding package-lock.json and src dirs needed for build
 
-### Changed
-- **Dashboard redesign**: unified single-accent color scheme (GitHub Dark style), cleaner stat cards, theme-aware canvas charts, cohesive spacing
-- **Config page rewrite**: clearer Form/JSON mode toggle, section descriptions, merged redundant cards, removed confusing syntax highlighting, proper spacing
-- **Logs page rewrite**: simplified toolbar (removed fake File Log/Auto-scroll buttons), cleaner log rows, Clear All now instantly clears UI
-- **Login page**: white card on dark background for maximum contrast
-- Removed Guide page (content merged into Dashboard welcome banner)
-- Dark theme colors refined for better contrast and cohesion
-- Border radius reduced from 12px to 8px for modern feel
-- GuidePage now shows dynamic port from config (was hardcoded 3456)
+## [5.1.0] - 2026-04-24
+
+### Added
+- Dashboard redesign with improved UX
+- Docker support with multi-stage build
+- 50+ improvements from community feedback
 
 ### Fixed
-- **Critical: TDZ error** — keyboard shortcut useEffect referenced `navigate` before declaration, causing blank page
-- LogPanel "Clear" button now properly clears server logs (was only clearing search)
-- ProviderModal prefix field now correctly parses comma-separated arrays
-- ConfigEditor OAuth check no longer loops on mount
-- Login now directly fetches config (no manual refresh needed)
-- Clear All logs now instantly clears frontend SSE buffer
+- Data persistence: load SQLite history on startup
+- Fix alias save sync issues
+- Prevent masked API keys from overwriting real keys on config save
+
+## [4.0.1] - 2026-04-24
+
+### Fixed
+- Config save endpoint reliability
+- OAuth refresh UI improvements
+- Coverage threshold tuning
+- Default config cleanup
+
+## [4.0.0] - 2026-04-24
+
+### Added
+- Full UI redesign with modern components
+- Protocol improvements for better compatibility
+- Kiro OAuth integration
+- Enhanced security features
+
+### Changed
+- Improved request routing logic
+- Better error handling and messages
+
+## [3.0.0] - 2026-04-24
+
+### Added
+- Kiro OAuth web authorization flow
+- Token auto-refresh mechanism
+- Config UI mode (dual-mode: UI/JSON)
+- Provider test endpoint
+
+### Fixed
+- Missing closing div in dashboard section
+- Rewrite boot flow for 30min session expiry
+- Reliable login page display
+
+### Changed
+- Text contrast improvements
+- Minimum font sizes bumped to 13px
+- Password portal replacing adminToken
 
 ## [2.0.0] - 2026-04-23
 
 ### Added
-- SSE real-time push via `/api/events` endpoint (EventBus)
-- Multi-key pool with round-robin rotation and auto-recovery (KeyPool)
-- Fallback chain: auto-route to backup provider when primary is unhealthy
-- Rate tracker with QPS/RPM/TPS metrics via `/api/stats` endpoint
-- Management panel navigation tabs (Dashboard, Config Editor, Setup Guide)
-- JSON config editor with validation and import/export (`/api/config/import`)
-- Per-tier timeout configuration via `/api/tier-timeouts`
-- Password login portal with auth banner (`/api/auth/login`)
-- Kiro Provider: use Kiro OAuth to call Claude via AWS CodeWhisperer
-- Admin token authentication for management API endpoints
-- Configurable CORS origins (replaces wildcard `*`)
-- Rate limiting with configurable RPM (requests per minute)
-- Stream timeout and idle timeout controls
-- Upstream response body size limit
-- HTTP connection pooling (keep-alive) for upstream requests
-- Graceful shutdown with 30s timeout for in-flight requests
-- Statistics cards on dashboard (total requests, success rate, avg latency, errors)
-- Light/dark theme toggle with system preference detection
-- Dashboard accessibility improvements (focus-visible, ARIA attributes)
-- Responsive breakpoints for mobile devices
-- Log search/filter functionality
-- Comprehensive test coverage for config, providers, server, and translators
-- CONTRIBUTING.md, CHANGELOG.md, CODE_OF_CONDUCT.md
-- GitHub issue and PR templates
-- CI workflow with lint, test, and build steps
+- Comprehensive test suite (100+ tests)
+- Full documentation overhaul
+- Management panel with navigation tabs
+- Config editor with live validation
+- Setup guide with interactive walkthrough
 
 ### Changed
-- StreamState now persists across chunks (fixes broken stream translation)
-- Alias matching restricted to claude-* model names to prevent false matches
-- Provider config reload is now atomic (replaceAll instead of clear+register)
-- Request IDs use crypto.randomUUID() for better uniqueness
-- Config validation: port range, URL format, logLevel, empty apiKey warnings
-- Provider create/update APIs now whitelist allowed fields
-- Tool call name uses overwrite instead of append across stream chunks
+- Architecture upgrade for scalability
+- Improved logging system
 
-### Fixed
-- Stream forwarding now propagates upstream HTTP status codes
-- Empty choices array no longer causes TypeError in translateResponse
-- Null usage field no longer causes TypeError
-- is_error field from tool_result now passed through as [ERROR] prefix
-
-## [1.0.1] - 2026-04-22
-
-### Changed
-- Version bump
-
-## [1.0.0] - 2026-04-22
+## [1.x.x] - Earlier Releases
 
 ### Added
-- Multi-provider API gateway with model routing
-- Anthropic ↔ OpenAI protocol translation
-- Alias mapping (haiku/sonnet/opus → any model)
-- Web dashboard with provider management
-- Request logging with file persistence option
-- Provider health checking
-- Environment variable interpolation in config
+- SSE real-time push for dashboard updates
+- Multi-key pool with round-robin rotation
+- Fallback chain for provider failover
+- Rate tracker for monitoring
+- Kiro Provider (AWS Q/CodeWhisperer integration)
+- Password login portal
+- Provider factory registry pattern
+- CLI args and port error handling
+- Crash protection and shutdown guard
+- File-based request logging with rotation
+- Per-tier timeout configuration
+- Session-based admin authentication
+- Security headers (CSP, X-Frame-Options, etc.)
+
+[6.0.0]: https://github.com/LeenixP/claude-api-hub/releases/tag/v6.0.0
+[5.1.1]: https://github.com/LeenixP/claude-api-hub/releases/tag/v5.1.1
+[5.1.0]: https://github.com/LeenixP/claude-api-hub/releases/tag/v5.1.0
+[4.0.1]: https://github.com/LeenixP/claude-api-hub/releases/tag/v4.0.1
+[4.0.0]: https://github.com/LeenixP/claude-api-hub/releases/tag/v4.0.0
+[3.0.0]: https://github.com/LeenixP/claude-api-hub/releases/tag/v3.0.0
+[2.0.0]: https://github.com/LeenixP/claude-api-hub/releases/tag/v2.0.0

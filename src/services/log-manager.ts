@@ -180,6 +180,92 @@ export class LogManager {
     return this.maxLogFiles;
   }
 
+  getTokenStats(): {
+    summary: { totalTokens: number; promptTokens: number; completionTokens: number; requestCount: number };
+    byProvider: Array<{ provider: string; totalTokens: number; promptTokens: number; completionTokens: number; requestCount: number }>;
+    byModel: Array<{ model: string; totalTokens: number; promptTokens: number; completionTokens: number; requestCount: number }>;
+    daily: Array<{ date: string; totalTokens: number; promptTokens: number; completionTokens: number; requestCount: number }>;
+  } {
+    try {
+      const summaryRow = this.db.prepare(`
+        SELECT COALESCE(SUM(input_tokens), 0) AS promptTokens,
+               COALESCE(SUM(output_tokens), 0) AS completionTokens,
+               COUNT(*) AS requestCount
+        FROM request_logs
+      `).get() as { promptTokens: number; completionTokens: number; requestCount: number };
+      const summary = {
+        totalTokens: summaryRow.promptTokens + summaryRow.completionTokens,
+        promptTokens: summaryRow.promptTokens,
+        completionTokens: summaryRow.completionTokens,
+        requestCount: summaryRow.requestCount,
+      };
+
+      const byProviderRows = this.db.prepare(`
+        SELECT provider,
+               COALESCE(SUM(input_tokens), 0) AS promptTokens,
+               COALESCE(SUM(output_tokens), 0) AS completionTokens,
+               COUNT(*) AS requestCount
+        FROM request_logs
+        WHERE provider != ''
+        GROUP BY provider
+        ORDER BY SUM(input_tokens + output_tokens) DESC
+      `).all() as Array<{ provider: string; promptTokens: number; completionTokens: number; requestCount: number }>;
+      const byProvider = byProviderRows.map(r => ({
+        provider: r.provider,
+        totalTokens: r.promptTokens + r.completionTokens,
+        promptTokens: r.promptTokens,
+        completionTokens: r.completionTokens,
+        requestCount: r.requestCount,
+      }));
+
+      const byModelRows = this.db.prepare(`
+        SELECT resolved_model AS model,
+               COALESCE(SUM(input_tokens), 0) AS promptTokens,
+               COALESCE(SUM(output_tokens), 0) AS completionTokens,
+               COUNT(*) AS requestCount
+        FROM request_logs
+        WHERE resolved_model != ''
+        GROUP BY resolved_model
+        ORDER BY SUM(input_tokens + output_tokens) DESC
+      `).all() as Array<{ model: string; promptTokens: number; completionTokens: number; requestCount: number }>;
+      const byModel = byModelRows.map(r => ({
+        model: r.model,
+        totalTokens: r.promptTokens + r.completionTokens,
+        promptTokens: r.promptTokens,
+        completionTokens: r.completionTokens,
+        requestCount: r.requestCount,
+      }));
+
+      const dailyRows = this.db.prepare(`
+        SELECT strftime('%Y-%m-%d', time) AS date,
+               COALESCE(SUM(input_tokens), 0) AS promptTokens,
+               COALESCE(SUM(output_tokens), 0) AS completionTokens,
+               COUNT(*) AS requestCount
+        FROM request_logs
+        WHERE time >= date('now', '-30 days')
+        GROUP BY date
+        ORDER BY date ASC
+      `).all() as Array<{ date: string; promptTokens: number; completionTokens: number; requestCount: number }>;
+      const daily = dailyRows.map(r => ({
+        date: r.date,
+        totalTokens: r.promptTokens + r.completionTokens,
+        promptTokens: r.promptTokens,
+        completionTokens: r.completionTokens,
+        requestCount: r.requestCount,
+      }));
+
+      return { summary, byProvider, byModel, daily };
+    } catch (err) {
+      logger.warn('Failed to get token stats', { error: (err as Error).message });
+      return {
+        summary: { totalTokens: 0, promptTokens: 0, completionTokens: 0, requestCount: 0 },
+        byProvider: [],
+        byModel: [],
+        daily: [],
+      };
+    }
+  }
+
   close(): void {
     try { this.db.close(); } catch (err) { logger.warn('Failed to close database', { error: (err as Error).message }); }
   }

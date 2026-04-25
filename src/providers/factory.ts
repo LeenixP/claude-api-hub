@@ -15,11 +15,16 @@ export function registerProviderType(type: string, factory: ProviderFactory): vo
   registry.set(type, factory);
 }
 
-export function createProvider(config: ProviderConfig): Provider {
+export function createProvider(config: ProviderConfig): Provider | null {
   // Check for explicit provider type first
   const explicitType = config.providerType as string | undefined;
   if (explicitType && registry.has(explicitType)) {
-    return registry.get(explicitType)!(config);
+    try {
+      return registry.get(explicitType)!(config);
+    } catch (err) {
+      console.error(`[warn] Skipping provider "${config.name}": ${(err as Error).message}`);
+      return null;
+    }
   }
   const isAnthropicMode = config.passthrough || config.authMode === 'anthropic';
   const type = isAnthropicMode ? 'passthrough' : 'openai';

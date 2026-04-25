@@ -1,9 +1,13 @@
 import http from 'http';
 import https from 'https';
 import { URL } from 'url';
-import { MAX_RESPONSE_SIZE, MAX_GET_SIZE } from '../constants.js';
+import { MAX_RESPONSE_SIZE, MAX_GET_SIZE, KEEP_ALIVE_MAX_SOCKETS } from '../constants.js';
+import { isSSRFSafe } from '../utils/ssrf.js';
+
+const MAX_AGENT_POOL_SIZE = 50;
 
 const agentPool = new Map<string, http.Agent | https.Agent>();
+const agentPoolOrder: string[] = [];
 
 function getAgent(parsed: URL): http.Agent | https.Agent {
   const host = parsed.hostname;
@@ -11,10 +15,22 @@ function getAgent(parsed: URL): http.Agent | https.Agent {
   const key = `${isHttps ? 'https' : 'http'}:${host}`;
   const cached = agentPool.get(key);
   if (cached) return cached;
+
+  // Evict oldest agent if pool is at capacity
+  if (agentPool.size >= MAX_AGENT_POOL_SIZE && agentPoolOrder.length > 0) {
+    const oldestKey = agentPoolOrder.shift()!;
+    const oldestAgent = agentPool.get(oldestKey);
+    if (oldestAgent) {
+      oldestAgent.destroy();
+      agentPool.delete(oldestKey);
+    }
+  }
+
   const agent = isHttps
-    ? new https.Agent({ keepAlive: true, keepAliveMsecs: 30000, maxSockets: 10 })
-    : new http.Agent({ keepAlive: true, keepAliveMsecs: 30000, maxSockets: 10 });
+    ? new https.Agent({ keepAlive: true, keepAliveMsecs: 30000, maxSockets: KEEP_ALIVE_MAX_SOCKETS })
+    : new http.Agent({ keepAlive: true, keepAliveMsecs: 30000, maxSockets: KEEP_ALIVE_MAX_SOCKETS });
   agentPool.set(key, agent);
+  agentPoolOrder.push(key);
   return agent;
 }
 
@@ -23,6 +39,7 @@ export function destroyAgents(): void {
     agent.destroy();
   }
   agentPool.clear();
+  agentPoolOrder.length = 0;
 }
 
 export function forwardRequest(
@@ -32,8 +49,12 @@ export function forwardRequest(
   timeoutMs = 120000,
   maxResponseBytes = MAX_RESPONSE_SIZE,
 ): Promise<{ status: number; headers: http.IncomingHttpHeaders; body: string }> {
-  return new Promise((resolve, reject) => {
+  return new Promise(async (resolve, reject) => {
     const parsed = new URL(url);
+    if (!await isSSRFSafe(parsed.hostname)) {
+      reject(new Error(`SSRF: blocked request to private address ${parsed.hostname}`));
+      return;
+    }
     const isHttps = parsed.protocol === 'https:';
     const lib = isHttps ? https : http;
 
@@ -82,8 +103,12 @@ export function httpGet(
   timeoutMs = 5000,
   maxResponseBytes = MAX_GET_SIZE,
 ): Promise<string> {
-  return new Promise((resolve, reject) => {
+  return new Promise(async (resolve, reject) => {
     const parsed = new URL(url);
+    if (!await isSSRFSafe(parsed.hostname)) {
+      reject(new Error(`SSRF: blocked request to private address ${parsed.hostname}`));
+      return;
+    }
     const isHttps = parsed.protocol === 'https:';
     const lib = isHttps ? https : http;
     const options: http.RequestOptions = {
@@ -112,18 +137,23 @@ export function httpGet(
   });
 }
 
-export function forwardStream(
+export async function forwardStream(
   url: string,
   headers: Record<string, string>,
   body: string,
-  onChunk: (chunk: string) => void,
+  onChunk: (chunk: string) => boolean | void,
   onEnd: () => void,
   onError: (err: Error) => void,
   onUpstreamResponse?: (statusCode: number, headers: http.IncomingHttpHeaders, rawBody?: string) => void,
   connectTimeoutMs = 30000,
   idleTimeoutMs = 60000,
-): void {
+  downstreamRes?: http.ServerResponse,
+): Promise<void> {
   const parsed = new URL(url);
+  if (!await isSSRFSafe(parsed.hostname)) {
+    onError(new Error(`SSRF: blocked request to private address ${parsed.hostname}`));
+    return;
+  }
   const isHttps = parsed.protocol === 'https:';
   const lib = isHttps ? https : http;
 
@@ -154,6 +184,7 @@ export function forwardStream(
     if (onUpstreamResponse) onUpstreamResponse(200, upstreamRes.headers);
 
     let idleTimer: NodeJS.Timeout | null = null;
+    let paused = false;
     function resetIdleTimer() {
       if (idleTimer) clearTimeout(idleTimer);
       idleTimer = setTimeout(() => {
@@ -164,7 +195,15 @@ export function forwardStream(
 
     upstreamRes.on('data', (chunk: Buffer) => {
       resetIdleTimer();
-      onChunk(chunk.toString('utf-8'));
+      const ok = onChunk(chunk.toString('utf-8'));
+      if (ok === false && downstreamRes && !paused) {
+        paused = true;
+        upstreamRes.pause();
+        downstreamRes.once('drain', () => {
+          paused = false;
+          upstreamRes.resume();
+        });
+      }
     });
     upstreamRes.on('end', () => { if (idleTimer) clearTimeout(idleTimer); onEnd(); });
     upstreamRes.on('error', (err) => { if (idleTimer) clearTimeout(idleTimer); onError(err); });

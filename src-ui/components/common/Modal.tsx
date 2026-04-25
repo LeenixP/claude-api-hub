@@ -9,7 +9,7 @@ interface ModalProps {
   maxWidth?: string;
 }
 
-export function Modal({ open, onClose, title, children, maxWidth = '480px' }: ModalProps) {
+export function Modal({ open, onClose, title, children, maxWidth = '600px' }: ModalProps) {
   const dialogRef = useRef<HTMLDivElement>(null);
   const firstFocusableRef = useRef<HTMLElement | null>(null);
   const lastFocusableRef = useRef<HTMLElement | null>(null);
@@ -71,7 +71,7 @@ export function Modal({ open, onClose, title, children, maxWidth = '480px' }: Mo
   return (
     <div
       class="fixed inset-0 z-[100] flex items-center justify-center"
-      style="background:rgba(0,0,0,0.6);backdrop-filter:blur(4px)"
+      style="background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);animation:fadeIn 0.2s ease"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
@@ -84,11 +84,11 @@ export function Modal({ open, onClose, title, children, maxWidth = '480px' }: Mo
         class="w-full rounded-xl"
         style={`max-width:${maxWidth};max-height:90vh;overflow-y:auto;background:var(--color-surface);border:1px solid var(--color-border);box-shadow:0 20px 60px rgba(0,0,0,0.5);animation:slideUp 0.15s ease-out`}
       >
-        <div class="flex items-center justify-between" style="padding:20px 24px;border-bottom:1px solid var(--color-border)">
+        <div class="flex items-center justify-between" style="padding:24px 32px;border-bottom:1px solid var(--color-border)">
           <h2 id="modal-title" style="font-size:18px;font-weight:700;color:var(--color-text)">{title}</h2>
           <button
             onClick={onClose}
-            class="p-1 rounded-md transition-colors hover:opacity-80"
+            class="p-1 rounded-md transition-colors hover:bg-[var(--color-surface-hover)]"
             style="color:var(--color-text-muted)"
             aria-label="Close dialog"
           >
@@ -98,7 +98,7 @@ export function Modal({ open, onClose, title, children, maxWidth = '480px' }: Mo
             </svg>
           </button>
         </div>
-        <div style="padding:24px">{children}</div>
+        <div style="padding:32px">{children}</div>
       </div>
     </div>
   );

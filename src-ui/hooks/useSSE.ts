@@ -8,7 +8,7 @@ interface UseSSEReturn {
   clearLogs: () => void;
 }
 
-export function useSSE(): UseSSEReturn {
+export function useSSE(adminToken: string): UseSSEReturn {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [connected, setConnected] = useState(false);
   const esRef = useRef<EventSource | null>(null);
@@ -31,8 +31,7 @@ export function useSSE(): UseSSEReturn {
       if (!mounted.current) return;
       if (esRef.current) esRef.current.close();
 
-      const token = localStorage.getItem('adminToken') || '';
-      const url = token ? `/api/events?token=${encodeURIComponent(token)}` : '/api/events';
+      const url = adminToken ? `/api/events?token=${encodeURIComponent(adminToken)}` : '/api/events';
       const es = new EventSource(url);
       esRef.current = es;
 
@@ -70,7 +69,7 @@ export function useSSE(): UseSSEReturn {
       if (reconnectTimer.current) clearTimeout(reconnectTimer.current);
       if (esRef.current) { esRef.current.close(); esRef.current = null; }
     };
-  }, []);
+  }, [adminToken]);
 
   const clearLogs = useCallback(() => setLogs([]), []);
 

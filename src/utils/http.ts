@@ -8,6 +8,7 @@ export function getCorsHeaders(config: GatewayConfig, reqOrigin?: string): Recor
   const headers: Record<string, string> = {
     'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-api-key, x-admin-token, anthropic-version, anthropic-beta',
+    'Access-Control-Max-Age': '86400', // 24 hours
     'Vary': 'Origin',
   };
   if (origins && origins.length > 0) {

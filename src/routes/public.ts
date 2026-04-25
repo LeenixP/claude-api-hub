@@ -4,13 +4,6 @@ import { dashboardHtml, dashboardETag } from '../dashboard.js';
 import { DASHBOARD_CACHE_MAX_AGE } from '../constants.js';
 import type { RouteContext } from './types.js';
 
-export function registerPublicRoutes(ctx: RouteContext): void {
-  const { config, router, eventBus } = ctx;
-  const cachedDashboard = dashboardHtml(config.version || '');
-
-  return; // routes are registered inline in the main handler below
-}
-
 export async function handlePublicRoutes(
   req: http.IncomingMessage,
   res: http.ServerResponse,
@@ -76,8 +69,8 @@ export async function handlePublicRoutes(
       ...cors,
     });
     res.write(':\n\n');
-    const onEvent = (event: { type: string; data: unknown }) => {
-      res.write(`event: ${event.type}\ndata: ${JSON.stringify(event.data)}\n\n`);
+    const onEvent = (event: { type: string; data: unknown; id: number }) => {
+      res.write(`id: ${event.id}\nevent: ${event.type}\ndata: ${JSON.stringify(event.data)}\n\n`);
     };
     eventBus.subscribe(onEvent);
     req.on('close', () => eventBus.unsubscribe(onEvent));

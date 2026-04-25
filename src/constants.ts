@@ -51,3 +51,12 @@ export const KEEP_ALIVE_MAX_SOCKETS = 50;
 
 /** Dashboard cache max age in seconds (5 minutes) */
 export const DASHBOARD_CACHE_MAX_AGE = 300;
+
+/** Login rate limit (requests per minute) */
+export const LOGIN_RATE_LIMIT_RPM = 5;
+
+/** Failed login attempts before lockout */
+export const LOGIN_LOCKOUT_ATTEMPTS = 3;
+
+/** Login lockout duration in milliseconds (5 minutes) */
+export const LOGIN_LOCKOUT_MS = 5 * 60 * 1000;

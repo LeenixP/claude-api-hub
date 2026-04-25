@@ -138,7 +138,12 @@
           "kiroAuthMethod": { "type": "string" },
           "kiroRegion": { "type": "string" },
           "kiroCredsPath": { "type": "string" },
-          "kiroStartUrl": { "type": "string" }
+          "kiroStartUrl": { "type": "string" },
+          "options": {
+            "type": "object",
+            "description": "Provider-specific extension options (e.g. kiroRegion, kiroCredsPath)",
+            "additionalProperties": true
+          }
         }
       }
     }

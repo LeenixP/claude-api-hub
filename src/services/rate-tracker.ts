@@ -4,6 +4,11 @@ export class RateTracker {
   private currentIndex = 0;
   private lastTick: number;
   private timer: ReturnType<typeof setInterval>;
+  private maxQps = 0;
+  private maxRpm = 0;
+  private maxTps = 0;
+  private totalRequests = 0;
+  private totalTokens = 0;
 
   constructor() {
     this.buckets = Array.from({ length: this.windowSize }, () => ({ requests: 0, tokens: 0 }));
@@ -26,7 +31,17 @@ export class RateTracker {
   record(tokens?: number): void {
     this.advance();
     this.buckets[this.currentIndex].requests++;
-    if (tokens) this.buckets[this.currentIndex].tokens += tokens;
+    this.totalRequests++;
+    if (tokens) {
+      this.buckets[this.currentIndex].tokens += tokens;
+      this.totalTokens += tokens;
+    }
+    const qps = this.getQPS();
+    const rpm = qps * 60;
+    const tps = this.getTPS();
+    if (qps > this.maxQps) this.maxQps = qps;
+    if (rpm > this.maxRpm) this.maxRpm = rpm;
+    if (tps > this.maxTps) this.maxTps = tps;
   }
 
   getQPS(): number {
@@ -43,6 +58,31 @@ export class RateTracker {
     this.advance();
     const total = this.buckets.reduce((s, b) => s + b.tokens, 0);
     return Math.round((total / this.windowSize) * 10) / 10;
+  }
+
+  getMaxQPS(): number {
+    return this.maxQps;
+  }
+
+  getMaxRPM(): number {
+    return this.maxRpm;
+  }
+
+  getMaxTPS(): number {
+    return this.maxTps;
+  }
+
+  getStats(): { qps: number; rpm: number; tps: number; maxQps: number; maxRpm: number; maxTps: number; totalRequests: number; totalTokens: number } {
+    return {
+      qps: this.getQPS(),
+      rpm: this.getRPM(),
+      tps: this.getTPS(),
+      maxQps: this.maxQps,
+      maxRpm: this.maxRpm,
+      maxTps: this.maxTps,
+      totalRequests: this.totalRequests,
+      totalTokens: this.totalTokens,
+    };
   }
 
   destroy(): void {

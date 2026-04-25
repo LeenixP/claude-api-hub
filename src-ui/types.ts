@@ -30,10 +30,7 @@ export interface ProviderConfig {
   passthrough?: boolean;
   authMode?: string;
   providerType?: string;
-  kiroAuthMethod?: string;
-  kiroRegion?: string;
-  kiroCredsPath?: string;
-  kiroStartUrl?: string;
+  options?: Record<string, unknown>;
 }
 
 export interface TierTimeout {
@@ -69,6 +66,18 @@ export interface Stats {
   qps: number;
   rpm: number;
   tps: number;
+  maxQps: number;
+  maxRpm: number;
+  maxTps: number;
+  totalRequests: number;
+  totalTokens: number;
+}
+
+export interface TokenStats {
+  summary: { totalTokens: number; promptTokens: number; completionTokens: number; requestCount: number };
+  byProvider: Array<{ provider: string; totalTokens: number; promptTokens: number; completionTokens: number; requestCount: number }>;
+  byModel: Array<{ model: string; totalTokens: number; promptTokens: number; completionTokens: number; requestCount: number }>;
+  daily: Array<{ date: string; totalTokens: number; promptTokens: number; completionTokens: number; requestCount: number }>;
 }
 
 export type Theme = 'system' | 'dark' | 'light';
