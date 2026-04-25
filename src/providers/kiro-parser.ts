@@ -193,8 +193,8 @@ export function parseKiroStreamChunk(chunk: string, state: KiroStreamState): Ant
   const result: AnthropicStreamEvent[] = [];
 
   const startBlock = (type: 'thinking' | 'text' | 'tool_use', id?: string, name?: string): void => {
-    if (type === 'thinking' && state.thinkingBlockIndex != null) return;
-    if (type === 'text' && state.textBlockIndex != null) return;
+    if (type === 'thinking' && state.thinkingBlockIndex != null) return; // eslint-disable-line eqeqeq
+    if (type === 'text' && state.textBlockIndex != null) return; // eslint-disable-line eqeqeq
     const idx = state.nextBlockIndex++;
     const block: AnthropicContentBlock =
       type === 'thinking' ? { type: 'thinking', thinking: '' }
@@ -207,7 +207,7 @@ export function parseKiroStreamChunk(chunk: string, state: KiroStreamState): Ant
   };
 
   const stopBlock = (idx: number | null): void => {
-    if (idx == null || state.stoppedBlocks.has(idx)) return;
+    if (idx === null || state.stoppedBlocks.has(idx)) return;
     state.stoppedBlocks.add(idx);
     result.push({ type: 'content_block_stop', index: idx });
   };
@@ -231,7 +231,7 @@ export function parseKiroStreamChunk(chunk: string, state: KiroStreamState): Ant
       state.currentToolCall!.input += d.input;
       if (d.input) {
         const idx = state.toolUseBlockIndexes.get(d.toolUseId);
-        if (idx != null) result.push({ type: 'content_block_delta', index: idx, delta: { type: 'input_json_delta', partial_json: d.input } });
+        if (idx != null) result.push({ type: 'content_block_delta', index: idx, delta: { type: 'input_json_delta', partial_json: d.input } }); // eslint-disable-line eqeqeq
       }
       if (d.stop) {
         const idx = state.toolUseBlockIndexes.get(d.toolUseId);
@@ -243,7 +243,7 @@ export function parseKiroStreamChunk(chunk: string, state: KiroStreamState): Ant
       state.currentToolCall.input += input;
       if (input) {
         const idx = state.toolUseBlockIndexes.get(state.currentToolCall.id);
-        if (idx != null) result.push({ type: 'content_block_delta', index: idx, delta: { type: 'input_json_delta', partial_json: input } });
+        if (idx != null) result.push({ type: 'content_block_delta', index: idx, delta: { type: 'input_json_delta', partial_json: input } }); // eslint-disable-line eqeqeq
       }
     } else if (ev.type === 'toolUseStop' && state.currentToolCall) {
       const idx = state.toolUseBlockIndexes.get(state.currentToolCall.id);
