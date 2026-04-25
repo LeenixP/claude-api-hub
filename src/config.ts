@@ -105,6 +105,36 @@ function validateConfig(config: GatewayConfig): void {
 
 let resolvedConfigPath: string | null = null;
 
+function getPkgVersion(): string {
+  try {
+    const pkg = JSON.parse(readFileSync(join(__dirname, '../package.json'), 'utf-8'));
+    return pkg.version || '0.0.0';
+  } catch { return '0.0.0'; }
+}
+
+/**
+ * Migrate config to current version.
+ * - Sets configVersion if missing
+ * - Applies incremental migrations between versions
+ * - Preserves all user values; only adds/renames/removes specific fields
+ */
+export function migrateConfig(config: GatewayConfig): void {
+  const currentVersion = getPkgVersion();
+  const cfg = config as unknown as Record<string, unknown>;
+
+  if (!cfg.configVersion) {
+    // First migration — just stamp the version
+    cfg.configVersion = currentVersion;
+    logger.info(`Config migration: stamped configVersion=${currentVersion}`);
+    return;
+  }
+
+  // Future migration steps go here:
+  // if (semverLt(cfg.configVersion as string, '7.0.0')) { ... }
+
+  cfg.configVersion = currentVersion;
+}
+
 export function getConfigPath(): string {
   if (!resolvedConfigPath) {
     throw new Error('Config not loaded yet. Call loadConfig() first.');
@@ -138,6 +168,7 @@ export function loadConfig(configPath?: string): GatewayConfig {
   const parsed = JSON.parse(raw);
   const config = interpolateConfig(parsed) as GatewayConfig;
   normalizeProviders(config);
+  migrateConfig(config);
   validateConfig(config);
   return config;
 }
