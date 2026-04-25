@@ -13,6 +13,7 @@ export function Modal({ open, onClose, title, children, maxWidth = '600px' }: Mo
   const dialogRef = useRef<HTMLDivElement>(null);
   const firstFocusableRef = useRef<HTMLElement | null>(null);
   const lastFocusableRef = useRef<HTMLElement | null>(null);
+  const wasOpenRef = useRef(false);
 
   const updateFocusable = useCallback(() => {
     if (!dialogRef.current) return;
@@ -23,17 +24,33 @@ export function Modal({ open, onClose, title, children, maxWidth = '600px' }: Mo
     lastFocusableRef.current = focusable[focusable.length - 1] || null;
   }, []);
 
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
+  useEffect(() => {
+    if (!open) {
+      wasOpenRef.current = false;
+      return;
+    }
+
+    // Only focus on first open, not on re-renders while already open
+    if (!wasOpenRef.current) {
+      wasOpenRef.current = true;
+      const timer = setTimeout(() => {
+        updateFocusable();
+        firstFocusableRef.current?.focus();
+      }, 10);
+
+      return () => clearTimeout(timer);
+    }
+  }, [open, updateFocusable]);
+
   useEffect(() => {
     if (!open) return;
-    // Focus first focusable element after render
-    const timer = setTimeout(() => {
-      updateFocusable();
-      firstFocusableRef.current?.focus();
-    }, 10);
 
     function onKeyDown(e: KeyboardEvent) {
       if (e.key === 'Escape') {
-        onClose();
+        onCloseRef.current();
         return;
       }
       if (e.key === 'Tab') {
@@ -55,16 +72,14 @@ export function Modal({ open, onClose, title, children, maxWidth = '600px' }: Mo
     }
 
     document.addEventListener('keydown', onKeyDown);
-    // Prevent body scroll
     const prevOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
 
     return () => {
-      clearTimeout(timer);
       document.removeEventListener('keydown', onKeyDown);
       document.body.style.overflow = prevOverflow;
     };
-  }, [open, onClose, updateFocusable]);
+  }, [open, updateFocusable]);
 
   if (!open) return null;
 
