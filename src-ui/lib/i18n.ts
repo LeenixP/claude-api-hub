@@ -7,7 +7,7 @@ const zh: Record<string, string> = {
   // Nav
   'nav.dashboard': '仪表盘',
   'nav.providers': '供应商',
-  'nav.aliases': '别名映射',
+  'nav.aliases': '模型映射',
   'nav.logs': '请求日志',
   'nav.config': '配置',
 
@@ -50,6 +50,10 @@ const zh: Record<string, string> = {
   'token.daily': '每日趋势',
   'token.noData': '暂无数据',
   'token.less': '少',
+  'token.totalUsed': '总用量',
+  'token.dailyAvg': '日均',
+  'token.activeDays': '活跃天数',
+  'token.peakDay': '峰值日',
 
   // Dashboard - QuickStart
   'quickstart.welcome': '欢迎使用 API Hub',
@@ -362,6 +366,10 @@ const en: Record<string, string> = {
   'token.daily': 'Daily Trend',
   'token.noData': 'No data yet',
   'token.less': 'Less',
+  'token.totalUsed': 'Total',
+  'token.dailyAvg': 'Daily Avg',
+  'token.activeDays': 'Active Days',
+  'token.peakDay': 'Peak Day',
 
   'sysinfo.title': 'System Info',
   'sysinfo.version': 'Version',

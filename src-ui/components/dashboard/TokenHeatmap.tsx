@@ -21,7 +21,7 @@ const LEGEND_LEVELS = [0, 0.05, 0.15, 0.35, 0.65];
 export function TokenHeatmap({ tokenStats }: TokenHeatmapProps) {
   const { t } = useLocale();
 
-  const { weeks, maxTokens } = useMemo(() => {
+  const { weeks, maxTokens, stats } = useMemo(() => {
     const daily = tokenStats?.daily || [];
     const map = new Map(daily.map(d => [d.date, d.totalTokens]));
     const today = new Date();
@@ -37,7 +37,11 @@ export function TokenHeatmap({ tokenStats }: TokenHeatmapProps) {
     for (let i = 0; i < days.length; i += 7) {
       wks.push(days.slice(i, i + 7));
     }
-    return { weeks: wks, maxTokens: maxT };
+    const activeDays = days.filter(d => d.tokens > 0).length;
+    const totalTokens = days.reduce((s, d) => s + d.tokens, 0);
+    const avgDaily = activeDays > 0 ? Math.round(totalTokens / activeDays) : 0;
+    const peakDay = days.reduce((best, d) => d.tokens > best.tokens ? d : best, days[0]);
+    return { weeks: wks, maxTokens: maxT, stats: { activeDays, totalTokens, avgDaily, peakDate: peakDay?.date || '', peakTokens: peakDay?.tokens || 0 } };
   }, [tokenStats]);
 
   if (!tokenStats || tokenStats.daily.length === 0) {
@@ -88,6 +92,24 @@ export function TokenHeatmap({ tokenStats }: TokenHeatmapProps) {
           ))}
         </div>
         <span>{maxTokens.toLocaleString()}</span>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px 16px;margin-top:14px;padding-top:12px;border-top:1px solid var(--color-border)">
+        <div>
+          <div style="font-size:10px;color:var(--color-text-muted);text-transform:uppercase;letter-spacing:0.3px">{t('token.totalUsed')}</div>
+          <div style="font-size:13px;font-weight:600;color:var(--color-text);margin-top:2px">{stats.totalTokens.toLocaleString()}</div>
+        </div>
+        <div>
+          <div style="font-size:10px;color:var(--color-text-muted);text-transform:uppercase;letter-spacing:0.3px">{t('token.dailyAvg')}</div>
+          <div style="font-size:13px;font-weight:600;color:var(--color-text);margin-top:2px">{stats.avgDaily.toLocaleString()}</div>
+        </div>
+        <div>
+          <div style="font-size:10px;color:var(--color-text-muted);text-transform:uppercase;letter-spacing:0.3px">{t('token.activeDays')}</div>
+          <div style="font-size:13px;font-weight:600;color:var(--color-text);margin-top:2px">{stats.activeDays} / 90</div>
+        </div>
+        <div>
+          <div style="font-size:10px;color:var(--color-text-muted);text-transform:uppercase;letter-spacing:0.3px">{t('token.peakDay')}</div>
+          <div style="font-size:13px;font-weight:600;color:var(--color-text);margin-top:2px">{stats.peakDate ? stats.peakDate.slice(5) : '-'} <span style="font-weight:400;color:var(--color-text-muted)">{stats.peakTokens.toLocaleString()}</span></div>
+        </div>
       </div>
     </div>
   );
