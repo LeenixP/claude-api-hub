@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'preact/hooks';
+import { useLocale } from '../../lib/i18n.js';
 
 interface CopyButtonProps {
   text: string;
@@ -6,6 +7,7 @@ interface CopyButtonProps {
 }
 
 export function CopyButton({ text, class: className = '' }: CopyButtonProps) {
+  const { t } = useLocale();
   const [copied, setCopied] = useState(false);
 
   const handleCopy = useCallback(async () => {
@@ -45,7 +47,7 @@ export function CopyButton({ text, class: className = '' }: CopyButtonProps) {
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
             <polyline points="20 6 9 17 4 12" />
           </svg>
-          <span>Copied!</span>
+          <span>{t('common.copied')}</span>
         </>
       ) : (
         <>
@@ -53,7 +55,7 @@ export function CopyButton({ text, class: className = '' }: CopyButtonProps) {
             <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
             <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
           </svg>
-          <span>Copy</span>
+          <span>{t('common.copy')}</span>
         </>
       )}
     </button>

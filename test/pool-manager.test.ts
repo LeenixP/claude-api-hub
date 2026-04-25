@@ -10,7 +10,7 @@ describe('KeyPool', () => {
 
   describe('Round-Robin rotation', () => {
     beforeEach(() => {
-      pool = new KeyPool(['a', 'b', 'c']);
+      pool = new KeyPool(['a', 'b', 'c'], { persist: false });
     });
 
     it('cycles through keys in order', () => {
@@ -23,7 +23,7 @@ describe('KeyPool', () => {
 
   describe('reportError', () => {
     beforeEach(() => {
-      pool = new KeyPool(['a', 'b']);
+      pool = new KeyPool(['a', 'b'], { persist: false });
     });
 
     it('marks key unhealthy after 5 consecutive errors', () => {
@@ -41,7 +41,7 @@ describe('KeyPool', () => {
 
   describe('reportSuccess', () => {
     beforeEach(() => {
-      pool = new KeyPool(['a']);
+      pool = new KeyPool(['a'], { persist: false });
     });
 
     it('resets error count and restores health', () => {
@@ -55,7 +55,7 @@ describe('KeyPool', () => {
 
   describe('getKey skips unhealthy keys', () => {
     beforeEach(() => {
-      pool = new KeyPool(['a', 'b']);
+      pool = new KeyPool(['a', 'b'], { persist: false });
     });
 
     it('returns only healthy keys', () => {
@@ -67,7 +67,7 @@ describe('KeyPool', () => {
 
   describe('getStatus', () => {
     it('returns correct status for all keys', () => {
-      pool = new KeyPool(['x', 'y']);
+      pool = new KeyPool(['x', 'y'], { persist: false });
       pool.reportError('x');
       const status = pool.getStatus();
       expect(status).toEqual([
@@ -79,7 +79,7 @@ describe('KeyPool', () => {
 
   describe('all keys unhealthy', () => {
     it('getKey returns null as fallback', () => {
-      pool = new KeyPool(['a', 'b']);
+      pool = new KeyPool(['a', 'b'], { persist: false });
       for (let i = 0; i < 5; i++) {
         pool.reportError('a');
         pool.reportError('b');

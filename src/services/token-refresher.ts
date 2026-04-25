@@ -50,7 +50,7 @@ export class TokenRefresher {
 
     let refreshed = 0;
     for (const [key, pc] of oauthProviders) {
-      const credsPath = pc.kiroCredsPath || getDefaultCredsPath();
+      const credsPath = (pc.options?.kiroCredsPath as string | undefined) || getDefaultCredsPath();
       try {
         const status = getCredentialStatus(credsPath);
         if (!status.canRefresh) continue;

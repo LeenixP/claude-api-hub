@@ -1,156 +1,272 @@
-# Contributing to claude-api-hub
+# Contributing to Claude API Hub
 
-Thank you for your interest in contributing! This guide will help you get started.
+Thank you for your interest in contributing to Claude API Hub! This document provides guidelines and instructions for contributing.
 
-## Development Setup
+## Development Environment Setup
 
-```bash
-git clone https://github.com/LeenixP/claude-api-hub.git
-cd claude-api-hub
-npm install
-npm run dev
-```
+### Prerequisites
 
-## Project Structure
+- **Node.js >= 22**: Claude API Hub requires Node.js 22 or later.
+  ```bash
+  node -v  # Verify version
+  nvm install 22  # If needed
+  ```
 
-```
-src/
-├── index.ts          # Entry point, provider factory, graceful shutdown
-├── server.ts         # HTTP server setup
-├── router.ts         # Model routing and alias resolution
-├── config.ts         # Configuration loading and validation
-├── dashboard.ts      # Embedded web dashboard (legacy)
-├── routes/           # Route handler modules
-│   ├── messages.ts   # /v1/messages proxy endpoint
-│   ├── admin.ts      # Admin API endpoints
-│   ├── config.ts     # Config management endpoints
-│   ├── oauth.ts      # OAuth flow endpoints
-│   ├── health.ts     # Health check endpoints
-│   ├── logs.ts       # Log endpoints
-│   └── stats.ts      # Stats and metrics endpoints
-├── middleware/       # Auth and security middleware
-│   ├── auth.ts       # Authentication middleware
-│   ├── rate-limit.ts # Rate limiting middleware
-│   └── cors.ts       # CORS handling
-├── services/         # Core business logic services
-│   ├── forwarder.ts  # Request forwarding logic
-│   ├── pool-manager.ts # Key pool management
-│   ├── event-bus.ts  # SSE event broadcasting
-│   ├── rate-tracker.ts # QPS/RPM/TPS metrics
-│   ├── token-refresher.ts # OAuth token refresh
-│   └── log-manager.ts # File logging management
-├── providers/        # Provider implementations
-│   ├── types.ts      # Shared type definitions
-│   ├── factory.ts    # Provider factory
-│   ├── claude.ts     # Anthropic passthrough provider
-│   ├── generic.ts    # OpenAI-compatible provider
-│   ├── kiro.ts       # Kiro provider
-│   ├── kiro-auth.ts  # Kiro authentication
-│   ├── kiro-converter.ts # Kiro request/response conversion
-│   ├── kiro-oauth.ts # Kiro OAuth flow
-│   └── kiro-parser.ts # Kiro response parsing
-└── translator/       # Protocol translation layer
-    ├── anthropic-to-openai.ts  # Request translation (Anthropic → OpenAI)
-    └── openai-to-anthropic.ts  # Response translation (OpenAI → Anthropic)
-src-ui/               # Preact frontend
-├── components/       # UI components
-├── hooks/            # React hooks
-└── lib/              # Utility functions
-scripts/              # Build scripts
-└── build-ui.mjs      # esbuild + Tailwind CSS build pipeline
-config/               # Default configuration
-└── default providers.json
-static/               # Build output (index.html, style.css, bundle.js)
-test/                 # Vitest test files
-```
+- **npm**: Comes with Node.js, or install via [nodejs.org](https://nodejs.org)
 
-## Frontend Development
+### Installation
 
-The frontend is built with **Preact** and **Tailwind CSS**, styled after the Traefik Dashboard.
+1. Fork the repository on GitHub
 
-```bash
-npm run dev:ui      # Watch mode — rebuilds on file changes
-npm run build:ui    # Production build
-```
+2. Clone your fork:
+   ```bash
+   git clone https://github.com/YOUR_USERNAME/claude-api-hub.git
+   cd claude-api-hub
+   ```
 
-### Component Structure
+3. Install dependencies:
+   ```bash
+   npm install
+   ```
 
-Components live in `src-ui/components/` and follow a flat hierarchy:
-
-- `App.tsx` — Root component, handles routing between Dashboard and Config views
-- `Dashboard.tsx` — Main dashboard with provider cards and alias editor
-- `ConfigEditor.tsx` — Dual-mode config editor (UI form + raw JSON)
-- `ProviderCard.tsx` — Individual provider display card
-- `LogViewer.tsx` — Real-time request log viewer with SSE
-- `AliasEditor.tsx` — Alias mapping editor with model dropdowns
-
-### Styling
-
-- **Tailwind CSS** for utility-first styling
-- **CSS variables** for theming (dark/light mode support)
-- Colors follow the Traefik Dashboard palette: slate backgrounds, indigo accents, emerald success states
-
-## How to Contribute
-
-### Reporting Bugs
-
-- Use the [GitHub Issues](https://github.com/LeenixP/claude-api-hub/issues) page
-- Include your Node.js version, OS, and steps to reproduce
-- Include relevant config (with API keys redacted)
-
-### Suggesting Features
-
-- Open an issue with the `enhancement` label
-- Describe the use case and expected behavior
-
-### Submitting Pull Requests
-
-1. Fork the repository
-2. Create a feature branch: `git checkout -b feat/my-feature`
-3. Make your changes
-4. Run tests: `npm test`
-5. Run type check: `npx tsc --noEmit`
-6. Commit with conventional commits: `feat:`, `fix:`, `refactor:`, `docs:`, `test:`
-7. Push and open a PR against `main`
-
-### Commit Convention
-
-We use [Conventional Commits](https://www.conventionalcommits.org):
-
-- `feat:` — New feature
-- `fix:` — Bug fix
-- `refactor:` — Code refactoring
-- `docs:` — Documentation changes
-- `test:` — Test additions or fixes
-- `chore:` — Build, CI, or tooling changes
-
-### Adding a New Provider
-
-1. Create a new class implementing the `Provider` interface in `src/providers/`
-2. Register it in the provider factory in `src/providers/factory.ts`
-3. Add tests in `test/`
-4. Update README with configuration example
+4. Create a feature branch:
+   ```bash
+   git checkout -b feat/your-feature-name
+   ```
 
 ## Code Style
 
-- TypeScript strict mode
-- Semicolons required
-- 2-space indentation
-- Minimal comments — code should be self-documenting
-- JSDoc on public interfaces and exported functions
+### TypeScript
 
-## Running Tests
+We use TypeScript with strict mode enabled. Key guidelines:
+
+- **Strict mode**: All TypeScript checks enabled (`strict: true` in tsconfig.json)
+- **Explicit types**: Always declare return types for functions and methods
+- **No `any`**: Avoid `any` type; use `unknown` when type is truly unknown
+- **Interfaces over types**: Prefer interfaces for object shapes
+
+### Formatting
+
+- 2 spaces for indentation
+- Single quotes for strings
+- Trailing commas in multiline structures
+- Semicolons required
+
+### Naming Conventions
+
+- **Variables/Functions**: `camelCase`
+- **Classes/Interfaces/Types**: `PascalCase`
+- **Constants**: `SCREAMING_SNAKE_CASE`
+- **Files**: `kebab-case.ts`
+
+## Testing
+
+### Running Tests
 
 ```bash
-npm test              # Run all tests
-npx vitest run        # Same, explicit
-npx vitest --watch    # Watch mode
-npm run test:coverage # Run tests with coverage report
+# Run all tests
+npm test
+
+# Run tests in watch mode during development
+npm run test:watch
+
+# Run tests with coverage report
+npm run test:coverage
 ```
 
-### Coverage
+### Test Coverage Requirements
 
-Coverage thresholds are set at **60%** for all metrics. The coverage report is generated with `npm run test:coverage`.
+- Maintain at least 60% code coverage
+- All new features must include tests
+- Bug fixes must include regression tests
+
+### Writing Tests
+
+- Use Vitest as the test framework
+- Place tests alongside source files: `src/foo.ts` → `src/foo.test.ts`
+- Use descriptive test names that explain the expected behavior
+- Mock external dependencies (HTTP requests, file system)
+
+Example test structure:
+```typescript
+import { describe, it, expect, vi } from 'vitest';
+import { yourFunction } from './your-module';
+
+describe('yourFunction', () => {
+  it('should do something specific', () => {
+    const result = yourFunction(input);
+    expect(result).toBe(expected);
+  });
+
+  it('should handle error cases', () => {
+    expect(() => yourFunction(invalidInput)).toThrow();
+  });
+});
+```
+
+## Building
+
+```bash
+# Build TypeScript and UI
+npm run build
+
+# Build TypeScript only
+npm run build:ts
+
+# Build UI only
+npm run build:ui
+
+# Development mode with hot reload
+npm run dev
+
+# Frontend watch mode
+npm run dev:ui
+```
+
+## Linting
+
+```bash
+# Run ESLint
+npm run lint
+```
+
+## Commit Message Format
+
+We follow the [Conventional Commits](https://www.conventionalcommits.org/) specification:
+
+```
+<type>(<scope>): <description>
+
+[optional body]
+
+[optional footer(s)]
+```
+
+### Types
+
+- `feat`: A new feature
+- `fix`: A bug fix
+- `docs`: Documentation only changes
+- `style`: Changes that don't affect code meaning (formatting, etc.)
+- `refactor`: Code change that neither fixes a bug nor adds a feature
+- `perf`: A code change that improves performance
+- `test`: Adding missing tests or correcting existing tests
+- `chore`: Changes to the build process or auxiliary tools
+
+### Examples
+
+```
+feat(provider): add support for new AI provider
+
+fix(routing): prevent infinite loop in fallback chain
+
+docs(readme): add Docker installation instructions
+
+test(auth): add tests for session token refresh
+```
+
+## Pull Request Guidelines
+
+### Before Submitting
+
+1. **Run all tests**: `npm test`
+2. **Run linting**: `npm run lint`
+3. **Build the project**: `npm run build`
+4. **Keep branch updated**: Rebase on main before submitting
+
+### PR Description
+
+Include the following in your PR description:
+
+- **Summary**: Brief description of the changes
+- **Motivation**: Why this change is needed
+- **Breaking Changes**: Any API or behavior changes
+- **Related Issues**: Link to any related issues (e.g., "Closes #123")
+
+### PR Size
+
+- Keep PRs focused and reasonably sized
+- If submitting a large feature, consider splitting into smaller PRs
+
+## Provider Development Guide
+
+Adding support for a new LLM provider is one of the most common contribution types.
+
+### Steps to Add a Provider
+
+1. **Understand the provider's API**:
+   - Does it use Anthropic format (passthrough)?
+   - Does it use OpenAI format (needs translation)?
+   - Does it use a custom format (Kiro-style)?
+
+2. **Implement protocol translation** (if needed):
+   - Create a translator class in `src/translators/`
+   - Handle request/response mapping
+   - Test with provider's API
+
+3. **Add provider config schema**:
+   - Update provider interface in types
+   - Add to default providers config
+
+4. **Test the provider**:
+   - Add unit tests for the translator
+   - Test end-to-end with the actual API
+   - Verify model listing works
+
+### Provider Types
+
+```typescript
+// Standard OpenAI-compatible provider
+interface OpenAIProvider {
+  baseUrl: string;        // e.g., "https://api.provider.com/v1"
+  apiKey: string;         // Bearer token
+  passthrough: false;    // Use OpenAI format
+  models: string[];      // Available models
+  defaultModel: string;   // Default model
+}
+
+// Anthropic-compatible provider (passthrough)
+interface AnthropicProvider {
+  baseUrl: string;
+  apiKey: string;        // x-api-key header
+  passthrough: true;     // Forward as-is
+}
+
+// OAuth-based provider (Kiro-style)
+interface OAuthProvider {
+  providerType: "kiro";
+  authMode: "oauth";
+  kiroRegion: string;
+  // OAuth flow handled separately
+}
+```
+
+### Protocol Translation
+
+If the provider uses OpenAI format but you receive Anthropic format:
+
+```typescript
+// Request: Anthropic → OpenAI
+{
+  model: "claude-sonnet-4-6",
+  max_tokens: 1024,
+  messages: [...],
+  system: "You are helpful."
+}
+// ↓ Translate to ↓
+{
+  model: "provider-model-id",
+  max_tokens: 1024,
+  messages: [...],
+  system: "You are helpful."
+}
+```
+
+## Questions?
+
+- Open an issue for bugs or feature requests
+- Check existing issues before creating new ones
+- Feel free to contribute improvements to documentation
 
 ## License
 

@@ -1,12 +1,11 @@
 import http from 'http';
-import crypto from 'crypto';
 import { ModelRouter } from './router.js';
 import { GatewayConfig } from './providers/types.js';
 import { createProvider } from './providers/factory.js';
 import { getConfigPath } from './config.js';
 import { logger } from './logger.js';
 import { getCorsHeaders, sendError, sendJson, readBody, maskKey } from './utils/http.js';
-import { PerIpRateLimiter, requireAdmin, setSecurityHeaders, createSessionToken } from './middleware/auth.js';
+import { PerIpRateLimiter, requireAdmin, setSecurityHeaders, createSessionToken, timingSafeCompare, loginRateLimiter, revokeSession } from './middleware/auth.js';
 import { LogManager } from './services/log-manager.js';
 import type { EventBus } from './services/event-bus.js';
 import type { RateTracker } from './services/rate-tracker.js';
@@ -16,6 +15,8 @@ import { handleAdminLogsRoutes } from './routes/admin-logs.js';
 import { handleOAuthRoutes } from './routes/oauth.js';
 import { handleProxyRoute } from './routes/proxy.js';
 import { handleProbeRoute } from './routes/probe.js';
+import { handleMetrics } from './routes/metrics.js';
+import { handleSystemRoutes } from './routes/system-info.js';
 
 export { rebuildProviders };
 
@@ -47,6 +48,12 @@ export function createServer(router: ModelRouter, config: GatewayConfig, logMana
       // ─── Public Routes ───
 
       if (req.method === 'POST' && pathname === '/api/auth/login') {
+        const clientIp = req.socket.remoteAddress?.replace('::ffff:', '') || 'unknown';
+        const rateCheck = loginRateLimiter.tryConsume(clientIp);
+        if (!rateCheck.allowed) {
+          sendJson(res, 429, { error: rateCheck.reason });
+          return;
+        }
         let bodyStr: string;
         try { bodyStr = await readBody(req); } catch {
           sendError(res, 400, 'invalid_request_error', 'Failed to read request body', config, origin); return;
@@ -61,18 +68,25 @@ export function createServer(router: ModelRouter, config: GatewayConfig, logMana
           return;
         }
         if (!body.password) {
-          sendJson(res, 401, { success: false, message: 'Password required' }, config, origin);
+          loginRateLimiter.recordFailure(clientIp);
+          sendError(res, 401, 'authentication_error', 'Invalid credentials', config, origin);
           return;
         }
-        const bufA = Buffer.from(body.password, 'utf-8');
-        const bufB = Buffer.from(password, 'utf-8');
-        const match = bufA.length === bufB.length && crypto.timingSafeEqual(bufA, bufB);
+        const match = timingSafeCompare(body.password, password);
         if (match) {
           const sessionToken = createSessionToken();
           sendJson(res, 200, { success: true, token: sessionToken }, config, origin);
         } else {
-          sendJson(res, 401, { success: false, message: 'Incorrect password' }, config, origin);
+          loginRateLimiter.recordFailure(clientIp);
+          sendError(res, 401, 'authentication_error', 'Invalid credentials', config, origin);
         }
+        return;
+      }
+
+      if (pathname === '/api/auth/logout' && req.method === 'POST') {
+        const token = req.headers.authorization?.replace('Bearer ', '') || req.headers['x-admin-token'] as string;
+        if (token) revokeSession(token);
+        sendJson(res, 200, { ok: true });
         return;
       }
 
@@ -88,6 +102,7 @@ export function createServer(router: ModelRouter, config: GatewayConfig, logMana
       // ─── Admin API Routes ───
 
       if (await handleAdminConfigRoutes(req, res, ctx, pathname, cors, origin)) return;
+      if (await handleSystemRoutes(req, res, ctx, pathname, cors)) return;
       if (await handleAdminLogsRoutes(req, res, ctx, pathname, cors, origin)) return;
       if (await handleOAuthRoutes(req, res, ctx, pathname, cors, origin)) return;
       if (await handleProbeRoute(req, res, ctx, pathname, cors, origin)) return;
@@ -95,6 +110,10 @@ export function createServer(router: ModelRouter, config: GatewayConfig, logMana
       // ─── Proxy: /v1/messages ───
 
       if (await handleProxyRoute(req, res, ctx, pathname, cors, origin, rateLimiter)) return;
+      if (pathname === '/metrics') {
+        if (!await requireAdmin(req, res, config)) return;
+      }
+      if (await handleMetrics(req, res, ctx, pathname, cors)) return;
 
       sendError(res, 404, 'not_found_error', `Unknown endpoint: ${req.method} ${pathname}`, config, origin);
     } catch (err) {

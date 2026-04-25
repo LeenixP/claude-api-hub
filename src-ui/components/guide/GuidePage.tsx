@@ -110,13 +110,14 @@ export function GuidePage({ config }: GuidePageProps) {
               </div>
             </div>
             <div class="relative">
+              <div class="flex items-center justify-between mb-1">
+                <span />
+                <CopyButton text={step.code} />
+              </div>
               <pre
                 class="px-3 py-2.5 rounded-lg text-xs font-mono overflow-x-auto"
                 style="background:var(--color-bg);color:var(--color-text-dim)"
               >{step.code}</pre>
-              <div class="absolute top-2 right-2">
-                <CopyButton text={step.code} />
-              </div>
             </div>
             <p class="text-xs mt-2" style="color:var(--color-text-muted)">{step.note}</p>
           </div>

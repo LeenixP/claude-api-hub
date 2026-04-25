@@ -144,7 +144,7 @@ describe('config', () => {
       },
     };
     const path = writeTestConfig(cfg);
-    expect(() => loadConfig(path)).toThrow('at least one provider must be enabled');
+    expect(() => loadConfig(path)).toThrow('No enabled providers found');
   });
 
   it('throws on negative rateLimitRpm', () => {

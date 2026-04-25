@@ -2,10 +2,11 @@ import { useState, useEffect, useCallback, useRef } from 'preact/hooks';
 
 interface UseApiOptions {
   immediate?: boolean;
+  pollIntervalMs?: number;
 }
 
 export function useApi<T>(url: string | null, options: UseApiOptions = {}) {
-  const { immediate = true } = options;
+  const { immediate = true, pollIntervalMs } = options;
   const [data, setData] = useState<T | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(immediate && url !== null);
@@ -56,10 +57,15 @@ export function useApi<T>(url: string | null, options: UseApiOptions = {}) {
     if (immediate && url) {
       execute();
     }
+    let interval: ReturnType<typeof setInterval> | undefined;
+    if (pollIntervalMs && url) {
+      interval = setInterval(() => execute(), pollIntervalMs);
+    }
     return () => {
       abortRef.current?.abort();
+      if (interval) clearInterval(interval);
     };
-  }, [url, immediate, execute]);
+  }, [url, immediate, execute, pollIntervalMs]);
 
   return { data, error, loading, execute };
 }

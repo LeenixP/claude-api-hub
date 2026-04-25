@@ -1,6 +1,6 @@
 {
   "name": "claude-api-hub",
-  "version": "5.1.1",
+  "version": "6.0.0",
   "description": "Multi-provider API gateway for Claude Code — route requests to any LLM provider with zero config switching",
   "type": "module",
   "main": "dist/index.js",
@@ -18,7 +18,8 @@
     "dist",
     "config",
     "static",
-    "README.md"
+    "README.md",
+    "README.en.md"
   ],
   "scripts": {
     "build": "tsc && node scripts/build-ui.mjs",

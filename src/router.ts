@@ -15,6 +15,7 @@ export class ModelRouter {
 
   register(provider: Provider): void {
     this.providers.set(provider.name, provider);
+    this.detectConflicts();
   }
 
   clear(): void {
@@ -25,11 +26,17 @@ export class ModelRouter {
     const newMap = new Map<string, Provider>();
     for (const p of providers) newMap.set(p.name, p);
     this.providers = newMap;
+    this.detectConflicts();
   }
 
-  /** Resolve a model name through aliases, tier matching, provider lookup, and fallback chain. */
+  /** Resolve a model name through aliases, tier matching, provider lookup, and fallback chain.
+   *  Supports explicit provider targeting via "providerKey/model" syntax in both model names and alias values. */
   route(model: string): RouteResult {
     const originalModel = model;
+
+    // Explicit provider targeting: "providerKey/model"
+    const targeted = this.tryTargetedRoute(model, originalModel);
+    if (targeted) return targeted;
 
     // Exact alias match first
     if (this.aliases[model]) {
@@ -46,6 +53,10 @@ export class ModelRouter {
         }
       }
     }
+
+    // Check again after alias resolution (alias value may contain "providerKey/model")
+    const aliasTargeted = this.tryTargetedRoute(model, originalModel);
+    if (aliasTargeted) return aliasTargeted;
 
     for (const provider of this.providers.values()) {
       if (provider.config.enabled && provider.matchModel(model)) {
@@ -94,6 +105,46 @@ export class ModelRouter {
       current = next;
     }
     return null;
+  }
+
+  private getProviderKey(provider: Provider): string {
+    return provider.config.key || provider.name;
+  }
+
+  private tryTargetedRoute(model: string, originalModel: string): RouteResult | null {
+    const slashIdx = model.indexOf('/');
+    if (slashIdx <= 0) return null;
+    const providerKey = model.substring(0, slashIdx);
+    const actualModel = model.substring(slashIdx + 1);
+    for (const provider of this.providers.values()) {
+      const configKey = this.getProviderKey(provider);
+      if ((configKey === providerKey || provider.name === providerKey) && provider.config.enabled) {
+        if (provider.isHealthy && !provider.isHealthy()) {
+          const fallback = this.tryFallback(provider.name, actualModel);
+          if (fallback) return { ...fallback, originalModel };
+        }
+        return { provider, resolvedModel: provider.resolveModel(actualModel), originalModel };
+      }
+    }
+    return null;
+  }
+
+  private detectConflicts(): void {
+    const modelOwners = new Map<string, string[]>();
+    for (const provider of this.providers.values()) {
+      if (!provider.config.enabled) continue;
+      const key = this.getProviderKey(provider);
+      for (const m of provider.config.models) {
+        const owners = modelOwners.get(m) || [];
+        owners.push(key);
+        modelOwners.set(m, owners);
+      }
+    }
+    for (const [model, owners] of modelOwners) {
+      if (owners.length > 1) {
+        console.warn(`[warn] Model "${model}" exists in multiple providers: ${owners.join(', ')}. Use "providerKey/${model}" to disambiguate.`);
+      }
+    }
   }
 }
 

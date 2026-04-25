@@ -8,12 +8,14 @@ import { createServer } from './server.js';
 import { rebuildProviders } from './server.js';
 import { TokenRefresher } from './services/token-refresher.js';
 import { createProvider } from './providers/factory.js';
+import type { Provider } from './providers/types.js';
 import { logger, setLogLevel } from './logger.js';
 import { destroyAgents } from './services/forwarder.js';
 import { DEFAULT_TOKEN_REFRESH_MINUTES } from './constants.js';
 import { LogManager } from './services/log-manager.js';
 import { EventBus } from './services/event-bus.js';
 import { RateTracker } from './services/rate-tracker.js';
+import { KeyPool } from './services/pool-manager.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -63,10 +65,11 @@ async function main(): Promise<void> {
 
   const providers = Object.entries(config.providers)
     .filter(([, pc]) => pc.enabled)
-    .map(([, pc]) => createProvider(pc));
+    .map(([key, pc]) => { pc.key = key; return createProvider(pc); })
+    .filter((p): p is Provider => p !== null);
 
   if (providers.length === 0) {
-    logger.error('No providers loaded. Exiting.');
+    logger.error('No providers loaded. Check provider configuration or credentials. Exiting.');
     process.exit(1);
   }
 
@@ -102,6 +105,9 @@ async function main(): Promise<void> {
     }
   });
 
+  // Restore KeyPool state on startup
+  KeyPool.loadState([]);
+
   let isShuttingDown = false;
   function gracefulShutdown(signal: string): void {
     if (isShuttingDown) {
@@ -110,20 +116,41 @@ async function main(): Promise<void> {
     }
     isShuttingDown = true;
     logger.info(`Received ${signal}, shutting down gracefully...`);
+
+    // Signal clients to stop sending new requests
+    server.on('connection', (socket) => {
+      socket.setNoDelay(true);
+    });
+    server.maxHeadersCount = 0;
+
     tokenRefresher.stop();
+
+    const startTime = Date.now();
+    const timeoutMs = 30000;
+    const progressInterval = setInterval(() => {
+      const elapsed = Date.now() - startTime;
+      if (elapsed < timeoutMs) {
+        logger.info(`Shutting down... ${Math.round(elapsed / 1000)}s elapsed, waiting for connections to close.`);
+      }
+    }, 5000);
+
     server.close(() => {
+      clearInterval(progressInterval);
+      logger.info('Server closed. Saving state and exiting.');
       destroyAgents();
       rateTracker.destroy();
       logManager.close();
       process.exit(0);
     });
+
     setTimeout(() => {
-      logger.warn('Graceful shutdown timed out after 10s, forcing exit.');
+      clearInterval(progressInterval);
+      logger.warn('Graceful shutdown timed out after 30s, forcing exit.');
       destroyAgents();
       rateTracker.destroy();
       logManager.close();
       process.exit(1);
-    }, 10000).unref();
+    }, timeoutMs).unref();
   }
 
   process.on('SIGINT', () => gracefulShutdown('SIGINT'));

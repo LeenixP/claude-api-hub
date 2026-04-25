@@ -1,4 +1,4 @@
-import type { GatewayConfig, LogEntry, ModelInfo, Stats, ProviderConfig } from '../types.js';
+import type { GatewayConfig, LogEntry, ModelInfo, Stats, ProviderConfig, TokenStats } from '../types.js';
 
 function getHeaders(): Record<string, string> {
   const token = localStorage.getItem('adminToken') || '';
@@ -6,31 +6,39 @@ function getHeaders(): Record<string, string> {
 }
 
 async function api<T>(url: string, options: RequestInit = {}): Promise<T> {
-  const res = await fetch(url, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...getHeaders(),
-      ...(options.headers || {}),
-    },
-  });
-  if (res.status === 401) {
-    window.dispatchEvent(new CustomEvent('api:unauthorized'));
-    throw new Error('Unauthorized');
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 30000);
+  try {
+    const res = await fetch(url, {
+      ...options,
+      signal: controller.signal,
+      headers: {
+        'Content-Type': 'application/json',
+        ...getHeaders(),
+        ...(options.headers || {}),
+      },
+    });
+    if (res.status === 401) {
+      window.dispatchEvent(new CustomEvent('api:unauthorized'));
+      throw new Error('Unauthorized');
+    }
+    if (!res.ok) {
+      const text = await res.text().catch(() => 'Unknown error');
+      throw new Error(`${res.status}: ${text}`);
+    }
+    return res.json();
+  } finally {
+    clearTimeout(timeout);
   }
-  if (!res.ok) {
-    const text = await res.text().catch(() => 'Unknown error');
-    throw new Error(`${res.status}: ${text}`);
-  }
-  return res.json();
 }
 
 export function getConfig(): Promise<GatewayConfig> {
   return api<GatewayConfig>('/api/config');
 }
 
-export function getLogs(): Promise<LogEntry[]> {
-  return api<LogEntry[]>('/api/logs');
+export async function getLogs(): Promise<LogEntry[]> {
+  const data = await api<{ logs?: LogEntry[] } | LogEntry[]>('/api/logs');
+  return Array.isArray(data) ? data : (data.logs || []);
 }
 
 export function getModels(): Promise<ModelInfo[]> {
@@ -50,6 +58,10 @@ export function probeModels(baseUrl: string, apiKey: string, passthrough: boolea
 
 export function getStats(): Promise<Stats> {
   return api<Stats>('/api/stats');
+}
+
+export function fetchTokenStats(): Promise<TokenStats> {
+  return api<TokenStats>('/api/token-stats');
 }
 
 export function saveAliases(aliases: Record<string, string>): Promise<void> {

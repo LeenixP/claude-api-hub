@@ -14,3 +14,4 @@ static/bundle.js
 static/style.css
 .vscode/
 .idea/
+core.*

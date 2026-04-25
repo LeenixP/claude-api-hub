@@ -1,6 +1,10 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import http from 'http';
 import { forwardRequest, forwardStream, httpGet, destroyAgents } from '../src/services/forwarder.js';
+
+vi.mock('../src/utils/ssrf.js', () => ({
+  isSSRFSafe: vi.fn().mockResolvedValue(true),
+}));
 
 describe('forwardRequest', () => {
   let server: http.Server;

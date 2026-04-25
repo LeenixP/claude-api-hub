@@ -1,9 +1,11 @@
 import http from 'http';
 import { sendJson, sendError, maskKey } from '../utils/http.js';
-import { httpGet } from '../services/forwarder.js';
+import { forwardRequest } from '../services/forwarder.js';
+import { createProvider } from '../providers/factory.js';
 import { logger } from '../logger.js';
 import type { GatewayConfig } from '../providers/types.js';
 import type { RouteContext } from './types.js';
+import { buildTestRequest, getCodingAgentHeaders } from './test-request.js';
 
 export async function handleAdminLogsRoutes(
   req: http.IncomingMessage,
@@ -16,12 +18,26 @@ export async function handleAdminLogsRoutes(
   const { config, logManager, rateTracker } = ctx;
 
   if (req.method === 'GET' && pathname === '/api/stats' && rateTracker) {
-    sendJson(res, 200, { qps: rateTracker.getQPS(), rpm: rateTracker.getRPM(), tps: rateTracker.getTPS() }, config, origin);
+    sendJson(res, 200, rateTracker.getStats(), config, origin);
+    return true;
+  }
+
+  if (req.method === 'GET' && pathname === '/api/token-stats') {
+    sendJson(res, 200, logManager.getTokenStats(), config, origin);
     return true;
   }
 
   if (req.method === 'GET' && pathname === '/api/logs') {
-    sendJson(res, 200, logManager.getLogs(), config, origin);
+    const allLogs = logManager.getLogs();
+    const url = new URL(req.url || '', `http://${req.headers.host || 'localhost'}`);
+    const limit = Math.min(parseInt(url.searchParams.get('limit') || '200'), 500);
+    const offset = parseInt(url.searchParams.get('offset') || '0');
+    const providerFilter = url.searchParams.get('provider');
+    const statusFilter = url.searchParams.get('status');
+    let filtered = allLogs;
+    if (providerFilter) filtered = filtered.filter(l => l.provider === providerFilter);
+    if (statusFilter) filtered = filtered.filter(l => String(l.status) === statusFilter);
+    sendJson(res, 200, { total: filtered.length, logs: filtered.slice(offset, offset + limit) }, config, origin);
     return true;
   }
 
@@ -47,25 +63,33 @@ export async function handleAdminLogsRoutes(
   }
 
   if (req.method === 'GET' && pathname === '/api/health/providers') {
-    const results: Record<string, { status: string; latencyMs: number; error?: string; modelCount?: number }> = {};
+    const results: Record<string, { status: string; latencyMs: number; error?: string }> = {};
     const tasks = Object.entries(config.providers).map(async ([key, p]) => {
       if (!p.enabled) { results[p.name || key] = { status: 'disabled', latencyMs: 0 }; return; }
       if (!p.apiKey) { results[p.name || key] = { status: 'no_key', latencyMs: 0 }; return; }
       const start = Date.now();
       try {
-        const url = p.passthrough ? `${p.baseUrl}/v1/models` : `${p.baseUrl}/models`;
-        const hdrs: Record<string, string> = p.passthrough
-          ? { 'x-api-key': p.apiKey, 'anthropic-version': '2023-06-01' }
-          : { 'Authorization': `Bearer ${p.apiKey}` };
-
-        const body = await httpGet(url, hdrs, 8000);
+        const provider = createProvider(p);
+        if (!provider) { results[p.name || key] = { status: 'init_failed', latencyMs: 0 }; return; }
+        const model = p.defaultModel || p.models[0];
+        if (!model) { results[p.name || key] = { status: 'no_model', latencyMs: 0 }; return; }
+        const testReq = buildTestRequest(model);
+        const built = provider.buildRequest(testReq);
+        Object.assign(built.headers, getCodingAgentHeaders(!!p.passthrough));
+        const upstream = await forwardRequest(built.url, built.headers, built.body, 15000, config.maxResponseBytes);
         const latency = Date.now() - start;
-        try {
-          const json = JSON.parse(body);
-          results[p.name || key] = { status: 'ok', latencyMs: latency, modelCount: (json.data || []).length };
-        } catch (err) {
-          logger.warn(`Failed to parse models response for ${p.name || key}`, { error: (err as Error).message });
-          results[p.name || key] = { status: 'ok', latencyMs: latency };
+        if (upstream.status === 200) {
+          let errMsg = '';
+          try { const j = JSON.parse(upstream.body); if (j.error) errMsg = j.error.message || JSON.stringify(j.error).slice(0, 200); } catch {}
+          if (errMsg) {
+            results[p.name || key] = { status: 'error', latencyMs: latency, error: errMsg };
+          } else {
+            results[p.name || key] = { status: 'ok', latencyMs: latency };
+          }
+        } else {
+          let errMsg = '';
+          try { const j = JSON.parse(upstream.body); errMsg = j.error?.message || j.message || upstream.body.slice(0, 200); } catch { errMsg = upstream.body.slice(0, 200); }
+          results[p.name || key] = { status: 'error', latencyMs: latency, error: errMsg };
         }
       } catch (err) {
         const latency = Date.now() - start;

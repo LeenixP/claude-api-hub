@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'preact/hooks';
+import { useLocale } from '../../lib/i18n.js';
 
 interface Option {
   value: string;
@@ -14,7 +15,8 @@ interface SelectProps {
   error?: boolean;
 }
 
-export function Select({ value, options, onChange, placeholder = 'Select...', error }: SelectProps) {
+export function Select({ value, options, onChange, placeholder, error }: SelectProps) {
+  const { t } = useLocale();
   const [open, setOpen] = useState(false);
   const [dropUp, setDropUp] = useState(false);
   const [kbIdx, setKbIdx] = useState(-1);
@@ -186,7 +188,7 @@ export function Select({ value, options, onChange, placeholder = 'Select...', er
       }}>
       <div ref={triggerRef} onClick={handleToggle}
         style={`display:flex;align-items:center;justify-content:space-between;width:100%;padding:10px 14px;border-radius:10px;font-size:14px;border:1px solid ${error ? 'var(--color-danger)' : open ? 'var(--color-primary)' : 'var(--color-border-strong)'};background:var(--color-bg);color:var(--color-text);cursor:pointer;transition:border-color 0.15s;line-height:1.5;${open ? 'box-shadow:0 0 0 3px var(--color-primary-glow);' : ''}`}>
-        <span style={selected ? '' : 'color:var(--color-text-muted)'}>{selected ? selected.label : placeholder}</span>
+        <span style={selected ? '' : 'color:var(--color-text-muted)'}>{selected ? selected.label : (placeholder || t('common.select'))}</span>
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
           style={`transition:transform 0.15s;transform:rotate(${open ? 180 : 0}deg);flex-shrink:0`}>
           <polyline points="6 9 12 15 18 9" />
@@ -202,13 +204,13 @@ export function Select({ value, options, onChange, placeholder = 'Select...', er
                 value={search}
                 onInput={(e) => { setSearch((e.target as HTMLInputElement).value); setKbIdx(-1); }}
                 onKeyDown={handleSearchKeyDown}
-                placeholder="Filter options..."
+                placeholder={t('common.filterOptions')}
                 style="width:100%;padding:6px 10px;border-radius:6px;border:1px solid var(--color-border);background:var(--color-bg);color:var(--color-text);font-size:13px;outline:none;box-sizing:border-box"
               />
             </div>
           )}
           {filteredOptions.length === 0 ? (
-            <div style="padding:12px 14px;font-size:13px;color:var(--color-text-muted)">{search ? 'No matches' : 'No options'}</div>
+            <div style="padding:12px 14px;font-size:13px;color:var(--color-text-muted)">{search ? t('common.noMatches') : t('common.noOptions')}</div>
           ) : renderList()}
         </div>
       )}

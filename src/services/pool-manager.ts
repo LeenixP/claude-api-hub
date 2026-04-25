@@ -1,3 +1,6 @@
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
+import { homedir } from 'os';
+import { join } from 'path';
 import { KEY_POOL_ERROR_THRESHOLD, KEY_POOL_RECOVERY_MS, KEY_POOL_RECOVERY_CHECK_MS } from '../constants.js';
 
 interface KeyState {
@@ -7,14 +10,63 @@ interface KeyState {
   unhealthySince: number;
 }
 
+interface PersistedState {
+  keys: KeyState[];
+  index: number;
+}
+
+const STATE_DIR = join(homedir(), '.claude-api-hub');
+const STATE_FILE = join(STATE_DIR, 'keypool-state.json');
+
 export class KeyPool {
   private keys: KeyState[];
   private index = 0;
   private timer: ReturnType<typeof setInterval>;
+  private persist: boolean;
 
-  constructor(apiKeys: string[]) {
-    this.keys = apiKeys.map(key => ({ key, healthy: true, errorCount: 0, unhealthySince: 0 }));
+  constructor(apiKeys: string[], opts?: { persist?: boolean }) {
+    this.persist = opts?.persist ?? true;
+    if (this.persist) {
+      const loaded = KeyPool.loadState(apiKeys);
+      this.keys = loaded.keys;
+      this.index = loaded.index;
+    } else {
+      this.keys = apiKeys.map(key => ({ key, healthy: true, errorCount: 0, unhealthySince: 0 }));
+      this.index = 0;
+    }
     this.timer = setInterval(() => this.recover(), KEY_POOL_RECOVERY_CHECK_MS);
+  }
+
+  static loadState(apiKeys: string[]): PersistedState {
+    if (!existsSync(STATE_FILE)) {
+      return { keys: apiKeys.map(key => ({ key, healthy: true, errorCount: 0, unhealthySince: 0 })), index: 0 };
+    }
+    try {
+      const raw = readFileSync(STATE_FILE, 'utf-8');
+      const parsed = JSON.parse(raw) as PersistedState;
+      // Reconcile with current apiKeys: keep known keys, add new ones, drop removed ones
+      const keySet = new Set(apiKeys);
+      const filtered = parsed.keys.filter(k => keySet.has(k.key));
+      const existingKeys = new Set(filtered.map(k => k.key));
+      for (const key of apiKeys) {
+        if (!existingKeys.has(key)) {
+          filtered.push({ key, healthy: true, errorCount: 0, unhealthySince: 0 });
+        }
+      }
+      return { keys: filtered, index: parsed.index ?? 0 };
+    } catch {
+      return { keys: apiKeys.map(key => ({ key, healthy: true, errorCount: 0, unhealthySince: 0 })), index: 0 };
+    }
+  }
+
+  saveState(): void {
+    try {
+      if (!existsSync(STATE_DIR)) {
+        mkdirSync(STATE_DIR, { recursive: true });
+      }
+      const state: PersistedState = { keys: this.keys, index: this.index };
+      writeFileSync(STATE_FILE, JSON.stringify(state, null, 2), 'utf-8');
+    } catch { /* silently ignore persistence errors */ }
   }
 
   getKey(): string | null {
@@ -68,5 +120,6 @@ export class KeyPool {
 
   destroy(): void {
     clearInterval(this.timer);
+    if (this.persist) this.saveState();
   }
 }

@@ -1,20 +1,3 @@
-export function esc(s: unknown): string {
-  return String(s ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
-
-export function debounce<T extends (...args: unknown[]) => void>(fn: T, ms: number): T {
-  let timer: ReturnType<typeof setTimeout>;
-  return ((...args: unknown[]) => {
-    clearTimeout(timer);
-    timer = setTimeout(() => fn(...args), ms);
-  }) as T;
-}
-
 export function formatTokens(n: number): string {
   if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M';
   if (n >= 1_000) return (n / 1_000).toFixed(1) + 'K';
@@ -33,15 +16,18 @@ export function relativeTime(dateStr: string | undefined): string | null {
   if (isNaN(then)) return null;
   const diffMs = now - then;
   const diffSec = Math.floor(diffMs / 1000);
-  if (diffSec < 60) return 'just now';
+  if (diffSec < 10) return 'just now';
+  if (diffSec < 60) return `${diffSec}s ago`;
   const diffMin = Math.floor(diffSec / 60);
-  if (diffMin < 60) return `${diffMin} min ago`;
+  if (diffMin < 60) return `${diffMin}m ago`;
   const diffHour = Math.floor(diffMin / 60);
-  if (diffHour < 24) return `${diffHour} hour${diffHour > 1 ? 's' : ''} ago`;
+  if (diffHour < 24) return `${diffHour}h ago`;
   const diffDay = Math.floor(diffHour / 24);
-  if (diffDay < 30) return `${diffDay} day${diffDay > 1 ? 's' : ''} ago`;
+  if (diffDay < 30) return `${diffDay}d ago`;
   const diffMonth = Math.floor(diffDay / 30);
-  return `${diffMonth} month${diffMonth > 1 ? 's' : ''} ago`;
+  if (diffMonth < 12) return `${diffMonth}mo ago`;
+  const diffYear = Math.floor(diffMonth / 12);
+  return `${diffYear}y ago`;
 }
 
 export function statusLabel(code: number): string {
@@ -59,36 +45,67 @@ export function formatRelativeTime(dateStr: string | undefined): string {
   return relativeTime(dateStr) ?? '';
 }
 
-export function getTierFromModel(model: string): string {
-  const lc = model.toLowerCase();
-  if (lc.includes('haiku')) return 'Haiku';
-  if (lc.includes('sonnet')) return 'Sonnet';
-  if (lc.includes('opus')) return 'Opus';
-  return model;
+export interface JsonToken {
+  text: string;
+  type: 'key' | 'string' | 'number' | 'boolean' | 'null' | 'punctuation';
 }
 
-/** Highlight JSON string into HTML with color-coded spans. */
-export function highlightJson(json: string): string {
-  let html = json
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
-
-  // Keys: double-quoted strings immediately followed by colon
-  html = html.replace(/"((?:[^"\\]|\\.)*)"\s*:/g,
-    '<span style="color:#2AA2C1">"$1"</span>:');
-
-  // Remaining double-quoted strings (values)
-  html = html.replace(/"((?:[^"\\]|\\.)*)"/g,
-    '<span style="color:#30A46C">"$1"</span>');
-
-  // Numbers
-  html = html.replace(/(?<![\w$#])(-?\d+\.?\d*(?:[eE][+-]?\d+)?)(?![\w$])/g,
-    '<span style="color:#F59E0B">$1</span>');
-
-  // Booleans and null
-  html = html.replace(/\b(true|false|null)\b/g,
-    '<span style="color:#8B5CF6">$1</span>');
-
-  return html;
+export function highlightJson(json: string): JsonToken[] {
+  const tokens: JsonToken[] = [];
+  let i = 0;
+  while (i < json.length) {
+    const ch = json[i];
+    // Whitespace
+    if (ch === ' ' || ch === '\n' || ch === '\r' || ch === '\t') {
+      tokens.push({ text: ch, type: 'punctuation' });
+      i++;
+      continue;
+    }
+    // String (key or value)
+    if (ch === '"') {
+      let str = '"';
+      i++;
+      while (i < json.length && json[i] !== '"') {
+        if (json[i] === '\\') { str += json[i++] || ''; }
+        str += json[i++] || '';
+      }
+      str += '"';
+      i++;
+      // Check if this is a key (followed by colon)
+      let j = i;
+      while (j < json.length && (json[j] === ' ' || json[j] === '\t')) j++;
+      const isKey = json[j] === ':';
+      tokens.push({ text: str, type: isKey ? 'key' : 'string' });
+      continue;
+    }
+    // Number
+    if (ch === '-' || (ch >= '0' && ch <= '9')) {
+      let num = '';
+      while (i < json.length && /[0-9eE.+\-]/.test(json[i])) {
+        num += json[i++];
+      }
+      tokens.push({ text: num, type: 'number' });
+      continue;
+    }
+    // Boolean / null
+    if (json.slice(i, i + 4) === 'true') {
+      tokens.push({ text: 'true', type: 'boolean' });
+      i += 4;
+      continue;
+    }
+    if (json.slice(i, i + 5) === 'false') {
+      tokens.push({ text: 'false', type: 'boolean' });
+      i += 5;
+      continue;
+    }
+    if (json.slice(i, i + 4) === 'null') {
+      tokens.push({ text: 'null', type: 'null' });
+      i += 4;
+      continue;
+    }
+    // Punctuation { } [ ] , :
+    tokens.push({ text: ch, type: 'punctuation' });
+    i++;
+  }
+  return tokens;
 }

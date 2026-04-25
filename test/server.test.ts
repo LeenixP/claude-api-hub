@@ -1,8 +1,13 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
 import http from 'http';
 import { writeFileSync, mkdtempSync, rmSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
+
+vi.mock('node:dns/promises', () => ({
+  resolve4: vi.fn().mockResolvedValue(['93.184.216.34']),
+  resolve6: vi.fn().mockRejectedValue(new Error('no AAAA')),
+}));
 import { createServer } from '../src/server.js';
 import { createRouter } from '../src/router.js';
 import { ClaudeProvider } from '../src/providers/claude.js';
@@ -11,6 +16,7 @@ import { LogManager } from '../src/services/log-manager.js';
 import { EventBus } from '../src/services/event-bus.js';
 import { RateTracker } from '../src/services/rate-tracker.js';
 import { loadConfig } from '../src/config.js';
+import { loginRateLimiter } from '../src/middleware/auth.js';
 import type { GatewayConfig, ProviderConfig } from '../src/providers/types.js';
 
 const testProviderConfig: ProviderConfig = {
@@ -161,11 +167,12 @@ describe('server integration', () => {
     expect(res.headers['x-frame-options']).toBe('DENY');
   });
 
-  it('GET /api/logs returns array', async () => {
+  it('GET /api/logs returns paginated response', async () => {
     const res = await request(server, { method: 'GET', path: '/api/logs' });
     expect(res.status).toBe(200);
     const json = JSON.parse(res.body);
-    expect(Array.isArray(json)).toBe(true);
+    expect(typeof json.total).toBe('number');
+    expect(Array.isArray(json.logs)).toBe(true);
   });
 });
 
@@ -436,6 +443,11 @@ describe('server /api/config/import', () => {
 describe('server /api/auth/login', () => {
   let server: http.Server;
 
+  beforeEach(() => {
+    // Reset login rate limiter to avoid 429s across tests
+    (loginRateLimiter as unknown as { attempts: Map<string, unknown> }).attempts.clear();
+  });
+
   beforeAll(async () => {
     const config = makeConfig({ password: 'login-secret' });
     const providers = [new GenericOpenAIProvider(testProviderConfig)];
@@ -471,7 +483,7 @@ describe('server /api/auth/login', () => {
     });
     expect(res.status).toBe(401);
     const json = JSON.parse(res.body);
-    expect(json.success).toBe(false);
+    expect(json.error.type).toBe('authentication_error');
   });
 
   it('POST /api/auth/login without password returns 401', async () => {
@@ -483,7 +495,7 @@ describe('server /api/auth/login', () => {
     });
     expect(res.status).toBe(401);
     const json = JSON.parse(res.body);
-    expect(json.success).toBe(false);
+    expect(json.error.type).toBe('authentication_error');
   });
 
   it('POST /api/auth/login with invalid JSON returns 400', async () => {
@@ -499,6 +511,10 @@ describe('server /api/auth/login', () => {
 
 describe('server /api/auth/login without adminToken', () => {
   let server: http.Server;
+
+  beforeEach(() => {
+    (loginRateLimiter as unknown as { attempts: Map<string, unknown> }).attempts.clear();
+  });
 
   beforeAll(async () => {
     const config = makeConfig();

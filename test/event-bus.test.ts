@@ -7,7 +7,7 @@ describe('EventBus', () => {
     const received: unknown[] = [];
     bus.subscribe(e => received.push(e));
     bus.emit('test', { msg: 'hello' });
-    expect(received).toEqual([{ type: 'test', data: { msg: 'hello' } }]);
+    expect(received).toEqual([{ type: 'test', data: { msg: 'hello' }, id: 1 }]);
   });
 
   it('stops delivering after unsubscribe', () => {

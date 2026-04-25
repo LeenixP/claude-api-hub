@@ -11,6 +11,23 @@ import type {
   OpenAIToolChoice,
 } from '../providers/types.js';
 
+function convertToolResultContent(resultBlock: AnthropicToolResultBlock): string {
+  let content: string;
+  if (typeof resultBlock.content === 'string') {
+    content = resultBlock.content;
+  } else {
+    const parts: string[] = [];
+    for (const b of resultBlock.content) {
+      if (b.type === 'text') parts.push((b as { type: 'text'; text: string }).text);
+      else if (b.type === 'image') parts.push(`[image: ${(b as { type: 'image'; source: { media_type: string } }).source.media_type}]`);
+      else parts.push(`[${b.type}]`);
+    }
+    content = parts.join('\n');
+  }
+  if (resultBlock.is_error) content = `[ERROR] ${content}`;
+  return content;
+}
+
 function convertContentBlocks(
   blocks: AnthropicContentBlock[]
 ): { messages: OpenAIMessage[]; toolCallMessages: OpenAIMessage[] } {
@@ -35,22 +52,9 @@ function convertContentBlocks(
       });
     } else if (block.type === 'tool_result') {
       const resultBlock = block as AnthropicToolResultBlock;
-      let content: string;
-      if (typeof resultBlock.content === 'string') {
-        content = resultBlock.content;
-      } else {
-        const parts: string[] = [];
-        for (const b of resultBlock.content) {
-          if (b.type === 'text') parts.push((b as { type: 'text'; text: string }).text);
-          else if (b.type === 'image') parts.push(`[image: ${(b as { type: 'image'; source: { media_type: string } }).source.media_type}]`);
-          else parts.push(`[${b.type}]`);
-        }
-        content = parts.join('\n');
-      }
-      if (resultBlock.is_error) content = `[ERROR] ${content}`;
       toolResultMessages.push({
         role: 'tool',
-        content,
+        content: convertToolResultContent(resultBlock),
         tool_call_id: resultBlock.tool_use_id,
       });
     }
@@ -100,22 +104,9 @@ function convertMessage(msg: AnthropicMessage): OpenAIMessage[] {
         contentParts.push({ type: 'image_url', image_url: { url } });
       } else if (block.type === 'tool_result') {
         const resultBlock = block as AnthropicToolResultBlock;
-        let content: string;
-        if (typeof resultBlock.content === 'string') {
-          content = resultBlock.content;
-        } else {
-          const parts: string[] = [];
-          for (const b of resultBlock.content) {
-            if (b.type === 'text') parts.push((b as { type: 'text'; text: string }).text);
-            else if (b.type === 'image') parts.push(`[image: ${(b as { type: 'image'; source: { media_type: string } }).source.media_type}]`);
-            else parts.push(`[${b.type}]`);
-          }
-          content = parts.join('\n');
-        }
-        if (resultBlock.is_error) content = `[ERROR] ${content}`;
         toolResultMessages.push({
           role: 'tool',
-          content,
+          content: convertToolResultContent(resultBlock),
           tool_call_id: resultBlock.tool_use_id,
         });
       }

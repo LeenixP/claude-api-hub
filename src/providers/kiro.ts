@@ -28,9 +28,10 @@ export class KiroProvider implements Provider {
   constructor(config: ProviderConfig) {
     this.name = config.name;
     this.config = config;
-    this.region = (config.kiroRegion as string) || 'us-east-1';
+    const opts = config.options || {};
+    this.region = (opts.kiroRegion as string) || 'us-east-1';
     this.machineId = crypto.randomBytes(16).toString('hex');
-    this.auth = new KiroAuth(this.region, config.kiroCredsPath as string | undefined);
+    this.auth = new KiroAuth(this.region, opts.kiroCredsPath as string | undefined);
 
     // Load credentials synchronously at construction time so buildRequest works
     try {
@@ -57,7 +58,7 @@ export class KiroProvider implements Provider {
     return model;
   }
 
-  buildRequest(req: AnthropicRequest): { url: string; headers: Record<string, string>; body: string } {
+  buildRequest(req: AnthropicRequest): { url: string; headers: Record<string, string>; body: string; usedKey: string } {
     if (!this.cachedToken) {
       throw new Error('Kiro: no valid access token. Call ensureReady() first.');
     }
@@ -87,6 +88,7 @@ export class KiroProvider implements Provider {
         'user-agent': `aws-sdk-js/1.0.34 ua/2.1 os/${osName} lang/js md/nodejs#${nodeVersion} api/codewhispererstreaming#1.0.34 m/E KiroIDE-${KIRO_VERSION}-${this.machineId}`,
       },
       body: JSON.stringify(body),
+      usedKey: this.cachedToken,
     };
   }
 
@@ -96,11 +98,11 @@ export class KiroProvider implements Provider {
   }
 
   createStreamContext(originalModel: string): StreamContext {
-    return createKiroStreamState(originalModel) as unknown as StreamContext;
+    return createKiroStreamState(originalModel) as StreamContext;
   }
 
   parseStreamChunk(chunk: OpenAIStreamChunk, _originalModel: string, ctx: StreamContext): AnthropicStreamEvent[] {
     const chunkStr = typeof chunk === 'string' ? chunk : JSON.stringify(chunk);
-    return parseKiroStreamChunk(chunkStr, ctx as unknown as KiroStreamState);
+    return parseKiroStreamChunk(chunkStr, ctx as KiroStreamState);
   }
 }
