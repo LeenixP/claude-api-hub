@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'preact/hooks';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'preact/hooks';
 import type { GatewayConfig } from '../../types.js';
 import { showToast } from '../common/Toast.js';
 import { apiFetch } from '../../hooks/useApi.js';
@@ -84,21 +84,27 @@ export function ConfigEditor({ config, onSaved }: ConfigEditorProps) {
   const [jsonText, setJsonText] = useState('');
   const [jsonValid, setJsonValid] = useState(true);
 
+  const configJsonRef = useRef('');
+
   useEffect(() => {
     if (config) {
-      setPort(config.port ?? 9800);
-      setHost(config.host ?? '0.0.0.0');
-      setLogLevel(config.logLevel ?? 'info');
-      setPassword(config.password ?? '');
-      setRateLimit(config.rateLimitRpm ?? 0);
-      setTokenRefresh(config.tokenRefreshMinutes ?? 30);
-      setStreamTimeout(config.streamTimeoutMs ?? 120000);
-      setStreamIdleTimeout(config.streamIdleTimeoutMs ?? 30000);
-      setMaxResponseBytes(config.maxResponseBytes ?? 0);
-      setCorsOrigins(config.corsOrigins?.join('\n') ?? '*');
-      setTrustProxy(config.trustProxy ?? false);
-      setJsonText(JSON.stringify(config, null, 2));
-      setHasChanges(false);
+      const json = JSON.stringify(config);
+      if (configJsonRef.current !== json) {
+        configJsonRef.current = json;
+        setPort(config.port ?? 9800);
+        setHost(config.host ?? '0.0.0.0');
+        setLogLevel(config.logLevel ?? 'info');
+        setPassword(config.password ?? '');
+        setRateLimit(config.rateLimitRpm ?? 0);
+        setTokenRefresh(config.tokenRefreshMinutes ?? 30);
+        setStreamTimeout(config.streamTimeoutMs ?? 120000);
+        setStreamIdleTimeout(config.streamIdleTimeoutMs ?? 30000);
+        setMaxResponseBytes(config.maxResponseBytes ?? 0);
+        setCorsOrigins(config.corsOrigins?.join('\n') ?? '*');
+        setTrustProxy(config.trustProxy ?? false);
+        setJsonText(JSON.stringify(config, null, 2));
+        setHasChanges(false);
+      }
     }
   }, [config]);
 
