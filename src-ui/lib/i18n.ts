@@ -7,7 +7,7 @@ const zh: Record<string, string> = {
   // Nav
   'nav.dashboard': '仪表盘',
   'nav.providers': '供应商',
-  'nav.aliases': '别名映射',
+  'nav.aliases': '模型映射',
   'nav.logs': '请求日志',
   'nav.config': '配置',
 
@@ -50,6 +50,10 @@ const zh: Record<string, string> = {
   'token.daily': '每日趋势',
   'token.noData': '暂无数据',
   'token.less': '少',
+  'token.totalUsed': '总用量',
+  'token.dailyAvg': '日均',
+  'token.activeDays': '活跃天数',
+  'token.peakDay': '峰值日',
 
   // Dashboard - QuickStart
   'quickstart.welcome': '欢迎使用 API Hub',
@@ -73,6 +77,13 @@ const zh: Record<string, string> = {
   'sysinfo.updateAvailable': '{version} 可更新',
   'sysinfo.noUpdate': '已是最新版本',
   'sysinfo.checkFailed': '检查失败',
+  'sysinfo.updateTo': '更新到 {version}',
+  'sysinfo.updating': '更新中...',
+  'sysinfo.updateDone': '已安装 v{version}，正在重启...',
+  'sysinfo.restarting': '服务重启中...',
+  'sysinfo.restartFailed': '重启后服务未恢复',
+  'sysinfo.updateFailed': '更新失败',
+  'sysinfo.retry': '重试',
 
   // Dashboard - Charts
   'chart.requests': '请求数',
@@ -355,6 +366,10 @@ const en: Record<string, string> = {
   'token.daily': 'Daily Trend',
   'token.noData': 'No data yet',
   'token.less': 'Less',
+  'token.totalUsed': 'Total',
+  'token.dailyAvg': 'Daily Avg',
+  'token.activeDays': 'Active Days',
+  'token.peakDay': 'Peak Day',
 
   'sysinfo.title': 'System Info',
   'sysinfo.version': 'Version',
@@ -370,6 +385,13 @@ const en: Record<string, string> = {
   'sysinfo.updateAvailable': '{version} available',
   'sysinfo.noUpdate': 'Up to date',
   'sysinfo.checkFailed': 'Check failed',
+  'sysinfo.updateTo': 'Update to {version}',
+  'sysinfo.updating': 'Updating...',
+  'sysinfo.updateDone': 'v{version} installed, restarting...',
+  'sysinfo.restarting': 'Service restarting...',
+  'sysinfo.restartFailed': 'Service did not come back online',
+  'sysinfo.updateFailed': 'Update failed',
+  'sysinfo.retry': 'Retry',
 
   'quickstart.welcome': 'Welcome to API Hub',
   'quickstart.status': '{active} of {total} providers active · Gateway running at {url}',

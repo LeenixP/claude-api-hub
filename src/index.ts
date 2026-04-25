@@ -16,6 +16,7 @@ import { LogManager } from './services/log-manager.js';
 import { EventBus } from './services/event-bus.js';
 import { RateTracker } from './services/rate-tracker.js';
 import { KeyPool } from './services/pool-manager.js';
+import { detectInstallMethod, saveRestartInfo } from './install-info.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -52,6 +53,10 @@ async function main(): Promise<void> {
   const args = parseArgs();
   const config = loadConfig(args.config);
   if (config.logLevel) setLogLevel(config.logLevel);
+
+  // Detect install method and save restart info for auto-update
+  detectInstallMethod();
+  saveRestartInfo();
 
   if (args.port) config.port = args.port;
   if (args.host) config.host = args.host;

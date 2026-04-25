@@ -130,6 +130,15 @@ export function cancelKiroAuth(): Promise<void> {
   return api<void>('/api/oauth/kiro/cancel', { method: 'POST' });
 }
 
+// Update
+export function performUpdate(): Promise<{ success: boolean; oldVersion: string; newVersion: string; error?: string; output?: string }> {
+  return api<{ success: boolean; oldVersion: string; newVersion: string; error?: string; output?: string }>('/api/update', { method: 'POST' });
+}
+
+export function restartServer(): Promise<{ restarting: boolean }> {
+  return api<{ restarting: boolean }>('/api/restart', { method: 'POST' });
+}
+
 // Auth
 export async function login(password: string): Promise<{ token: string }> {
   const res = await fetch('/api/auth/login', {
