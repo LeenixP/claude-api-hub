@@ -135,7 +135,7 @@ export function TrendChart({ logs, rangeHours }: TrendChartProps) {
       </div>
       {logs.length === 0 ? (
         <div ref={containerRef} style="position:relative;flex:1;min-height:200px">
-          <canvas ref={canvasRef} style="display:block;width:100%;height:100%" />
+          <canvas ref={canvasRef} role="img" aria-label={t('chart.requests')} style="display:block;width:100%;height:100%" />
         </div>
       ) : (
         <div ref={containerRef} style="position:relative;flex:1;min-height:200px"
@@ -151,7 +151,7 @@ export function TrendChart({ logs, rangeHours }: TrendChartProps) {
             else setTooltip(null);
           }}
           onMouseLeave={() => setTooltip(null)}>
-          <canvas ref={canvasRef} style="display:block;width:100%" />
+          <canvas ref={canvasRef} role="img" aria-label={t('chart.requests')} style="display:block;width:100%" />
           {tooltip && (
             <div style={`position:absolute;pointer-events:none;top:${tooltip.y}px;padding:6px 12px;border-radius:6px;background:var(--color-surface-hover);border:1px solid var(--color-border);font-size:12px;z-index:10;white-space:nowrap;transform:translate(-50%,-110%);transition:left 0.05s ease`}
               ref={(el) => adjustTooltipEdge(el, tooltip.x)}>

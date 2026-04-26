@@ -2,7 +2,7 @@ import http from 'http';
 import https from 'https';
 import { URL } from 'url';
 import { MAX_RESPONSE_SIZE, MAX_GET_SIZE, KEEP_ALIVE_MAX_SOCKETS } from '../constants.js';
-import { isSSRFSafe } from '../utils/ssrf.js';
+import { isSSRFSafe, resolveSafeIP } from '../utils/ssrf.js';
 
 const MAX_AGENT_POOL_SIZE = 50;
 
@@ -50,7 +50,8 @@ export async function forwardRequest(
   maxResponseBytes = MAX_RESPONSE_SIZE,
 ): Promise<{ status: number; headers: http.IncomingHttpHeaders; body: string }> {
   const parsed = new URL(url);
-  if (!await isSSRFSafe(parsed.hostname)) {
+  const safeIP = await resolveSafeIP(parsed.hostname);
+  if (!safeIP) {
     throw new Error(`SSRF: blocked request to private address ${parsed.hostname}`);
   }
   const isHttps = parsed.protocol === 'https:';
@@ -58,11 +59,11 @@ export async function forwardRequest(
 
   return new Promise((resolve, reject) => {
     const options: http.RequestOptions = {
-      hostname: parsed.hostname,
+      hostname: safeIP,
       port: parsed.port || (isHttps ? 443 : 80),
       path: parsed.pathname + parsed.search,
       method: 'POST',
-      headers: { ...headers, 'Content-Length': Buffer.byteLength(body) },
+      headers: { ...headers, 'Host': parsed.hostname, 'Content-Length': Buffer.byteLength(body) },
       timeout: timeoutMs,
       agent: getAgent(parsed),
     };
@@ -103,7 +104,8 @@ export async function httpGet(
   maxResponseBytes = MAX_GET_SIZE,
 ): Promise<string> {
   const parsed = new URL(url);
-  if (!await isSSRFSafe(parsed.hostname)) {
+  const safeIP = await resolveSafeIP(parsed.hostname);
+  if (!safeIP) {
     throw new Error(`SSRF: blocked request to private address ${parsed.hostname}`);
   }
   const isHttps = parsed.protocol === 'https:';
@@ -111,11 +113,11 @@ export async function httpGet(
 
   return new Promise((resolve, reject) => {
     const options: http.RequestOptions = {
-      hostname: parsed.hostname,
+      hostname: safeIP,
       port: parsed.port || (isHttps ? 443 : 80),
       path: parsed.pathname + parsed.search,
       method: 'GET',
-      headers,
+      headers: { ...headers, 'Host': parsed.hostname },
       timeout: timeoutMs,
       agent: getAgent(parsed),
     };
@@ -149,19 +151,24 @@ export async function forwardStream(
   downstreamRes?: http.ServerResponse,
 ): Promise<void> {
   const parsed = new URL(url);
-  if (!await isSSRFSafe(parsed.hostname)) {
-    onError(new Error(`SSRF: blocked request to private address ${parsed.hostname}`));
+  let safeIP: string;
+  try {
+    const resolved = await resolveSafeIP(parsed.hostname);
+    if (!resolved) throw new Error(`SSRF: blocked request to private address ${parsed.hostname}`);
+    safeIP = resolved;
+  } catch (err) {
+    onError(err as Error);
     return;
   }
   const isHttps = parsed.protocol === 'https:';
   const lib = isHttps ? https : http;
 
   const options: http.RequestOptions = {
-    hostname: parsed.hostname,
+    hostname: safeIP,
     port: parsed.port || (isHttps ? 443 : 80),
     path: parsed.pathname + parsed.search,
     method: 'POST',
-    headers: { ...headers, 'Content-Length': Buffer.byteLength(body) },
+    headers: { ...headers, 'Host': parsed.hostname, 'Content-Length': Buffer.byteLength(body) },
     timeout: connectTimeoutMs,
     agent: getAgent(parsed),
   };

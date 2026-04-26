@@ -18,7 +18,7 @@ describe('LogManager', () => {
     try { rmSync(tmpDir, { recursive: true, force: true }); } catch { /* ignore */ }
   });
 
-  it('adds and retrieves a log entry', () => {
+  it('adds and retrieves a log entry', async () => {
     const entry = {
       time: new Date().toISOString(),
       requestId: 'req-1',
@@ -32,13 +32,14 @@ describe('LogManager', () => {
       durationMs: 100,
     };
     manager.addLog(entry);
+    await manager.flush();
     const logs = manager.getLogs(10);
     expect(logs).toHaveLength(1);
     expect(logs[0].requestId).toBe('req-1');
     expect(logs[0].claudeModel).toBe('claude-sonnet-4-6');
   });
 
-  it('returns logs in reverse chronological order', () => {
+  it('returns logs in reverse chronological order', async () => {
     manager.addLog({
       time: '2024-01-01T00:00:00Z',
       requestId: 'req-1',
@@ -63,12 +64,13 @@ describe('LogManager', () => {
       status: 200,
       durationMs: 20,
     });
+    await manager.flush();
     const logs = manager.getLogs(10);
     expect(logs[0].requestId).toBe('req-2');
     expect(logs[1].requestId).toBe('req-1');
   });
 
-  it('clears all logs', () => {
+  it('clears all logs', async () => {
     manager.addLog({
       time: new Date().toISOString(),
       requestId: 'req-1',
@@ -81,14 +83,16 @@ describe('LogManager', () => {
       status: 200,
       durationMs: 10,
     });
+    await manager.flush();
     manager.clearLogs();
     const logs = manager.getLogs(10);
     expect(logs).toHaveLength(0);
   });
 
-  it('trims logs when exceeding max', () => {
+  it('trims logs when exceeding max', async () => {
     const smallManager = new LogManager(5, 100, ':memory:');
-    for (let i = 0; i < 600; i++) {
+    // trimLogs counts flushes, not entries; need >505 flushes to trigger trim
+    for (let i = 0; i < 506; i++) {
       smallManager.addLog({
         time: new Date().toISOString(),
         requestId: `req-${i}`,
@@ -101,11 +105,11 @@ describe('LogManager', () => {
         status: 200,
         durationMs: 10,
       });
+      await smallManager.flush();
     }
-    const logs = smallManager.getLogs(1000);
-    // trimLogs triggers when logCount > maxLogs + 500
-    expect(logs.length).toBeLessThanOrEqual(510); // max 5 + 500 buffer, but after trim should be ~5
-    smallManager.close();
+    const logs = smallManager.getLogs(10000);
+    expect(logs.length).toBeLessThanOrEqual(510);
+    await smallManager.close();
   });
 
   it('toggles file logging on and off', () => {
@@ -116,7 +120,7 @@ describe('LogManager', () => {
     expect(restored).toBe(before);
   });
 
-  it('stores optional token counts', () => {
+  it('stores optional token counts', async () => {
     manager.addLog({
       time: new Date().toISOString(),
       requestId: 'req-tokens',
@@ -131,12 +135,13 @@ describe('LogManager', () => {
       inputTokens: 100,
       outputTokens: 50,
     });
+    await manager.flush();
     const logs = manager.getLogs(10);
     expect(logs[0].inputTokens).toBe(100);
     expect(logs[0].outputTokens).toBe(50);
   });
 
-  it('stores error field', () => {
+  it('stores error field', async () => {
     manager.addLog({
       time: new Date().toISOString(),
       requestId: 'req-err',
@@ -150,11 +155,12 @@ describe('LogManager', () => {
       durationMs: 10,
       error: 'timeout',
     });
+    await manager.flush();
     const logs = manager.getLogs(10);
     expect(logs[0].error).toBe('timeout');
   });
 
-  it('getLogs returns empty array when limit is 0', () => {
+  it('getLogs returns empty array when limit is 0', async () => {
     manager.addLog({
       time: new Date().toISOString(),
       requestId: 'req-1',
@@ -167,6 +173,7 @@ describe('LogManager', () => {
       status: 200,
       durationMs: 10,
     });
+    await manager.flush();
     const logs = manager.getLogs(0);
     expect(logs).toHaveLength(0);
   });

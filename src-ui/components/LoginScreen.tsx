@@ -2,7 +2,7 @@ import { useState, useCallback } from 'preact/hooks';
 import { useLocale } from '../lib/i18n.js';
 
 interface LoginScreenProps {
-  onLogin: (token: string, config: any) => void;
+  onLogin: (token: string, config: Record<string, unknown> | null) => void;
 }
 
 export function LoginScreen({ onLogin }: LoginScreenProps) {

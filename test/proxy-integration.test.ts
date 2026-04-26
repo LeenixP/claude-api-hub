@@ -3,6 +3,7 @@ import http from 'http';
 
 vi.mock('../src/utils/ssrf.js', () => ({
   isSSRFSafe: vi.fn().mockResolvedValue(true),
+  resolveSafeIP: vi.fn().mockImplementation((hostname: string) => Promise.resolve(hostname)),
 }));
 import { createServer } from '../src/server.js';
 import { createRouter } from '../src/router.js';

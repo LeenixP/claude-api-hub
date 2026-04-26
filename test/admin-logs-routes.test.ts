@@ -88,6 +88,7 @@ describe('admin logs routes', () => {
         outputTokens: 5,
       });
     }
+    await logManager.flush();
   });
 
   afterAll(async () => {

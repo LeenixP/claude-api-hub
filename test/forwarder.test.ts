@@ -4,6 +4,7 @@ import { forwardRequest, forwardStream, httpGet, destroyAgents } from '../src/se
 
 vi.mock('../src/utils/ssrf.js', () => ({
   isSSRFSafe: vi.fn().mockResolvedValue(true),
+  resolveSafeIP: vi.fn().mockImplementation((hostname: string) => Promise.resolve(hostname)),
 }));
 
 describe('forwardRequest', () => {

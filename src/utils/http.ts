@@ -1,7 +1,11 @@
 import http from 'http';
 import zlib from 'zlib';
+import { promisify } from 'util';
 import type { GatewayConfig } from '../providers/types.js';
 import { MAX_BODY_SIZE } from '../constants.js';
+
+const gzipAsync = promisify(zlib.gzip);
+const deflateAsync = promisify(zlib.deflate);
 
 export function getCorsHeaders(config: GatewayConfig, reqOrigin?: string): Record<string, string> {
   const origins = config.corsOrigins;
@@ -14,8 +18,6 @@ export function getCorsHeaders(config: GatewayConfig, reqOrigin?: string): Recor
   if (origins && origins.length > 0) {
     if (reqOrigin && origins.includes(reqOrigin)) {
       headers['Access-Control-Allow-Origin'] = reqOrigin;
-    } else {
-      headers['Access-Control-Allow-Origin'] = origins[0];
     }
   } else {
     const defaultOrigin = `http://${config.host === '0.0.0.0' ? 'localhost' : config.host}:${config.port}`;
@@ -70,6 +72,48 @@ export function sendJson(res: http.ServerResponse, status: number, body: unknown
 
 export function sendError(res: http.ServerResponse, status: number, type: string, message: string, config?: GatewayConfig, origin?: string): void {
   sendJson(res, status, { type: 'error', error: { type, message } }, config, origin);
+}
+
+export async function compressBodyAsync(
+  body: string,
+  acceptEncoding: string,
+  contentType: string,
+): Promise<{ buffer: Buffer; encoding?: string }> {
+  if (contentType.startsWith('text/event-stream')) {
+    return { buffer: Buffer.from(body) };
+  }
+  if (Buffer.byteLength(body) < 1024) {
+    return { buffer: Buffer.from(body) };
+  }
+  const encodings = acceptEncoding.split(',').map(s => s.trim().toLowerCase());
+  if (encodings.includes('gzip') || encodings.includes('*')) {
+    const buffer = await gzipAsync(body) as Buffer;
+    return { buffer, encoding: 'gzip' };
+  }
+  if (encodings.includes('deflate')) {
+    const buffer = await deflateAsync(body) as Buffer;
+    return { buffer, encoding: 'deflate' };
+  }
+  return { buffer: Buffer.from(body) };
+}
+
+export async function sendJsonAsync(
+  res: http.ServerResponse,
+  status: number,
+  body: unknown,
+  config?: GatewayConfig,
+  origin?: string,
+): Promise<void> {
+  const payload = JSON.stringify(body);
+  const cors = config ? getCorsHeaders(config, origin) : { 'Access-Control-Allow-Origin': '*' };
+  const acceptEncoding = (res.req?.headers['accept-encoding'] as string) || '';
+  const compressed = await compressBodyAsync(payload, acceptEncoding, 'application/json');
+  const headers: Record<string, string> = { 'Content-Type': 'application/json', ...cors };
+  if (compressed.encoding) {
+    headers['Content-Encoding'] = compressed.encoding;
+  }
+  res.writeHead(status, headers);
+  res.end(compressed.buffer);
 }
 
 export function readBody(req: http.IncomingMessage, maxBytes = MAX_BODY_SIZE): Promise<string> {

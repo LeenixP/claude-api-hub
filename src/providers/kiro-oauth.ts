@@ -6,6 +6,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { URL } from 'node:url';
 import { logger } from '../logger.js';
+import { getErrorMessage } from '../utils/error.js';
 
 // ── Config ──
 
@@ -305,9 +306,9 @@ function createCallbackServer(
           res.end();
         }
       } catch (error) {
-        logger.error(`[Kiro OAuth] Callback error: ${(error as Error).message}`);
+        logger.error(`[Kiro OAuth] Callback error: ${getErrorMessage(error)}`);
         res.writeHead(500, { 'Content-Type': 'text/html; charset=utf-8' });
-        res.end(generateResponsePage(false, `Server error: ${(error as Error).message}`));
+        res.end(generateResponsePage(false, `Server error: ${getErrorMessage(error)}`));
       }
     });
 
@@ -374,8 +375,8 @@ export async function handleBuilderIDAuth(
     taskId,
     { ...options, region },
   ).catch(error => {
-    logger.error(`[Kiro OAuth] Builder ID polling failed: ${error.message}`);
-    lastOAuthResult = { success: false, error: error.message };
+    logger.error(`[Kiro OAuth] Builder ID polling failed: ${getErrorMessage(error)}`);
+    lastOAuthResult = { success: false, error: getErrorMessage(error) };
   });
 
   return {
@@ -575,7 +576,7 @@ export async function importAwsCredentials(
     const refreshed = await refreshBuilderIdToken(input.refreshToken, input.clientId, input.clientSecret, region);
     Object.assign(creds, refreshed);
   } catch (e) {
-    logger.warn(`[Kiro OAuth] Import refresh failed, saving original: ${(e as Error).message}`);
+    logger.warn(`[Kiro OAuth] Import refresh failed, saving original: ${getErrorMessage(e)}`);
   }
 
   const savedPath = saveCredentials(creds, credsPath);
@@ -610,7 +611,7 @@ async function closeCallbackServer(key: string): Promise<void> {
       const timeout = setTimeout(() => reject(new Error('timeout')), 2000);
       existing.server.close(() => { clearTimeout(timeout); resolve(); });
     });
-  } catch (err) { logger.warn('Failed to close callback server', { error: (err as Error).message }); }
+  } catch (err) { logger.warn('Failed to close callback server', { error: getErrorMessage(err) }); }
   activeServers.delete(key);
 }
 

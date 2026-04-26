@@ -1,5 +1,5 @@
 import http from 'http';
-import { sendJson, sendError, maskKey } from '../utils/http.js';
+import { sendJson, sendJsonAsync, sendError, maskKey } from '../utils/http.js';
 import { forwardRequest } from '../services/forwarder.js';
 import { createProvider } from '../providers/factory.js';
 import { logger } from '../logger.js';
@@ -23,7 +23,7 @@ export async function handleAdminLogsRoutes(
   }
 
   if (req.method === 'GET' && pathname === '/api/token-stats') {
-    sendJson(res, 200, logManager.getTokenStats(), config, origin);
+    await sendJsonAsync(res, 200, logManager.getTokenStats(), config, origin);
     return true;
   }
 
@@ -37,7 +37,7 @@ export async function handleAdminLogsRoutes(
     let filtered = allLogs;
     if (providerFilter) filtered = filtered.filter(l => l.provider === providerFilter);
     if (statusFilter) filtered = filtered.filter(l => String(l.status) === statusFilter);
-    sendJson(res, 200, { total: filtered.length, logs: filtered.slice(offset, offset + limit) }, config, origin);
+    await sendJsonAsync(res, 200, { total: filtered.length, logs: filtered.slice(offset, offset + limit) }, config, origin);
     return true;
   }
 

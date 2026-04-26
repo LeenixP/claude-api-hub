@@ -42,7 +42,7 @@ export async function getLogs(): Promise<LogEntry[]> {
 }
 
 export function getModels(): Promise<ModelInfo[]> {
-  return api<ModelInfo[]>('/v1/models').then((res: any) => res.data || res);
+  return api<ModelInfo[]>('/v1/models').then((res: Record<string, unknown>) => res.data || res);
 }
 
 export function fetchAllModels(): Promise<Record<string, string[]>> {

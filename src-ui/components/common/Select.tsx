@@ -1,6 +1,8 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'preact/hooks';
 import { useLocale } from '../../lib/i18n.js';
 
+let _selectIdCounter = 0;
+
 interface Option {
   value: string;
   label: string;
@@ -17,6 +19,7 @@ interface SelectProps {
 
 export function Select({ value, options, onChange, placeholder, error }: SelectProps) {
   const { t } = useLocale();
+  const selectId = `select-dropdown-${++_selectIdCounter}`;
   const [open, setOpen] = useState(false);
   const [dropUp, setDropUp] = useState(false);
   const [kbIdx, setKbIdx] = useState(-1);
@@ -153,7 +156,7 @@ export function Select({ value, options, onChange, placeholder, error }: SelectP
     const isActive = o.value === value;
     const isKb = idx === kbIdx;
     return (
-      <div key={o.value} data-idx={idx}
+      <div key={o.value} data-idx={idx} role="option" aria-selected={isActive}
         onClick={(e) => { e.stopPropagation(); handleSelect(o.value); }}
         style={`padding:10px 14px;cursor:pointer;font-size:14px;border-radius:6px;margin:2px 4px;${
           isKb ? 'background:var(--color-surface-hover);' : ''
@@ -182,11 +185,11 @@ export function Select({ value, options, onChange, placeholder, error }: SelectP
     : 'position:absolute;top:calc(100% + 4px);left:0;right:0;max-height:260px;overflow-y:auto;background:var(--color-surface);border:1px solid var(--color-border-strong);border-radius:10px;box-shadow:var(--shadow-card-hover);z-index:50;padding:4px 0';
 
   return (
-    <div ref={rootRef} style="position:relative;user-select:none" onKeyDown={handleKeyDown} tabindex="0"
+    <div ref={rootRef} role="combobox" aria-expanded={open} aria-haspopup="listbox" style="position:relative;user-select:none" onKeyDown={handleKeyDown} tabindex="0"
       onfocusout={(e: FocusEvent) => {
         if (rootRef.current && !rootRef.current.contains(e.relatedTarget as Node)) setOpen(false);
       }}>
-      <div ref={triggerRef} onClick={handleToggle}
+      <div ref={triggerRef} role="button" aria-label={placeholder || t('common.select')} onClick={handleToggle}
         style={`display:flex;align-items:center;justify-content:space-between;width:100%;padding:10px 14px;border-radius:10px;font-size:14px;border:1px solid ${error ? 'var(--color-danger)' : open ? 'var(--color-primary)' : 'var(--color-border-strong)'};background:var(--color-bg);color:var(--color-text);cursor:pointer;transition:border-color 0.15s;line-height:1.5;${open ? 'box-shadow:0 0 0 3px var(--color-primary-glow);' : ''}`}>
         <span style={selected ? '' : 'color:var(--color-text-muted)'}>{selected ? selected.label : (placeholder || t('common.select'))}</span>
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
@@ -195,7 +198,7 @@ export function Select({ value, options, onChange, placeholder, error }: SelectP
         </svg>
       </div>
       {open && (
-        <div ref={listRef} style={listStyle} onWheel={handleListWheel}>
+        <div ref={listRef} id={selectId} role="listbox" style={listStyle} onWheel={handleListWheel}>
           {showSearch && (
             <div style="padding:6px 8px;border-bottom:1px solid var(--color-border)">
               <input

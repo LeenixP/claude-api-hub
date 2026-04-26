@@ -8,6 +8,10 @@ vi.mock('node:dns/promises', () => ({
   resolve4: vi.fn().mockResolvedValue(['93.184.216.34']),
   resolve6: vi.fn().mockRejectedValue(new Error('no AAAA')),
 }));
+vi.mock('../src/utils/ssrf.js', () => ({
+  isSSRFSafe: vi.fn().mockResolvedValue(true),
+  resolveSafeIP: vi.fn().mockImplementation((hostname: string) => Promise.resolve(hostname)),
+}));
 import { createServer } from '../src/server.js';
 import { createRouter } from '../src/router.js';
 import { ClaudeProvider } from '../src/providers/claude.js';
@@ -16,7 +20,7 @@ import { LogManager } from '../src/services/log-manager.js';
 import { EventBus } from '../src/services/event-bus.js';
 import { RateTracker } from '../src/services/rate-tracker.js';
 import { loadConfig } from '../src/config.js';
-import { loginRateLimiter } from '../src/middleware/auth.js';
+import { loginRateLimiter, hashPassword } from '../src/middleware/auth.js';
 import type { GatewayConfig, ProviderConfig } from '../src/providers/types.js';
 
 const testProviderConfig: ProviderConfig = {
@@ -447,7 +451,7 @@ describe('server /api/auth/login', () => {
   });
 
   beforeAll(async () => {
-    const config = makeConfig({ password: 'login-secret' });
+    const config = makeConfig({ password: hashPassword('login-secret') });
     const providers = [new GenericOpenAIProvider(testProviderConfig)];
     const router = createRouter(providers, {});
     server = createServer(router, config, new LogManager(200, 100, ':memory:'));

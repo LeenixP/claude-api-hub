@@ -3,6 +3,7 @@ import process from 'process';
 import { LogManager } from '../services/log-manager.js';
 import type { RateTracker } from '../services/rate-tracker.js';
 import type { RouteContext } from './types.js';
+import { requireAdmin } from '../middleware/auth.js';
 
 /**
  * Prometheus-style metrics endpoint.
@@ -16,6 +17,7 @@ export async function handleMetrics(
   cors: Record<string, string>,
 ): Promise<boolean> {
   if (req.method === 'GET' && pathname === '/metrics') {
+    if (!requireAdmin(req, res, ctx.config)) return true;
     const lines: string[] = [];
 
     // --- process metrics ---

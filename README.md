@@ -43,12 +43,19 @@ claude-api-hub
 # ✓ api-hub listening on http://0.0.0.0:9800
 
 # 3. 配置 Claude Code
-echo '{"env":{"ANTHROPIC_BASE_URL":"http://127.0.0.1:9800"}}' > ~/.claude/settings.json
+claude config set ANTHROPIC_BASE_URL http://127.0.0.1:9800
 
-# 4. 完成！Claude Code 现在通过网关路由请求
+# 备选：手动写入 settings.json
+# echo '{"env":{"ANTHROPIC_BASE_URL":"http://127.0.0.1:9800"}}' > ~/.claude/settings.json
+
+# 4. 验证安装
+curl http://localhost:9800/health
+# 或在浏览器打开 http://localhost:9800 查看仪表盘
+
+# 5. 完成！Claude Code 现在通过网关路由请求
 ```
 
-> **安全提示：** 默认绑定 `0.0.0.0:9800` 且无密码。生产环境请设置 `password`。
+> **安全提示：** 默认绑定 `127.0.0.1:9800`（仅本地访问）。生产环境或局域网使用请设置 `password` 或 `--host 0.0.0.0`。
 
 ---
 
