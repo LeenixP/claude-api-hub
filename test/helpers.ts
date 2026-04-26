@@ -30,7 +30,6 @@ export function makeConfig(overrides: Partial<GatewayConfig> = {}): GatewayConfi
     port: 0,
     host: '127.0.0.1',
     providers: { test: testProviderConfig, passthrough: passthroughConfig },
-    defaultProvider: 'test',
     logLevel: 'error',
     ...overrides,
   };

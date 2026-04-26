@@ -22,7 +22,6 @@ function makeConfig(overrides: Partial<GatewayConfig> = {}): GatewayConfig {
     port: 0,
     host: '127.0.0.1',
     providers: { test: testProviderConfig },
-    defaultProvider: 'test',
     logLevel: 'error',
     ...overrides,
   };
@@ -66,7 +65,7 @@ describe('admin logs routes', () => {
   beforeAll(async () => {
     const config = makeConfig({ adminToken: 'admin-secret' });
     const providers = [new GenericOpenAIProvider(testProviderConfig)];
-    const router = createRouter(providers, 'test', {});
+    const router = createRouter(providers, {});
     logManager = new LogManager(200, 100, ':memory:');
     rateTracker = new RateTracker();
     server = createServer(router, config, logManager, undefined, rateTracker);
@@ -148,6 +147,24 @@ describe('admin logs routes', () => {
     }
   });
 
+  it('GET /api/token-stats returns token statistics structure', async () => {
+    const res = await request(server, { method: 'GET', path: '/api/token-stats', headers: authHeaders });
+    expect(res.status).toBe(200);
+    const json = JSON.parse(res.body);
+    expect(json).toHaveProperty('summary');
+    expect(json).toHaveProperty('byProvider');
+    expect(json).toHaveProperty('byModel');
+    expect(json).toHaveProperty('daily');
+    expect(typeof json.summary.totalTokens).toBe('number');
+    expect(typeof json.summary.promptTokens).toBe('number');
+    expect(typeof json.summary.completionTokens).toBe('number');
+    expect(typeof json.summary.requestCount).toBe('number');
+    expect(json.summary.requestCount).toBeGreaterThan(0);
+    expect(Array.isArray(json.byProvider)).toBe(true);
+    expect(Array.isArray(json.byModel)).toBe(true);
+    expect(Array.isArray(json.daily)).toBe(true);
+  });
+
   it('GET /api/stats returns qps/rpm/tps', async () => {
     rateTracker.record(100);
     rateTracker.record(200);
@@ -205,13 +222,30 @@ describe('admin logs routes', () => {
     expect(toggleBackJson.enabled).toBe(initialState);
   });
 
+  it('GET /api/health/providers returns provider status map', async () => {
+    const res = await request(server, { method: 'GET', path: '/api/health/providers', headers: authHeaders });
+    expect(res.status).toBe(200);
+    const json = JSON.parse(res.body);
+    expect(typeof json).toBe('object');
+    // Check at least one provider key exists
+    const keys = Object.keys(json);
+    expect(keys.length).toBeGreaterThan(0);
+    // Each provider entry should have status and latencyMs
+    for (const key of keys) {
+      expect(json[key]).toHaveProperty('status');
+      expect(typeof json[key].latencyMs).toBe('number');
+    }
+  });
+
   it('admin logs endpoints require auth', async () => {
     const endpoints = [
       { method: 'GET', path: '/api/logs' },
       { method: 'GET', path: '/api/stats' },
+      { method: 'GET', path: '/api/token-stats' },
       { method: 'POST', path: '/api/logs/clear' },
       { method: 'GET', path: '/api/logs/file-status' },
       { method: 'PUT', path: '/api/logs/file-toggle' },
+      { method: 'GET', path: '/api/health/providers' },
     ];
 
     for (const endpoint of endpoints) {

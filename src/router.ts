@@ -3,12 +3,10 @@ import { Provider, RouteResult } from './providers/types.js';
 /** Routes Claude model names to configured providers via alias resolution and fallback chains. */
 export class ModelRouter {
   private providers: Map<string, Provider> = new Map();
-  private defaultProviderName: string;
   private aliases: Record<string, string>;
   private fallbackChain: Record<string, string>;
 
-  constructor(defaultProviderName: string, aliases: Record<string, string> = {}, fallbackChain: Record<string, string> = {}) {
-    this.defaultProviderName = defaultProviderName;
+  constructor(aliases: Record<string, string> = {}, fallbackChain: Record<string, string> = {}) {
     this.aliases = aliases;
     this.fallbackChain = fallbackChain;
   }
@@ -68,15 +66,13 @@ export class ModelRouter {
       }
     }
 
-    const defaultProvider = this.providers.get(this.defaultProviderName);
-    if (!defaultProvider) {
-      throw new Error(`Default provider "${this.defaultProviderName}" not registered`);
+    // No alias/prefix/model match — use first healthy enabled provider
+    for (const provider of this.providers.values()) {
+      if (provider.config.enabled && (!provider.isHealthy || provider.isHealthy())) {
+        return { provider, resolvedModel: provider.resolveModel(model), originalModel };
+      }
     }
-    if (defaultProvider.isHealthy && !defaultProvider.isHealthy()) {
-      const fallback = this.tryFallback(defaultProvider.name, model);
-      if (fallback) return { ...fallback, originalModel };
-    }
-    return { provider: defaultProvider, resolvedModel: defaultProvider.resolveModel(model), originalModel };
+    throw new Error(`No route found for model "${originalModel}" and no healthy providers available`);
   }
 
   getProviders(): Provider[] {
@@ -148,8 +144,8 @@ export class ModelRouter {
   }
 }
 
-export function createRouter(providers: Provider[], defaultProviderName: string, aliases: Record<string, string> = {}, fallbackChain: Record<string, string> = {}): ModelRouter {
-  const router = new ModelRouter(defaultProviderName, aliases, fallbackChain);
+export function createRouter(providers: Provider[], aliases: Record<string, string> = {}, fallbackChain: Record<string, string> = {}): ModelRouter {
+  const router = new ModelRouter(aliases, fallbackChain);
   for (const provider of providers) {
     router.register(provider);
   }

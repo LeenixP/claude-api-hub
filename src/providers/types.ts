@@ -34,7 +34,6 @@ export interface GatewayConfig {
   port: number;
   host: string;
   providers: Record<string, ProviderConfig>;
-  defaultProvider: string;
   logLevel: 'debug' | 'info' | 'warn' | 'error';
   aliases?: Record<string, string>;
   tierTimeouts?: Record<string, TierTimeout>;
@@ -51,8 +50,6 @@ export interface GatewayConfig {
   tokenRefreshMinutes?: number;
   /** Override the anthropic-beta header for provider test probes. Auto-captured from real traffic if not set. */
   codingAgentBetas?: string;
-  /** Config schema version for migration tracking. */
-  configVersion?: string;
 }
 
 // ─── Anthropic API Types (incoming from Claude Code) ───

@@ -38,7 +38,6 @@ describe('TokenRefresher with OAuth providers', () => {
       port: 0,
       host: '127.0.0.1',
       providers: { oauth: oauthProviderConfig },
-      defaultProvider: 'oauth',
       logLevel: 'error',
       ...overrides,
     };

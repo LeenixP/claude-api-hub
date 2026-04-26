@@ -10,7 +10,6 @@ describe('TokenRefresher', () => {
     port: 0,
     host: '127.0.0.1',
     providers: {},
-    defaultProvider: 'test',
     logLevel: 'error',
   };
   const rebuildFn = vi.fn();

@@ -77,7 +77,6 @@ describe('HttpUtils', () => {
       port: 3000,
       host: '127.0.0.1',
       providers: {},
-      defaultProvider: 'test',
       logLevel: 'error' as const,
     };
 
@@ -145,7 +144,6 @@ describe('HttpUtils', () => {
         port: 3000,
         host: '127.0.0.1',
         providers: {},
-        defaultProvider: 'test',
         logLevel: 'error' as const,
         corsOrigins: ['http://example.com'],
       };

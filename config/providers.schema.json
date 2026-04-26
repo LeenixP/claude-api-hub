@@ -4,7 +4,7 @@
   "title": "Claude API Hub Provider Configuration",
   "description": "Configuration schema for claude-api-hub providers.json",
   "type": "object",
-  "required": ["port", "host", "defaultProvider", "providers"],
+  "required": ["port", "host", "providers"],
   "properties": {
     "port": {
       "type": "integer",
@@ -30,10 +30,6 @@
     "adminToken": {
       "type": "string",
       "description": "Admin API token (alternative to password)"
-    },
-    "defaultProvider": {
-      "type": "string",
-      "description": "Default provider ID to use when no alias matches"
     },
     "rateLimitRpm": {
       "type": "integer",

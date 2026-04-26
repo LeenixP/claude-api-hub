@@ -4,7 +4,6 @@
   "port": 9800,
   "host": "0.0.0.0",
   "logLevel": "info",
-  "defaultProvider": "claude",
   "aliases": {
     "haiku": "claude-haiku-4-5",
     "sonnet": "claude-sonnet-4-6",
