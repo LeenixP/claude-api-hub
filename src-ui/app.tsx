@@ -8,6 +8,7 @@ import { ProviderTokenBars } from './components/dashboard/ProviderTokenBars.js';
 import { QuickStart } from './components/dashboard/QuickStart.js';
 import { SystemInfo } from './components/dashboard/SystemInfo.js';
 import { TopModels } from './components/dashboard/TopModels.js';
+import { ModelDetailsTable } from './components/dashboard/ModelDetailsTable.js';
 import { ProviderList } from './components/providers/ProviderList.js';
 import { ProviderModal } from './components/providers/ProviderModal.js';
 import { AliasMapping } from './components/aliases/AliasMapping.js';
@@ -211,6 +212,7 @@ function AppContent() {
               <ProviderTokenBars tokenStats={tokenStats} config={config} />
               <TopModels tokenStats={tokenStats} config={config} />
             </div>
+            <ModelDetailsTable tokenStats={tokenStats} config={config} />
           </div>
         )}
         {page === 'providers' && (

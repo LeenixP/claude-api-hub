@@ -7,6 +7,16 @@ import { logger } from './logger.js';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 let cached: string | null = null;
 
+const ICON_PATH = join(__dirname, '../static/icon.png');
+let iconData: Buffer | null = null;
+
+export function getIconData(): Buffer | null {
+  if (iconData) return iconData;
+  if (!existsSync(ICON_PATH)) return null;
+  iconData = readFileSync(ICON_PATH);
+  return iconData;
+}
+
 export function dashboardHtml(version: string = ''): string {
   if (!cached) {
     const htmlPath = join(__dirname, '../static/index.html');

@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.2.0] - 2026-04-26
+
+### Added
+- Dashboard: Model Details table with search, sort, and pagination
+- Dashboard: Token heatmap tooltip on hover (date, tokens, request count)
+- Dashboard: Token values now display in K/M format throughout
+- New `form-select` CSS class for consistent select styling across the UI
+
+### Changed
+- Dashboard: Provider bar chart limits to top 5 + "Other" aggregation
+- Dashboard: Top Models limits to top 5 + "Other" aggregation
+- Provider filter and sort selects now use custom Select component (no native dropdown flicker)
+- Alias test button text: "测试别名" → "测试映射链路"
+
+### Fixed
+- Select dropdown clipping when positioned above the trigger element
+- Dashboard card heights no longer extend indefinitely with many items
+
 ## [6.0.0] - 2026-04-25
 
 ### Added
