@@ -1,5 +1,6 @@
 import http from 'http';
 import { sendJson, sendError } from '../utils/http.js';
+import { getErrorMessage } from '../utils/error.js';
 import {
   handleSocialAuth, handleBuilderIDAuth, refreshCredentials,
   importAwsCredentials, getCredentialStatus, getLastOAuthResult, clearLastOAuthResult, cancelOAuth,
@@ -35,7 +36,7 @@ export async function handleOAuthRoutes(
       }
       sendJson(res, 200, { authUrl: result.authUrl, authInfo: result.authInfo }, config, origin);
     } catch (err) {
-      sendError(res, 500, 'api_error', `OAuth failed: ${(err as Error).message}`, config, origin);
+      sendError(res, 500, 'api_error', `OAuth failed: ${getErrorMessage(err)}`, config, origin);
     }
     return true;
   }
@@ -58,7 +59,7 @@ export async function handleOAuthRoutes(
         sendError(res, 400, 'invalid_request_error', result.error || 'Import failed', config, origin);
       }
     } catch (err) {
-      sendError(res, 500, 'api_error', `Import failed: ${(err as Error).message}`, config, origin);
+      sendError(res, 500, 'api_error', `Import failed: ${getErrorMessage(err)}`, config, origin);
     }
     return true;
   }
@@ -70,7 +71,7 @@ export async function handleOAuthRoutes(
       const status = getCredentialStatus(credsPath);
       sendJson(res, 200, status, config, origin);
     } catch (err) {
-      sendError(res, 500, 'api_error', `Status check failed: ${(err as Error).message}`, config, origin);
+      sendError(res, 500, 'api_error', `Status check failed: ${getErrorMessage(err)}`, config, origin);
     }
     return true;
   }
@@ -82,7 +83,7 @@ export async function handleOAuthRoutes(
       const refreshed = await refreshCredentials(body.credsPath);
       sendJson(res, 200, { success: true, expiresAt: refreshed.expiresAt }, config, origin);
     } catch (err) {
-      sendError(res, 500, 'api_error', `Refresh failed: ${(err as Error).message}`, config, origin);
+      sendError(res, 500, 'api_error', `Refresh failed: ${getErrorMessage(err)}`, config, origin);
     }
     return true;
   }

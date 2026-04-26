@@ -92,7 +92,7 @@ export function ModelDetailsTable({ tokenStats, config }: ModelDetailsTableProps
             type="search"
             placeholder={t('modelDetail.search')}
             value={search}
-            onInput={(e: any) => { setSearch(e.currentTarget.value); setPage(0); }}
+            onInput={(e) => { setSearch((e.target as HTMLInputElement).value); setPage(0); }}
             style="height:32px;padding:0 10px;border-radius:6px;border:1px solid var(--color-border);background:var(--color-bg);color:var(--color-text);font-size:12px;width:180px;outline:none"
           />
           <div style="min-width:200px">

@@ -17,6 +17,7 @@ import { EventBus } from './services/event-bus.js';
 import { RateTracker } from './services/rate-tracker.js';
 import { KeyPool } from './services/pool-manager.js';
 import { detectInstallMethod, saveRestartInfo } from './install-info.js';
+import { getErrorMessage } from './utils/error.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -51,7 +52,7 @@ Environment variables:
 
 async function main(): Promise<void> {
   const args = parseArgs();
-  const config = loadConfig(args.config);
+  const config = await loadConfig(args.config);
   if (config.logLevel) setLogLevel(config.logLevel);
 
   // Detect install method and save restart info for auto-update
@@ -66,7 +67,7 @@ async function main(): Promise<void> {
   try {
     const pkg = JSON.parse(readFileSync(join(__dirname, '../package.json'), 'utf-8'));
     config.version = pkg.version;
-  } catch (err) { logger.warn('Failed to read package.json', { error: (err as Error).message }); }
+  } catch (err) { logger.warn('Failed to read package.json', { error: getErrorMessage(err) }); }
 
   const providers = Object.entries(config.providers)
     .filter(([, pc]) => pc.enabled)
@@ -95,7 +96,7 @@ async function main(): Promise<void> {
     } else if (err.code === 'EACCES') {
       logger.error(`Permission denied for port ${config.port}. Try a port > 1024.`);
     } else {
-      logger.error(`Server error: ${err.message}`);
+      logger.error(`Server error: ${getErrorMessage(err)}`);
     }
     process.exit(1);
   });
@@ -139,12 +140,12 @@ async function main(): Promise<void> {
       }
     }, 5000);
 
-    server.close(() => {
+    server.close(async () => {
       clearInterval(progressInterval);
       logger.info('Server closed. Saving state and exiting.');
       destroyAgents();
       rateTracker.destroy();
-      logManager.close();
+      await logManager.close();
       process.exit(0);
     });
 
@@ -161,7 +162,7 @@ async function main(): Promise<void> {
   process.on('SIGINT', () => gracefulShutdown('SIGINT'));
   process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
   process.on('uncaughtException', (err) => {
-    logger.error(`Uncaught exception: ${err.message}`);
+    logger.error(`Uncaught exception: ${getErrorMessage(err)}`);
     gracefulShutdown('uncaughtException');
   });
   process.on('unhandledRejection', (reason) => {

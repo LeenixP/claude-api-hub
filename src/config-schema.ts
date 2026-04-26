@@ -49,11 +49,11 @@ import type { ProviderConfig } from './providers/types.js';
 // ── All config parameters with their default values ──────────────────
 export const CONFIG_SCHEMA: Record<string, { default: unknown }> = {
   port:              { default: 9800 },
-  host:              { default: '0.0.0.0' },
+  host:              { default: '127.0.0.1' },
   logLevel:          { default: 'info' },
   rateLimitRpm:      { default: 0 },
-  streamTimeoutMs:   { default: 300_000 },    // 5 minutes
-  streamIdleTimeoutMs: { default: 60_000 },   // 1 minute
+  streamTimeoutMs:   { default: 600_000 },    // 10 minutes
+  streamIdleTimeoutMs: { default: 300_000 },  // 5 minutes
   maxResponseBytes:  { default: 10_485_760 }, // 10 MB
   trustProxy:        { default: false },
   tokenRefreshMinutes: { default: 30 },

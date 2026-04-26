@@ -398,7 +398,7 @@ export function ProviderModal({ open, onClose, onSaved, editId, editConfig }: Pr
             onInput={e => {
               const val = (e.target as HTMLInputElement).value;
               const parts = val.split(',').map(s => s.trim()).filter(Boolean);
-              updateField('prefix', parts.length > 1 ? parts as any : (parts[0] || '') as any);
+              updateField('prefix', parts.length > 1 ? parts : (parts[0] || ''));
             }}
             placeholder="prefix-" />
         </div>

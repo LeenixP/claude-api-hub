@@ -268,6 +268,107 @@ If the provider uses OpenAI format but you receive Anthropic format:
 - Check existing issues before creating new ones
 - Feel free to contribute improvements to documentation
 
+## Issue 报告指南
+
+### 提交 Bug 报告前的检查清单
+
+在提交 Bug 报告之前，请先完成以下检查：
+
+1. **确认使用最新版本**：运行 `npm list claude-api-hub` 或检查当前安装的版本号，确保问题在最新版本中仍然存在
+2. **搜索已有 Issue**：在 [GitHub Issues](https://github.com/LeenixP/claude-api-hub/issues) 中搜索关键词，确认该问题未被报告过
+3. **收集环境信息**：记录你的操作系统、Node.js 版本（`node -v`）、npm 版本（`npm -v`）以及项目版本
+4. **尝试最小复现**：剥离无关代码，确认问题可以用最小配置复现
+
+### Bug 报告模板
+
+```markdown
+## 问题描述
+清晰简洁地描述 Bug 是什么。
+
+## 复现步骤
+1. 执行 '...'
+2. 配置 '...'
+3. 发送请求到 '...'
+4. 出现错误
+
+## 期望行为
+描述你期望发生的结果。
+
+## 实际行为
+描述实际发生的结果，包括完整的错误信息。
+
+## 环境信息
+- OS: [例如 Ubuntu 22.04, macOS 14]
+- Node.js 版本: [例如 22.4.0]
+- claude-api-hub 版本: [例如 6.3.0]
+- 安装方式: [npm / 源码 / Docker]
+
+## 日志
+请提供相关的日志输出（注意脱敏 API Key）：
+```
+[粘贴日志]
+```
+
+## 附加信息
+- 是否可稳定复现：是 / 否
+- 是否已尝试回退到旧版本测试：是 / 否
+```
+
+### 功能请求模板
+
+```markdown
+## 使用场景
+描述你遇到什么问题，或者什么场景下需要这个功能。
+
+## 期望行为
+清晰描述你希望功能如何工作。
+
+## 替代方案
+描述你目前使用的替代方案（如果有）。
+
+## 是否愿意提交 PR
+- [ ] 我愿意为此功能提交 PR
+- [ ] 我愿意协助测试
+- [ ] 需要维护者实现
+```
+
+## 发布流程
+
+以下步骤供项目维护者参考：
+
+1. **更新 CHANGELOG**：在 `CHANGELOG.md` 顶部添加新版本条目，分类记录 Added / Changed / Deprecated / Removed / Fixed / Security
+2. **更新版本号**：修改 `package.json` 中的 `version` 字段，遵循 [Semantic Versioning](https://semver.org/)
+3. **运行测试**：确保全部测试通过
+   ```bash
+   npm test
+   ```
+4. **构建项目**：
+   ```bash
+   npm run build
+   ```
+5. **创建 git tag**：
+   ```bash
+   git tag -a vX.Y.Z -m "Release vX.Y.Z"
+   ```
+6. **推送代码和 tag**：
+   ```bash
+   git push origin main
+   git push origin vX.Y.Z
+   ```
+7. **自动发布**：GitHub Actions 会在 tag 推送后自动执行发布流程（如已配置）
+
+## 安全报告
+
+**请勿在公开 Issue 中披露安全漏洞。**
+
+如果你发现了安全问题，请通过以下方式私下报告：
+
+- **邮箱**：leenixp@gmail.com
+- **承诺**：维护者将在 **48 小时内**回复确认收到报告
+- **请包含**：漏洞描述、复现步骤、潜在影响评估
+
+更多安全相关信息请参阅 [SECURITY.md](./SECURITY.md)。
+
 ## License
 
 By contributing, you agree that your contributions will be licensed under the MIT License.

@@ -31,14 +31,14 @@ describe('isSSRFSafe - IPv4 private ranges', () => {
     expect(await isSSRFSafe('172.32.0.1')).toBe(true);
   });
 
-  it('rejects 192.168.x.x (RFC1918)', async () => {
-    expect(await isSSRFSafe('192.168.0.1')).toBe(false);
-    expect(await isSSRFSafe('192.168.255.255')).toBe(false);
+  it('allows 192.168.x.x (LAN access)', async () => {
+    expect(await isSSRFSafe('192.168.0.1')).toBe(true);
+    expect(await isSSRFSafe('192.168.255.255')).toBe(true);
   });
 
-  it('rejects 127.x.x.x (loopback)', async () => {
-    expect(await isSSRFSafe('127.0.0.1')).toBe(false);
-    expect(await isSSRFSafe('127.255.255.255')).toBe(false);
+  it('allows 127.x.x.x (loopback for local services)', async () => {
+    expect(await isSSRFSafe('127.0.0.1')).toBe(true);
+    expect(await isSSRFSafe('127.255.255.255')).toBe(true);
   });
 
   it('rejects 169.254.x.x (link-local)', async () => {
@@ -59,8 +59,8 @@ describe('isSSRFSafe - IPv4 private ranges', () => {
 });
 
 describe('isSSRFSafe - IPv6 private ranges', () => {
-  it('rejects ::1 (loopback)', async () => {
-    expect(await isSSRFSafe('::1')).toBe(false);
+  it('allows ::1 (loopback for local services)', async () => {
+    expect(await isSSRFSafe('::1')).toBe(true);
   });
 
   it('rejects fc00:: (unique local)', async () => {
@@ -79,8 +79,8 @@ describe('isSSRFSafe - IPv6 private ranges', () => {
     expect(await isSSRFSafe('::')).toBe(false);
   });
 
-  it('rejects ::ffff:127.0.0.1 (IPv4-mapped loopback)', async () => {
-    expect(await isSSRFSafe('::ffff:127.0.0.1')).toBe(false);
+  it('allows ::ffff:127.0.0.1 (IPv4-mapped loopback)', async () => {
+    expect(await isSSRFSafe('::ffff:127.0.0.1')).toBe(true);
   });
 
   it('allows public IPv6 addresses', async () => {
@@ -95,10 +95,10 @@ describe('isSSRFSafe - domain resolution', () => {
     expect(await isSSRFSafe('evil.example.com')).toBe(false);
   });
 
-  it('rejects domain resolving to private IPv6', async () => {
+  it('allows domain resolving to loopback IPv6', async () => {
     mockResolve4.mockRejectedValue(new Error('not found'));
     mockResolve6.mockResolvedValue(['::1']);
-    expect(await isSSRFSafe('evil.example.com')).toBe(false);
+    expect(await isSSRFSafe('evil.example.com')).toBe(true);
   });
 
   it('allows domain resolving to public IP', async () => {

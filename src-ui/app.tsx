@@ -137,7 +137,7 @@ function AppContent() {
     return () => window.removeEventListener('keydown', handler);
   }, []);
 
-  const handleLogin = useCallback((token: string) => {
+  const handleLogin = useCallback((token: string, _config: Record<string, unknown> | null) => {
     setAdminToken(token);
     // The useAuth hook will re-run and update config when adminToken changes
   }, [setAdminToken]);

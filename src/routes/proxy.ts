@@ -1,6 +1,7 @@
 import http from 'http';
 import crypto from 'crypto';
 import { sendJson, sendError, readBody, maskKey } from '../utils/http.js';
+import { getErrorMessage } from '../utils/error.js';
 import { forwardRequest, forwardStream } from '../services/forwarder.js';
 import { logger } from '../logger.js';
 import { isKiroProvider } from '../providers/factory.js';
@@ -105,12 +106,13 @@ async function handleStreamProxy(
     },
     (err) => {
       provider.reportError?.(built.usedKey);
+      const errMsg = getErrorMessage(err);
       if (!res.headersSent) {
-        ctx.logManager?.addLog({ ...logEntry, status: 502, durationMs: Date.now() - startTime, error: err.message }, logDetail);
-        sendError(res, 502, 'api_error', `Upstream stream error: ${err.message}`, ctx.config, origin);
+        ctx.logManager?.addLog({ ...logEntry, status: 502, durationMs: Date.now() - startTime, error: errMsg }, logDetail);
+        sendError(res, 502, 'api_error', `Upstream stream error: ${errMsg}`, ctx.config, origin);
       } else {
-        ctx.logManager?.addLog({ ...logEntry, status: 502, durationMs: Date.now() - startTime, error: err.message }, logDetail);
-        res.write(`data: ${JSON.stringify({ type: 'error', error: { type: 'api_error', message: err.message } })}\n\n`);
+        ctx.logManager?.addLog({ ...logEntry, status: 502, durationMs: Date.now() - startTime, error: errMsg }, logDetail);
+        res.write(`data: ${JSON.stringify({ type: 'error', error: { type: 'api_error', message: errMsg } })}\n\n`);
         res.end();
       }
     },
@@ -152,10 +154,11 @@ async function handleNonStreamProxy(
   let upstream;
   try {
     upstream = await forwardRequest(built.url, built.headers, built.body, ctx.config.streamTimeoutMs ?? 120000, ctx.config.maxResponseBytes);
-  } catch (err: any) {
+  } catch (err) {
     provider.reportError?.(built.usedKey);
-    ctx.logManager?.addLog({ ...logEntry, status: 502, durationMs: Date.now() - startTime, error: err.message }, logDetail);
-    sendError(res, 502, 'api_error', `Upstream request failed: ${err.message}`, ctx.config, origin);
+    const errMsg = getErrorMessage(err);
+    ctx.logManager?.addLog({ ...logEntry, status: 502, durationMs: Date.now() - startTime, error: errMsg }, logDetail);
+    sendError(res, 502, 'api_error', `Upstream request failed: ${errMsg}`, ctx.config, origin);
     return;
   }
 
@@ -181,9 +184,10 @@ async function handleNonStreamProxy(
   }
 
   let anthropicResp;
-  try { anthropicResp = provider.parseResponse(upstreamJson, anthropicReq.model); } catch (err: any) {
-    ctx.logManager?.addLog({ ...logEntry, status: 502, durationMs: Date.now() - startTime, error: `Parse error: ${err.message}` }, logDetail);
-    sendError(res, 502, 'api_error', `Response parse error: ${err.message}`, ctx.config, origin);
+  try { anthropicResp = provider.parseResponse(upstreamJson, anthropicReq.model); } catch (err) {
+    const errMsg = getErrorMessage(err);
+    ctx.logManager?.addLog({ ...logEntry, status: 502, durationMs: Date.now() - startTime, error: `Parse error: ${errMsg}` }, logDetail);
+    sendError(res, 502, 'api_error', `Response parse error: ${errMsg}`, ctx.config, origin);
     return;
   }
 
@@ -230,7 +234,7 @@ export async function handleProxyRoute(
     const requestId = `req_${crypto.randomUUID()}`;
     let bodyStr: string;
     try { bodyStr = await readBody(req); } catch (err) {
-      sendError(res, 400, 'invalid_request_error', (err as Error).message, config, origin); return true;
+      sendError(res, 400, 'invalid_request_error', getErrorMessage(err), config, origin); return true;
     }
     let anthropicReq: AnthropicRequest;
     try { anthropicReq = JSON.parse(bodyStr) as AnthropicRequest; } catch {
@@ -255,8 +259,8 @@ export async function handleProxyRoute(
 
     let routeResult;
     try { routeResult = router.route(anthropicReq.model); } catch (err) {
-      logManager.addLog({ time: new Date().toISOString(), requestId, claudeModel, resolvedModel: '', provider: '', protocol: '', targetUrl: '', stream: !!anthropicReq.stream, status: 500, durationMs: Date.now() - startTime, error: (err as Error).message });
-      sendError(res, 500, 'api_error', (err as Error).message, config, origin); return true;
+      logManager.addLog({ time: new Date().toISOString(), requestId, claudeModel, resolvedModel: '', provider: '', protocol: '', targetUrl: '', stream: !!anthropicReq.stream, status: 500, durationMs: Date.now() - startTime, error: getErrorMessage(err) });
+      sendError(res, 500, 'api_error', getErrorMessage(err), config, origin); return true;
     }
 
     const { provider, resolvedModel } = routeResult;
@@ -277,8 +281,8 @@ export async function handleProxyRoute(
     const protocol = provider.config.passthrough ? 'Anthropic' : 'OpenAI';
     let built: { url: string; headers: Record<string, string>; body: string; usedKey: string };
     try { built = provider.buildRequest(anthropicReq); } catch (err) {
-      logManager.addLog({ time: new Date().toISOString(), requestId, claudeModel, resolvedModel, provider: provider.name, protocol, targetUrl: '', stream: !!anthropicReq.stream, status: 500, durationMs: Date.now() - startTime, error: `Build error: ${(err as Error).message}` });
-      sendError(res, 500, 'api_error', `Provider build error: ${(err as Error).message}`, config, origin); return true;
+      logManager.addLog({ time: new Date().toISOString(), requestId, claudeModel, resolvedModel, provider: provider.name, protocol, targetUrl: '', stream: !!anthropicReq.stream, status: 500, durationMs: Date.now() - startTime, error: `Build error: ${getErrorMessage(err)}` });
+      sendError(res, 500, 'api_error', `Provider build error: ${getErrorMessage(err)}`, config, origin); return true;
     }
 
     if (provider.config.passthrough) {

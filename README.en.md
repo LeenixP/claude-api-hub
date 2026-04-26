@@ -43,12 +43,19 @@ claude-api-hub
 # ✓ api-hub listening on http://0.0.0.0:9800
 
 # 3. Configure Claude Code
-echo '{"env":{"ANTHROPIC_BASE_URL":"http://127.0.0.1:9800"}}' > ~/.claude/settings.json
+claude config set ANTHROPIC_BASE_URL http://127.0.0.1:9800
 
-# 4. Done! Claude Code now routes through the gateway
+# Alternative: manually write settings.json
+# echo '{"env":{"ANTHROPIC_BASE_URL":"http://127.0.0.1:9800"}}' > ~/.claude/settings.json
+
+# 4. Verify installation
+curl http://localhost:9800/health
+# Or open http://localhost:9800 in your browser for the dashboard
+
+# 5. Done! Claude Code now routes through the gateway
 ```
 
-> **Security note:** Binds to `0.0.0.0:9800` by default with no password. Set `password` in production.
+> **Security note:** Binds to `127.0.0.1:9800` by default (local access only). For production or LAN use, set `password` or use `--host 0.0.0.0`.
 
 ---
 

@@ -77,8 +77,7 @@ export function TopModels({ tokenStats, config }: TopModelsProps) {
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--color-primary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z" />
           </svg>
-          {/* i18n: token.topModels */}
-          Top Models
+          {t('token.topModels')}
         </h3>
         <div style="font-size:12px;color:var(--color-text-muted)">{t('token.noData')}</div>
       </div>
@@ -91,8 +90,7 @@ export function TopModels({ tokenStats, config }: TopModelsProps) {
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--color-primary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z" />
         </svg>
-        {/* i18n: token.topModels */}
-        Top Models
+        {t('token.topModels')}
       </h3>
       <div style="display:flex;flex-direction:column;gap:10px">
         {rows.map((model, i) => {
@@ -116,7 +114,7 @@ export function TopModels({ tokenStats, config }: TopModelsProps) {
               <div style="display:flex;gap:12px;margin-top:2px">
                 <span style="font-size:10px;color:var(--color-text-muted)">{t('stats.promptTokens')}: {formatTokens(model.promptTokens)}</span>
                 <span style="font-size:10px;color:var(--color-text-muted)">{t('stats.completionTokens')}: {formatTokens(model.completionTokens)}</span>
-                <span style="font-size:10px;color:var(--color-text-muted)">{model.requestCount} req</span>
+                <span style="font-size:10px;color:var(--color-text-muted)">{model.requestCount} {t('common.req')}</span>
               </div>
             </div>
           );

@@ -191,7 +191,7 @@ export function restoreConfig(): boolean {
  * Priority: 1) explicit --config path  2) ~/.claude-api-hub/providers.json  3) cwd config/providers.json
  * If none found, generates a default config and saves to ~/.claude-api-hub/providers.json.
  */
-export function loadConfig(configPath?: string): GatewayConfig {
+export async function loadConfig(configPath?: string): Promise<GatewayConfig> {
   const candidates = configPath ? [configPath] : [
     DEFAULT_CONFIG_PATH,
     resolve(process.cwd(), 'config/providers.json'),
@@ -244,5 +244,16 @@ export function loadConfig(configPath?: string): GatewayConfig {
   const config = merged as unknown as GatewayConfig;
   normalizeProviders(config);
   validateConfig(config);
+
+  // Auto-hash plaintext password on first load
+  if (config.password && !config.password.includes(':')) {
+    try {
+      const { hashPassword } = await import('./middleware/auth.js');
+      config.password = hashPassword(config.password);
+      if (filePath) writeFileSync(filePath, JSON.stringify(merged, null, 2), 'utf-8');
+      logger.info('Password auto-hashed and saved to config');
+    } catch { /* non-fatal */ }
+  }
+
   return config;
 }

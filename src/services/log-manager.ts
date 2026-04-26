@@ -3,6 +3,7 @@ import { readdir, unlink, appendFile } from 'fs/promises';
 import { homedir } from 'os';
 import { join } from 'path';
 import { logger } from '../logger.js';
+import { getErrorMessage } from '../utils/error.js';
 import { DatabaseSync } from 'node:sqlite';
 import type { EventBus } from './event-bus.js';
 import { MAX_LOG_ROWS, MAX_LOG_FILES } from '../constants.js';
@@ -46,16 +47,21 @@ export class LogManager {
 
   private eventBus?: EventBus;
 
+  private buffer: Array<{ entry: LogEntry; detail?: LogDetail }> = [];
+  private flushTimer: ReturnType<typeof setInterval> | null = null;
+  private readonly flushIntervalMs = 5000;
+  private readonly maxBufferSize = 100;
+
   constructor(maxLogs = MAX_LOG_ROWS, maxLogFiles = MAX_LOG_FILES, dbPath?: string, eventBus?: EventBus) {
     this.eventBus = eventBus;
     this.maxLogs = maxLogs;
     this.maxLogFiles = maxLogFiles;
     this.logDir = join(homedir(), '.claude-api-hub', 'logs');
-    try { mkdirSync(this.logDir, { recursive: true }); } catch (err) { logger.warn('Failed to create log directory', { error: (err as Error).message }); }
+    try { mkdirSync(this.logDir, { recursive: true }); } catch (err) { logger.warn('Failed to create log directory', { error: getErrorMessage(err) }); }
 
     const resolvedDbPath = dbPath ?? join(homedir(), '.claude-api-hub', 'data.db');
     if (resolvedDbPath !== ':memory:') {
-      try { mkdirSync(join(homedir(), '.claude-api-hub'), { recursive: true }); } catch (err) { logger.warn('Failed to create data directory', { error: (err as Error).message }); }
+      try { mkdirSync(join(homedir(), '.claude-api-hub'), { recursive: true }); } catch (err) { logger.warn('Failed to create data directory', { error: getErrorMessage(err) }); }
     }
 
     this.db = new DatabaseSync(resolvedDbPath);
@@ -101,6 +107,13 @@ export class LogManager {
     this.stmtTrim = this.db.prepare('DELETE FROM request_logs WHERE id IN (SELECT id FROM request_logs ORDER BY id ASC LIMIT ?)');
     this.stmtGetSetting = this.db.prepare('SELECT value FROM settings WHERE key = ?');
     this.stmtSetSetting = this.db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)');
+
+    this.flushTimer = setInterval(() => {
+      this.flush().catch(err => {
+        logger.warn('Scheduled log flush failed', { error: getErrorMessage(err) });
+      });
+    }, this.flushIntervalMs);
+    this.flushTimer.unref();
   }
 
   private rowToLogEntry(row: Record<string, unknown>): LogEntry {
@@ -129,30 +142,50 @@ export class LogManager {
       const filepath = join(this.logDir, filename);
       appendFile(filepath, JSON.stringify({ ...entry, ...detail }, null, 2), 'utf-8')
         .then(() => { entry.logFile = filepath; })
-        .catch((err) => { logger.warn('Failed to write log file', { error: (err as Error).message }); });
+        .catch((err) => { logger.warn('Failed to write log file', { error: getErrorMessage(err) }); });
     }
 
+    this.buffer.push({ entry, detail });
+    if (this.buffer.length >= this.maxBufferSize) {
+      this.flush().catch(err => {
+        logger.warn('Immediate log flush failed', { error: getErrorMessage(err) });
+      });
+    }
+  }
+
+  async flush(): Promise<void> {
+    if (this.buffer.length === 0) return;
+    const batch = this.buffer.splice(0, this.buffer.length);
     try {
-      this.stmtInsert.run(
-        entry.requestId, entry.time, entry.claudeModel, entry.resolvedModel,
-        entry.provider, entry.protocol, entry.targetUrl, entry.stream ? 1 : 0,
-        entry.status, entry.durationMs, entry.inputTokens ?? 0, entry.outputTokens ?? 0,
-        entry.error ?? null, entry.logFile ?? null
-      );
+      this.db.exec('BEGIN TRANSACTION');
+      for (const { entry } of batch) {
+        this.stmtInsert.run(
+          entry.requestId, entry.time, entry.claudeModel, entry.resolvedModel,
+          entry.provider, entry.protocol, entry.targetUrl, entry.stream ? 1 : 0,
+          entry.status, entry.durationMs, entry.inputTokens ?? 0, entry.outputTokens ?? 0,
+          entry.error ?? null, entry.logFile ?? null
+        );
+        this.eventBus?.emit('log', entry);
+      }
+      this.db.exec('COMMIT');
       this.trimLogs();
-      this.eventBus?.emit('log', entry);
-    } catch (err) { logger.warn('Failed to write log to database', { error: (err as Error).message }); }
+    } catch (err) {
+      try { this.db.exec('ROLLBACK'); } catch { /* ignore */ }
+      logger.warn('Failed to flush logs to database', { error: getErrorMessage(err), count: batch.length });
+      this.buffer.unshift(...batch);
+      throw err;
+    }
   }
 
   getLogs(limit = 200): LogEntry[] {
     try {
       const rows = this.stmtGetLogs.all(limit) as Record<string, unknown>[];
       return rows.map(r => this.rowToLogEntry(r));
-    } catch (err) { logger.warn('Failed to read logs', { error: (err as Error).message }); return []; }
+    } catch (err) { logger.warn('Failed to read logs', { error: getErrorMessage(err) }); return []; }
   }
 
   clearLogs(): void {
-    try { this.stmtClear.run(); } catch (err) { logger.warn('Failed to clear logs', { error: (err as Error).message }); }
+    try { this.stmtClear.run(); } catch (err) { logger.warn('Failed to clear logs', { error: getErrorMessage(err) }); }
     this.logCount = -1;
   }
 
@@ -160,20 +193,20 @@ export class LogManager {
     try {
       const row = this.stmtGetSetting.get('logToFile') as { value: string } | undefined;
       return row?.value === 'true';
-    } catch (err) { logger.warn('Failed to read log setting', { error: (err as Error).message }); return false; }
+    } catch (err) { logger.warn('Failed to read log setting', { error: getErrorMessage(err) }); return false; }
   }
 
   toggleFileLogging(): boolean {
     const current = this.isFileLogging();
     const next = !current;
-    try { this.stmtSetSetting.run('logToFile', next.toString()); } catch (err) { logger.warn('Failed to toggle file logging', { error: (err as Error).message }); }
+    try { this.stmtSetSetting.run('logToFile', next.toString()); } catch (err) { logger.warn('Failed to toggle file logging', { error: getErrorMessage(err) }); }
     return next;
   }
 
   getFileCount(): number {
     try {
       return readdirSync(this.logDir).filter(f => f.endsWith('.json')).length;
-    } catch (err) { logger.warn('Failed to count log files', { error: (err as Error).message }); return 0; }
+    } catch (err) { logger.warn('Failed to count log files', { error: getErrorMessage(err) }); return 0; }
   }
 
   get maxFiles(): number {
@@ -260,7 +293,7 @@ export class LogManager {
 
       return { summary, byProvider, byModel, daily };
     } catch (err) {
-      logger.warn('Failed to get token stats', { error: (err as Error).message });
+      logger.warn('Failed to get token stats', { error: getErrorMessage(err) });
       return {
         summary: { totalTokens: 0, promptTokens: 0, completionTokens: 0, requestCount: 0 },
         byProvider: [],
@@ -270,8 +303,17 @@ export class LogManager {
     }
   }
 
-  close(): void {
-    try { this.db.close(); } catch (err) { logger.warn('Failed to close database', { error: (err as Error).message }); }
+  async close(): Promise<void> {
+    if (this.flushTimer) {
+      clearInterval(this.flushTimer);
+      this.flushTimer = null;
+    }
+    try {
+      await this.flush();
+    } catch (err) {
+      logger.warn('Failed to flush logs during close', { error: getErrorMessage(err) });
+    }
+    try { this.db.close(); } catch (err) { logger.warn('Failed to close database', { error: getErrorMessage(err) }); }
   }
 
   private logCount = -1;
@@ -287,7 +329,7 @@ export class LogManager {
         this.stmtTrim.run(this.logCount - this.maxLogs);
         this.logCount = this.maxLogs;
       }
-    } catch (err) { logger.warn('Failed to trim logs', { error: (err as Error).message }); }
+    } catch (err) { logger.warn('Failed to trim logs', { error: getErrorMessage(err) }); }
   }
 
   private cleanLogDir(): void {
@@ -296,7 +338,7 @@ export class LogManager {
       if (jsonFiles.length < this.maxLogFiles) return;
       jsonFiles.sort();
       const toDelete = jsonFiles.slice(0, Math.floor(jsonFiles.length / 2));
-      Promise.all(toDelete.map(f => unlink(join(this.logDir, f)).catch((err) => { logger.warn(`Failed to delete log file ${f}`, { error: (err as Error).message }); }))).catch((err) => { logger.warn('Failed to clean log directory', { error: (err as Error).message }); });
-    }).catch((err) => { logger.warn('Failed to read log directory', { error: (err as Error).message }); });
+      Promise.all(toDelete.map(f => unlink(join(this.logDir, f)).catch((err) => { logger.warn(`Failed to delete log file ${f}`, { error: getErrorMessage(err) }); }))).catch((err) => { logger.warn('Failed to clean log directory', { error: getErrorMessage(err) }); });
+    }).catch((err) => { logger.warn('Failed to read log directory', { error: getErrorMessage(err) }); });
   }
 }

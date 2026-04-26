@@ -1,5 +1,6 @@
 import http from 'http';
 import { sendJson, sendError, maskKey } from '../utils/http.js';
+import { getErrorMessage } from '../utils/error.js';
 import { getConfigPath, loadConfig, normalizeProviders } from '../config.js';
 import { getAllowedConfigKeys } from '../config-schema.js';
 import { writeFileSync, renameSync } from 'fs';
@@ -8,7 +9,6 @@ import type { RouteContext } from './types.js';
 import { logger } from '../logger.js';
 import { readJson } from './helpers.js';
 import { deepMerge } from '../utils/deep-merge.js';
-import { isSSRFSafe } from '../utils/ssrf.js';
 
 function saveConfig(config: GatewayConfig): void {
   const configPath = getConfigPath();
@@ -34,7 +34,7 @@ export async function rebuildProviders(router: RouteContext['router'], config: G
       const p = createProvider(pc);
       if (p) providers.push(p);
     } catch (err) {
-      logger.warn(`Skipping provider "${pc.name}": ${(err as Error).message}`);
+      logger.warn(`Skipping provider "${pc.name}": ${getErrorMessage(err)}`);
     }
   }
   router.replaceAll(providers);
@@ -70,17 +70,6 @@ export async function handleAdminConfigRoutes(
         return;
       }
       try {
-        const parsed = new URL(p.baseUrl);
-        if (!await isSSRFSafe(parsed.hostname)) {
-          logger.warn(`Blocked fetch-models for ${p.name || key}: private IP detected`);
-          results[key] = [...new Set([...(p.models || []), p.defaultModel].filter(Boolean))];
-          return;
-        }
-      } catch {
-        results[key] = [...new Set([...(p.models || []), p.defaultModel].filter(Boolean))];
-        return;
-      }
-      try {
         const url = p.passthrough ? `${p.baseUrl}/v1/models` : `${p.baseUrl}/models`;
         const hdrs: Record<string, string> = p.passthrough
           ? { 'x-api-key': p.apiKey, 'anthropic-version': '2023-06-01' }
@@ -90,7 +79,7 @@ export async function handleAdminConfigRoutes(
         const fetched = (json.data || []).map((m: { id?: string }) => m.id).filter(Boolean) as string[];
         results[key] = [...new Set([...fetched, ...(p.models || []), p.defaultModel].filter(Boolean))];
       } catch (err) {
-        logger.warn(`Failed to fetch models for ${p.name || key}: ${(err as Error).message}`);
+        logger.warn(`Failed to fetch models for ${p.name || key}: ${getErrorMessage(err)}`);
         results[key] = [...new Set([...(p.models || []), p.defaultModel].filter(Boolean))];
       }
     });
@@ -105,14 +94,6 @@ export async function handleAdminConfigRoutes(
     if (!body) return true;
     if (!body.baseUrl || !body.apiKey) {
       sendError(res, 400, 'invalid_request_error', 'Missing baseUrl or apiKey', config, origin); return true;
-    }
-    try {
-      const parsed = new URL(body.baseUrl);
-      if (!await isSSRFSafe(parsed.hostname)) {
-        sendError(res, 400, 'invalid_request_error', 'baseUrl cannot point to private/internal networks', config, origin); return true;
-      }
-    } catch {
-      sendError(res, 400, 'invalid_request_error', 'Invalid baseUrl format', config, origin); return true;
     }
     try {
       const url = body.passthrough ? `${body.baseUrl}/v1/models` : `${body.baseUrl}/models`;
@@ -156,14 +137,6 @@ export async function handleAdminConfigRoutes(
     if (config.providers[name]) {
       sendError(res, 409, 'conflict_error', `Provider "${name}" already exists`, config, origin); return true;
     }
-    try {
-      const hostname = new URL(baseUrl).hostname;
-      if (!await isSSRFSafe(hostname)) {
-        sendError(res, 400, 'invalid_request_error', 'baseUrl points to a private/internal network address', config, origin); return true;
-      }
-    } catch {
-      sendError(res, 400, 'invalid_request_error', 'Invalid baseUrl format', config, origin); return true;
-    }
     const allowedFields = ['name', 'baseUrl', 'apiKey', 'models', 'defaultModel', 'enabled', 'prefix', 'passthrough', 'authMode', 'providerType', 'options'];
     const newProvider: ProviderConfig = { name, baseUrl, apiKey: apiKey || '', models, defaultModel, enabled: enabled ?? true };
     for (const [k, v] of Object.entries(body)) {
@@ -205,16 +178,6 @@ export async function handleAdminConfigRoutes(
       delete filtered.apiKey;
     }
     const mergedProvider = { ...config.providers[providerName], ...filtered };
-    if (mergedProvider.baseUrl) {
-      try {
-        const hostname = new URL(mergedProvider.baseUrl).hostname;
-        if (!await isSSRFSafe(hostname)) {
-          sendError(res, 400, 'invalid_request_error', 'baseUrl points to a private/internal network address', config, origin); return true;
-        }
-      } catch {
-        sendError(res, 400, 'invalid_request_error', 'Invalid baseUrl format', config, origin); return true;
-      }
-    }
     config.providers[providerName] = { ...config.providers[providerName], ...filtered };
     saveConfig(config);
     await rebuildProviders(router, config);
@@ -276,19 +239,6 @@ export async function handleAdminConfigRoutes(
             p.apiKey = config.providers[key].apiKey;
           }
         }
-        // Validate all provider baseUrls for SSRF
-        for (const [key, p] of Object.entries(newConfig.providers)) {
-          if (p.baseUrl) {
-            try {
-              const hostname = new URL(p.baseUrl).hostname;
-              if (!await isSSRFSafe(hostname)) {
-                sendError(res, 400, 'invalid_request_error', `Provider "${key}": baseUrl points to a private/internal network address`, config, origin); return true;
-              }
-            } catch {
-              sendError(res, 400, 'invalid_request_error', `Provider "${key}": Invalid baseUrl format`, config, origin); return true;
-            }
-          }
-        }
       }
       const allowedConfigKeys = getAllowedConfigKeys();
       for (const key of allowedConfigKeys) {
@@ -301,14 +251,14 @@ export async function handleAdminConfigRoutes(
       await rebuildProviders(router, config);
       sendJson(res, 200, { imported: true }, config, origin);
     } catch (err) {
-      sendError(res, 500, 'api_error', `Import failed: ${(err as Error).message}`, config, origin);
+      sendError(res, 500, 'api_error', `Import failed: ${getErrorMessage(err)}`, config, origin);
     }
     return true;
   }
 
   if (req.method === 'POST' && pathname === '/api/config/reload') {
     try {
-      const fresh = loadConfig(getConfigPath());
+      const fresh = await loadConfig(getConfigPath());
       const merged = deepMerge(config as unknown as Record<string, unknown>, fresh as unknown as Record<string, unknown>);
       Object.assign(config, merged);
       router.setAliases(config.aliases ?? {});
@@ -321,7 +271,7 @@ export async function handleAdminConfigRoutes(
       };
       sendJson(res, 200, { reloaded: true, config: masked }, config, origin);
     } catch (err) {
-      sendError(res, 500, 'api_error', `Reload failed: ${(err as Error).message}`, config, origin);
+      sendError(res, 500, 'api_error', `Reload failed: ${getErrorMessage(err)}`, config, origin);
     }
     return true;
   }

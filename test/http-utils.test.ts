@@ -91,7 +91,7 @@ describe('HttpUtils', () => {
     it('returns first origin when no match', () => {
       const config = { ...baseConfig, corsOrigins: ['http://localhost:3000', 'http://example.com'] };
       const headers = getCorsHeaders(config, 'http://unknown.com');
-      expect(headers['Access-Control-Allow-Origin']).toBe('http://localhost:3000');
+      expect(headers['Access-Control-Allow-Origin']).toBeUndefined();
     });
 
     it('uses wildcard behavior with no config', () => {

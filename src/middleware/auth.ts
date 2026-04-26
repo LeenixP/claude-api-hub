@@ -111,6 +111,24 @@ export function isValidSession(token: string): boolean {
 
 // ─── Admin Auth ───
 
+const SCRYPT_KEYLEN = 64;
+
+export function hashPassword(password: string): string {
+  const salt = crypto.randomBytes(32).toString('hex');
+  const hash = crypto.scryptSync(password, salt, SCRYPT_KEYLEN).toString('hex');
+  return `${hash}:${salt}`;
+}
+
+export function verifyPassword(password: string, stored: string): boolean {
+  const [hash, salt] = stored.split(':');
+  if (!hash || !salt) return false;
+  const computed = crypto.scryptSync(password, salt, SCRYPT_KEYLEN).toString('hex');
+  const bufHash = Buffer.from(hash, 'hex');
+  const bufComputed = Buffer.from(computed, 'hex');
+  if (bufHash.length !== bufComputed.length) return false;
+  return crypto.timingSafeEqual(bufHash, bufComputed);
+}
+
 export function timingSafeCompare(a: string, b: string): boolean {
   const bufA = Buffer.from(a, 'utf-8');
   const bufB = Buffer.from(b, 'utf-8');
@@ -193,4 +211,6 @@ export function setSecurityHeaders(res: http.ServerResponse): void {
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
   res.setHeader('Content-Security-Policy',
     "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' http: https:; frame-ancestors 'none'");
+  res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  res.setHeader('Permissions-Policy', 'geolocation=(), microphone=(), camera=(), payment=()');
 }

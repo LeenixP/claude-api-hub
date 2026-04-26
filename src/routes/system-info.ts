@@ -7,6 +7,7 @@ import type { RouteContext } from './types.js';
 import { getInstallInfo, getRestartInfo, saveRestartInfo } from '../install-info.js';
 import { backupConfig, restoreConfig } from '../config.js';
 import { logger } from '../logger.js';
+import { getErrorMessage } from '../utils/error.js';
 
 function compareSemver(a: string, b: string): number {
   const pa = a.replace(/^v/, '').split('.').map(Number);
@@ -78,7 +79,7 @@ export async function handleSystemRoutes(
         localVersion,
         latestVersion: null,
         hasUpdate: false,
-        error: (err as Error).message,
+        error: getErrorMessage(err),
       }));
     }
     return true;
@@ -126,7 +127,7 @@ export async function handleSystemRoutes(
           maxBuffer: 1024 * 1024,
         }, (err, stdout, stderr) => {
           if (err) {
-            reject(new Error(stderr || err.message));
+            reject(new Error(getErrorMessage(err)));
             return;
           }
           resolve(stdout);
@@ -141,10 +142,10 @@ export async function handleSystemRoutes(
       res.writeHead(200, { 'Content-Type': 'application/json', ...cors });
       res.end(JSON.stringify({ success: true, oldVersion, newVersion, output: stdout }));
     } catch (err) {
-      logger.error(`Update failed: ${(err as Error).message}`);
+      logger.error(`Update failed: ${getErrorMessage(err)}`);
       restoreConfig();
       res.writeHead(200, { 'Content-Type': 'application/json', ...cors });
-      res.end(JSON.stringify({ success: false, oldVersion, newVersion: null, error: (err as Error).message }));
+      res.end(JSON.stringify({ success: false, oldVersion, newVersion: null, error: getErrorMessage(err) }));
     } finally {
       updateInProgress = false;
     }
@@ -177,7 +178,7 @@ export async function handleSystemRoutes(
         logger.info(`Spawned replacement process (PID ${child.pid}), exiting...`);
         process.exit(0);
       } catch (err) {
-        logger.error(`Failed to restart: ${(err as Error).message}`);
+        logger.error(`Failed to restart: ${getErrorMessage(err)}`);
       }
     }, 500);
 
