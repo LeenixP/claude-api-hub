@@ -15,9 +15,7 @@ export function Sidebar({ page, navigate, version }: SidebarProps) {
   return (
     <nav class="hidden lg:flex flex-col fixed h-screen" style="width:var(--sidebar-width);background:var(--color-surface);border-right:1px solid var(--color-border);z-index:50">
       <div style="padding:20px 24px;border-bottom:1px solid var(--color-border);display:flex;align-items:center;gap:14px">
-        <div style="width:44px;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:var(--color-primary);color:var(--color-surface);flex-shrink:0">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
-        </div>
+        <img src="/icon.png" alt="API Hub" style="width:44px;height:44px;border-radius:12px;flex-shrink:0" />
         <div>
           <div style="font-size:16px;font-weight:700;color:var(--color-text);line-height:1.3">API Hub</div>
           <div style="font-size:12px;color:var(--color-text-muted);display:flex;align-items:center;gap:4px">

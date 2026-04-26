@@ -134,7 +134,8 @@ echo '{"env":{"ANTHROPIC_BASE_URL":"http://127.0.0.1:9800"}}' > ~/.claude/settin
 
 ### Dashboard & Monitoring
 - Real-time SSE dashboard with request monitoring
-- Token usage charts and request trend graphs
+- Token usage charts, request trend graphs, and usage heatmap
+- Model details table with search, sort, and pagination
 - Quick start guide with copy-paste config snippets
 - Provider health monitoring
 
