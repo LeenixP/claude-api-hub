@@ -65,18 +65,18 @@ export async function handleAdminConfigRoutes(
     const results: Record<string, string[]> = {};
     const tasks = Object.entries(config.providers).map(async ([key, p]) => {
       if (!p.enabled || !p.apiKey) {
-        results[p.name || key] = [...new Set([...(p.models || []), p.defaultModel].filter(Boolean))];
+        results[key] = [...new Set([...(p.models || []), p.defaultModel].filter(Boolean))];
         return;
       }
       try {
         const parsed = new URL(p.baseUrl);
         if (!await isSSRFSafe(parsed.hostname)) {
           logger.warn(`Blocked fetch-models for ${p.name || key}: private IP detected`);
-          results[p.name || key] = [...new Set([...(p.models || []), p.defaultModel].filter(Boolean))];
+          results[key] = [...new Set([...(p.models || []), p.defaultModel].filter(Boolean))];
           return;
         }
       } catch {
-        results[p.name || key] = [...new Set([...(p.models || []), p.defaultModel].filter(Boolean))];
+        results[key] = [...new Set([...(p.models || []), p.defaultModel].filter(Boolean))];
         return;
       }
       try {
@@ -87,10 +87,10 @@ export async function handleAdminConfigRoutes(
         const body = await httpGet(url, hdrs);
         const json = JSON.parse(body);
         const fetched = (json.data || []).map((m: { id?: string }) => m.id).filter(Boolean) as string[];
-        results[p.name || key] = [...new Set([...fetched, ...(p.models || []), p.defaultModel].filter(Boolean))];
+        results[key] = [...new Set([...fetched, ...(p.models || []), p.defaultModel].filter(Boolean))];
       } catch (err) {
         logger.warn(`Failed to fetch models for ${p.name || key}: ${(err as Error).message}`);
-        results[p.name || key] = [...new Set([...(p.models || []), p.defaultModel].filter(Boolean))];
+        results[key] = [...new Set([...(p.models || []), p.defaultModel].filter(Boolean))];
       }
     });
     await Promise.all(tasks);

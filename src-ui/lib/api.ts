@@ -82,7 +82,7 @@ export function saveTierTimeouts(timeouts: Record<string, { timeoutMs: number; s
 export function createProvider(key: string, config: ProviderConfig): Promise<void> {
   return api<void>('/api/config/providers', {
     method: 'POST',
-    body: JSON.stringify({ ...config, name: key }),
+    body: JSON.stringify(config),
   });
 }
 

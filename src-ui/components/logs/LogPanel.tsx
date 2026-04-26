@@ -3,6 +3,7 @@ import type { LogEntry as LogEntryType } from '../../types.js';
 import { LogEntryRow } from './LogEntry.js';
 import { apiFetch } from '../../hooks/useApi.js';
 import { showToast } from '../common/Toast.js';
+import { Select } from '../common/Select.js';
 import { useLocale } from '../../lib/i18n.js';
 import { formatTokens, formatDuration } from '../../lib/utils.js';
 
@@ -187,14 +188,14 @@ export function LogPanel({ logs, connected, onClear }: LogPanelProps) {
       )}
 
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap">
-        <select
-          value={providerFilter}
-          onChange={e => setProviderFilter((e.target as HTMLSelectElement).value)}
-          style="padding:6px 10px;border-radius:6px;font-size:12px;border:1px solid var(--color-border);background:var(--color-bg);color:var(--color-text);outline:none;cursor:pointer"
-        >
-          <option value="">{t('logs.filterProvider')}</option>
-          {providers.map(p => <option key={p} value={p}>{p}</option>)}
-        </select>
+        <div style="min-width:180px">
+          <Select
+            value={providerFilter}
+            onChange={setProviderFilter}
+            placeholder={t('logs.filterProvider')}
+            options={providers.map(p => ({ value: p, label: p }))}
+          />
+        </div>
         <div class="filter-group">
           {(['newest', 'oldest', 'fastest', 'slowest'] as SortType[]).map(s => (
             <button key={s} onClick={() => setSort(s)} class={`filter-btn ${sort === s ? 'filter-btn-active' : ''}`} style="font-size:12px">

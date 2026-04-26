@@ -43,9 +43,7 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
     <div class="flex items-center justify-center min-h-screen" style="background:var(--color-bg)">
       <form onSubmit={handleSubmit} style="width:400px;padding:40px;border-radius:16px;background:var(--color-surface);border:1px solid var(--color-border);box-shadow:0 20px 60px rgba(0,0,0,0.3)">
         <div style="display:flex;justify-content:center;margin-bottom:28px">
-          <div style="width:56px;height:56px;border-radius:14px;display:flex;align-items:center;justify-content:center;background:var(--color-primary);color:var(--color-surface)">
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
-          </div>
+          <img src="/icon.png" alt="API Hub" style="width:56px;height:56px;border-radius:14px" />
         </div>
         <h1 style="font-size:24px;font-weight:700;text-align:center;color:var(--color-text);margin-bottom:6px">{t('login.title')}</h1>
         <p style="font-size:14px;text-align:center;color:var(--color-text-dim);margin-bottom:28px">{t('login.subtitle')}</p>
