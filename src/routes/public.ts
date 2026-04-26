@@ -1,6 +1,6 @@
 import http from 'http';
-import { sendJson, compressBody } from '../utils/http.js';
-import { dashboardHtml, dashboardETag } from '../dashboard.js';
+import { sendJson, sendError, compressBody } from '../utils/http.js';
+import { dashboardHtml, dashboardETag, getIconData } from '../dashboard.js';
 import { DASHBOARD_CACHE_MAX_AGE } from '../constants.js';
 import type { RouteContext } from './types.js';
 
@@ -47,6 +47,21 @@ export async function handlePublicRoutes(
 
   if (req.method === 'GET' && pathname === '/health') {
     sendJson(res, 200, { status: 'ok', timestamp: new Date().toISOString() }, config, origin);
+    return true;
+  }
+
+  if (req.method === 'GET' && pathname === '/icon.png') {
+    const icon = getIconData();
+    if (!icon) {
+      sendError(res, 404, 'not_found_error', 'Icon not found', config, origin);
+      return true;
+    }
+    res.writeHead(200, {
+      'Content-Type': 'image/png',
+      'Cache-Control': 'public, max-age=86400',
+      ...cors,
+    });
+    res.end(icon);
     return true;
   }
 

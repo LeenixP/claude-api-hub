@@ -219,21 +219,25 @@ export class LogManager {
       }));
 
       const byModelRows = this.db.prepare(`
-        SELECT resolved_model AS model,
+        SELECT provider,
+               resolved_model AS model,
                COALESCE(SUM(input_tokens), 0) AS promptTokens,
                COALESCE(SUM(output_tokens), 0) AS completionTokens,
-               COUNT(*) AS requestCount
+               COUNT(*) AS requestCount,
+               MAX(time) AS lastUsedAt
         FROM request_logs
         WHERE resolved_model != ''
-        GROUP BY resolved_model
+        GROUP BY provider, resolved_model
         ORDER BY SUM(input_tokens + output_tokens) DESC
-      `).all() as Array<{ model: string; promptTokens: number; completionTokens: number; requestCount: number }>;
+      `).all() as Array<{ provider: string; model: string; promptTokens: number; completionTokens: number; requestCount: number; lastUsedAt: string }>;
       const byModel = byModelRows.map(r => ({
+        provider: r.provider,
         model: r.model,
         totalTokens: r.promptTokens + r.completionTokens,
         promptTokens: r.promptTokens,
         completionTokens: r.completionTokens,
         requestCount: r.requestCount,
+        lastUsedAt: r.lastUsedAt,
       }));
 
       const dailyRows = this.db.prepare(`

@@ -76,7 +76,7 @@ export interface Stats {
 export interface TokenStats {
   summary: { totalTokens: number; promptTokens: number; completionTokens: number; requestCount: number };
   byProvider: Array<{ provider: string; totalTokens: number; promptTokens: number; completionTokens: number; requestCount: number }>;
-  byModel: Array<{ model: string; totalTokens: number; promptTokens: number; completionTokens: number; requestCount: number }>;
+  byModel: Array<{ provider: string; model: string; totalTokens: number; promptTokens: number; completionTokens: number; requestCount: number; lastUsedAt?: string }>;
   daily: Array<{ date: string; totalTokens: number; promptTokens: number; completionTokens: number; requestCount: number }>;
 }
 
