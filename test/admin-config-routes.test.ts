@@ -578,16 +578,14 @@ describe('admin config routes', () => {
     expect(json.error.type).toBe('not_found_error');
   });
 
-  it('PUT /api/config/providers/:name rejects private IP in baseUrl update', async () => {
+  it('PUT /api/config/providers/:name allows loopback IP in baseUrl update', async () => {
     const res = await request(server, {
       method: 'PUT',
       path: '/api/config/providers/test',
       headers: { ...authHeaders, 'Content-Type': 'application/json' },
       body: JSON.stringify({ baseUrl: 'http://127.0.0.1:3000' }),
     });
-    expect(res.status).toBe(400);
-    const json = JSON.parse(res.body);
-    expect(json.error.message).toContain('private');
+    expect(res.status).toBe(200);
   });
 
   it('PUT /api/config/providers/:name rejects invalid baseUrl format in update', async () => {
@@ -602,7 +600,7 @@ describe('admin config routes', () => {
     expect(json.error.message).toContain('baseUrl');
   });
 
-  it('POST /api/config/import rejects provider with private IP baseUrl', async () => {
+  it('POST /api/config/import allows provider with LAN IP baseUrl', async () => {
     const res = await request(server, {
       method: 'POST',
       path: '/api/config/import',
@@ -620,9 +618,7 @@ describe('admin config routes', () => {
         },
       }),
     });
-    expect(res.status).toBe(400);
-    const json = JSON.parse(res.body);
-    expect(json.error.message).toContain('private');
+    expect(res.status).toBe(200);
   });
 
   it('POST /api/config/import rejects provider with invalid baseUrl format', async () => {

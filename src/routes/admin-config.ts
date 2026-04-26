@@ -9,12 +9,20 @@ import type { RouteContext } from './types.js';
 import { logger } from '../logger.js';
 import { readJson } from './helpers.js';
 import { deepMerge } from '../utils/deep-merge.js';
+import { isSSRFSafe } from '../utils/ssrf.js';
 
 function saveConfig(config: GatewayConfig): void {
   const configPath = getConfigPath();
   const tmpPath = configPath + '.tmp';
   writeFileSync(tmpPath, JSON.stringify(config, null, 2), 'utf-8');
   renameSync(tmpPath, configPath);
+}
+
+async function validateBaseUrl(baseUrl: string): Promise<string | null> {
+  try { new URL(baseUrl); } catch { return 'Invalid baseUrl format'; }
+  const hostname = new URL(baseUrl).hostname;
+  if (!(await isSSRFSafe(hostname))) return 'baseUrl resolves to a private IP address';
+  return null;
 }
 
 export async function rebuildProviders(router: RouteContext['router'], config: GatewayConfig): Promise<void> {
@@ -95,6 +103,8 @@ export async function handleAdminConfigRoutes(
     if (!body.baseUrl || !body.apiKey) {
       sendError(res, 400, 'invalid_request_error', 'Missing baseUrl or apiKey', config, origin); return true;
     }
+    const urlErr = await validateBaseUrl(body.baseUrl);
+    if (urlErr) { sendError(res, 400, 'invalid_request_error', urlErr, config, origin); return true; }
     try {
       const url = body.passthrough ? `${body.baseUrl}/v1/models` : `${body.baseUrl}/models`;
       const hdrs: Record<string, string> = body.passthrough
@@ -134,6 +144,8 @@ export async function handleAdminConfigRoutes(
     if (!name || !baseUrl || (!isOAuth && !apiKey) || !models || !defaultModel) {
       sendError(res, 400, 'invalid_request_error', 'Missing required fields: name, baseUrl, apiKey (or authMode=oauth), models, defaultModel', config, origin); return true;
     }
+    const urlErr = await validateBaseUrl(baseUrl);
+    if (urlErr) { sendError(res, 400, 'invalid_request_error', urlErr, config, origin); return true; }
     if (config.providers[name]) {
       sendError(res, 409, 'conflict_error', `Provider "${name}" already exists`, config, origin); return true;
     }
@@ -172,6 +184,10 @@ export async function handleAdminConfigRoutes(
       if (allowedUpdateFields.includes(k)) {
         (filtered as unknown as Record<string, unknown>)[k] = v;
       }
+    }
+    if (filtered.baseUrl) {
+      const urlErr = await validateBaseUrl(filtered.baseUrl);
+      if (urlErr) { sendError(res, 400, 'invalid_request_error', urlErr, config, origin); return true; }
     }
     // Preserve real API key if frontend sends masked value
     if (filtered.apiKey && filtered.apiKey.includes('***')) {
@@ -230,6 +246,12 @@ export async function handleAdminConfigRoutes(
     if (!newConfig) return true;
     if (!newConfig.providers || typeof newConfig.providers !== 'object') {
       sendError(res, 400, 'invalid_request_error', 'Config must contain a providers object', config, origin); return true;
+    }
+    for (const [, p] of Object.entries(newConfig.providers)) {
+      if (p.baseUrl) {
+        const urlErr = await validateBaseUrl(p.baseUrl);
+        if (urlErr) { sendError(res, 400, 'invalid_request_error', urlErr, config, origin); return true; }
+      }
     }
     try {
       // Preserve real API keys when frontend sends masked values back
