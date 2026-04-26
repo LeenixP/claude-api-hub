@@ -1,5 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { loadConfig, getConfigPath } from '../src/config.js';
+import { loadConfig, getConfigPath, backupConfig, restoreConfig } from '../src/config.js';
+import { existsSync, unlinkSync, mkdirSync as fsMkdirSync, copyFileSync, chmodSync } from 'fs';
+import { homedir } from 'os';
 import { writeFileSync, mkdirSync, rmSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
@@ -16,7 +18,6 @@ const validConfig = {
   port: 9800,
   host: '127.0.0.1',
   logLevel: 'info',
-  defaultProvider: 'test',
   providers: {
     test: {
       name: 'Test',
@@ -72,8 +73,8 @@ describe('config', () => {
     delete process.env.__BLOCKED_VAR;
   });
 
-  it('throws on missing config file', () => {
-    expect(() => loadConfig('/nonexistent/path/config.json')).toThrow('Config not found');
+  it('throws when explicit config path does not exist', () => {
+    expect(() => loadConfig('/nonexistent/path/config.json')).toThrow('Config file not found');
   });
 
   it('throws on invalid JSON', () => {
@@ -82,10 +83,12 @@ describe('config', () => {
     expect(() => loadConfig(path)).toThrow();
   });
 
-  it('throws on missing port', () => {
-    const cfg = { ...validConfig, port: undefined };
+  it('fills in default port when missing from config', () => {
+    const cfg = { ...validConfig };
+    delete (cfg as any).port;
     const path = writeTestConfig(cfg);
-    expect(() => loadConfig(path)).toThrow('port');
+    const config = loadConfig(path);
+    expect(config.port).toBe(9800);
   });
 
   it('throws on port out of range', () => {
@@ -100,16 +103,18 @@ describe('config', () => {
     expect(() => loadConfig(path)).toThrow('host');
   });
 
-  it('throws on missing defaultProvider', () => {
-    const cfg = { ...validConfig, defaultProvider: '' };
+  it('fills in default providers when providers key is missing', () => {
+    const cfg = { ...validConfig };
+    delete (cfg as any).providers;
     const path = writeTestConfig(cfg);
-    expect(() => loadConfig(path)).toThrow('defaultProvider');
+    const config = loadConfig(path);
+    expect(config.providers).toBeDefined();
   });
 
-  it('throws when defaultProvider not in providers', () => {
-    const cfg = { ...validConfig, defaultProvider: 'nonexistent' };
+  it('throws on providers not being an object', () => {
+    const cfg = { ...validConfig, providers: 'not-an-object' as any };
     const path = writeTestConfig(cfg);
-    expect(() => loadConfig(path)).toThrow('not found in providers');
+    expect(() => loadConfig(path)).toThrow('providers');
   });
 
   it('throws on provider with invalid baseUrl', () => {
@@ -176,5 +181,70 @@ describe('config', () => {
     const cfg = { ...validConfig, tierTimeouts: { haiku: { timeoutMs: 'not-a-number' as unknown as number } } };
     const path = writeTestConfig(cfg);
     expect(() => loadConfig(path)).toThrow('timeoutMs');
+  });
+
+  it('strips deprecated keys from loaded config', () => {
+    const cfg = { ...validConfig, defaultProvider: 'test' } as any;
+    const path = writeTestConfig(cfg);
+    const config = loadConfig(path);
+    expect((config as any).defaultProvider).toBeUndefined();
+  });
+
+  it('fills missing schema keys with defaults', () => {
+    const cfg = { ...validConfig };
+    delete (cfg as any).rateLimitRpm;
+    const path = writeTestConfig(cfg);
+    const config = loadConfig(path);
+    expect(config.rateLimitRpm).toBe(0);
+  });
+
+  it('preserves keys that were explicitly changed by user', () => {
+    const cfg = { ...validConfig, rateLimitRpm: 100 };
+    const path = writeTestConfig(cfg);
+    const config = loadConfig(path);
+    expect(config.rateLimitRpm).toBe(100);
+  });
+
+  it('backupConfig creates a backup file', () => {
+    const path = writeTestConfig(validConfig);
+    loadConfig(path);
+    backupConfig();
+    const backupPath = join(homedir(), '.claude-api-hub', 'providers.backup.json');
+    expect(existsSync(backupPath)).toBe(true);
+    // Cleanup
+    unlinkSync(backupPath);
+  });
+
+  it('restoreConfig restores from backup to default config path', () => {
+    const hubDir = join(homedir(), '.claude-api-hub');
+    const defaultPath = join(hubDir, 'providers.json');
+    const savedExists = existsSync(defaultPath);
+    let savedContent = '';
+    if (savedExists) {
+      savedContent = require('fs').readFileSync(defaultPath, 'utf-8');
+    }
+
+    try {
+      const path = writeTestConfig(validConfig);
+      loadConfig(path);
+      backupConfig();
+      // Simulate corruption by deleting original config
+      writeFileSync(path, '{broken}', 'utf-8');
+      const ok = restoreConfig();
+      expect(ok).toBe(true);
+      // Restored from backup, verify by loading default path
+      const config = loadConfig();
+      expect(config.port).toBe(9800);
+    } finally {
+      if (savedExists) {
+        require('fs').writeFileSync(defaultPath, savedContent, 'utf-8');
+      }
+    }
+  });
+
+  it('restoreConfig returns false when no backup exists', () => {
+    const backupPath = join(homedir(), '.claude-api-hub', 'providers.backup.json');
+    if (existsSync(backupPath)) unlinkSync(backupPath);
+    expect(restoreConfig()).toBe(false);
   });
 });

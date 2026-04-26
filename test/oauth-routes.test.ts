@@ -25,7 +25,7 @@ describe('oauth routes', () => {
 
     const config = makeConfig();
     const providers = [new GenericOpenAIProvider(testProviderConfig)];
-    const router = createRouter(providers, 'test', {});
+    const router = createRouter(providers, {});
     server = createServer(router, config, new LogManager(200, 100, ':memory:'));
     await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', () => resolve()));
   });

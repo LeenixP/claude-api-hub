@@ -475,7 +475,7 @@ When a provider is unhealthy (all keys exhausted), routing follows the fallback 
 1. **Alias resolution**: model name contains haiku/sonnet/opus → replaced with alias target
 2. **Prefix match**: route by provider's `prefix` config
 3. **Model list match**: check provider's `models` array
-4. **Fallback**: use `defaultProvider`
+4. **Auto-select**: use first healthy enabled provider
 
 ---
 

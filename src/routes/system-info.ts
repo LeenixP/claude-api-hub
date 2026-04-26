@@ -5,6 +5,7 @@ import { execFile } from 'child_process';
 import { spawn } from 'child_process';
 import type { RouteContext } from './types.js';
 import { getInstallInfo, getRestartInfo, saveRestartInfo } from '../install-info.js';
+import { backupConfig, restoreConfig } from '../config.js';
 import { logger } from '../logger.js';
 
 function compareSemver(a: string, b: string): number {
@@ -101,8 +102,9 @@ export async function handleSystemRoutes(
     const oldVersion = ctx.config.version || 'unknown';
 
     try {
-      // Save restart info before updating
+      // Save restart info and backup config before updating
       saveRestartInfo();
+      backupConfig();
 
       const isGlobal = installInfo.method === 'global';
       const npmArgs = isGlobal
@@ -140,6 +142,7 @@ export async function handleSystemRoutes(
       res.end(JSON.stringify({ success: true, oldVersion, newVersion, output: stdout }));
     } catch (err) {
       logger.error(`Update failed: ${(err as Error).message}`);
+      restoreConfig();
       res.writeHead(200, { 'Content-Type': 'application/json', ...cors });
       res.end(JSON.stringify({ success: false, oldVersion, newVersion: null, error: (err as Error).message }));
     } finally {

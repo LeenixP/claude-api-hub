@@ -2,7 +2,6 @@ export interface GatewayConfig {
   version?: string;
   port: number;
   host: string;
-  defaultProvider: string;
   providers: Record<string, ProviderConfig>;
   aliases?: Record<string, string>;
   tierTimeouts?: Record<string, TierTimeout>;

@@ -78,7 +78,7 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  const router = createRouter(providers, config.defaultProvider, config.aliases ?? {}, config.fallbackChain ?? {});
+  const router = createRouter(providers, config.aliases ?? {}, config.fallbackChain ?? {});
   const eventBus = new EventBus();
   const rateTracker = new RateTracker();
   const logManager = new LogManager(undefined, undefined, undefined, eventBus);

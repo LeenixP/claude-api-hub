@@ -79,7 +79,6 @@ function makeConfig(overrides: Partial<GatewayConfig> = {}): GatewayConfig {
     port: 0,
     host: '127.0.0.1',
     providers: {},
-    defaultProvider: 'test',
     logLevel: 'error',
     ...overrides,
   };
@@ -121,7 +120,7 @@ describe('proxy integration — OpenAI provider', () => {
     });
 
     const provider = new GenericOpenAIProvider(providerConfig);
-    const router = createRouter([provider], 'test', {});
+    const router = createRouter([provider], {});
     gatewayServer = createServer(router, config, new LogManager(200, 100, ':memory:'));
     await new Promise<void>((resolve) => gatewayServer.listen(0, '127.0.0.1', () => resolve()));
   });
@@ -218,11 +217,10 @@ describe('proxy integration — passthrough (Anthropic) provider', () => {
 
     const config = makeConfig({
       providers: { passthrough: providerConfig },
-      defaultProvider: 'passthrough',
     });
 
     const provider = new ClaudeProvider(providerConfig);
-    const router = createRouter([provider], 'passthrough', {});
+    const router = createRouter([provider], {});
     gatewayServer = createServer(router, config, new LogManager(200, 100, ':memory:'));
     await new Promise<void>((resolve) => gatewayServer.listen(0, '127.0.0.1', () => resolve()));
   });
@@ -298,7 +296,7 @@ describe('proxy integration — upstream errors', () => {
     });
 
     const provider = new GenericOpenAIProvider(providerConfig);
-    const router = createRouter([provider], 'test', {});
+    const router = createRouter([provider], {});
     gatewayServer = createServer(router, config, new LogManager(200, 100, ':memory:'));
     await new Promise<void>((resolve) => gatewayServer.listen(0, '127.0.0.1', () => resolve()));
   });
@@ -366,7 +364,7 @@ describe('proxy integration — rate limiting', () => {
     });
 
     const provider = new GenericOpenAIProvider(providerConfig);
-    const router = createRouter([provider], 'test', {});
+    const router = createRouter([provider], {});
     gatewayServer = createServer(router, config, new LogManager(200, 100, ':memory:'));
     await new Promise<void>((resolve) => gatewayServer.listen(0, '127.0.0.1', () => resolve()));
   });
@@ -436,7 +434,7 @@ describe('proxy integration — streaming response', () => {
     });
 
     const provider = new ClaudeProvider(providerConfig);
-    const router = createRouter([provider], 'test', {});
+    const router = createRouter([provider], {});
     gatewayServer = createServer(router, config, new LogManager(200, 100, ':memory:'));
     await new Promise<void>((resolve) => gatewayServer.listen(0, '127.0.0.1', () => resolve()));
   });
@@ -503,7 +501,7 @@ describe('proxy integration — upstream connection error', () => {
     });
 
     const provider = new GenericOpenAIProvider(providerConfig);
-    const router = createRouter([provider], 'test', {});
+    const router = createRouter([provider], {});
     gatewayServer = createServer(router, config, new LogManager(200, 100, ':memory:'));
     await new Promise<void>((resolve) => gatewayServer.listen(0, '127.0.0.1', () => resolve()));
   });
@@ -578,13 +576,12 @@ describe('proxy integration — provider fallback', () => {
 
     const config = makeConfig({
       providers: { primary: primaryConfig, fallback: fallbackConfig },
-      defaultProvider: 'primary',
       fallbackChain: { primary: 'fallback' },
     });
 
     const primaryProvider = new GenericOpenAIProvider(primaryConfig);
     const fallbackProvider = new GenericOpenAIProvider(fallbackConfig);
-    const router = createRouter([primaryProvider, fallbackProvider], 'primary', {}, { primary: 'fallback' });
+    const router = createRouter([primaryProvider, fallbackProvider], {}, { primary: 'fallback' });
     gatewayServer = createServer(router, config, new LogManager(200, 100, ':memory:'));
     await new Promise<void>((resolve) => gatewayServer.listen(0, '127.0.0.1', () => resolve()));
   });

@@ -45,7 +45,6 @@ function makeConfig(overrides: Partial<GatewayConfig> = {}): GatewayConfig {
     port: 0,
     host: '127.0.0.1',
     providers: { test: testProviderConfig, passthrough: passthroughConfig },
-    defaultProvider: 'test',
     logLevel: 'error',
     ...overrides,
   };
@@ -91,7 +90,7 @@ describe('server integration', () => {
       new GenericOpenAIProvider(testProviderConfig),
       new ClaudeProvider(passthroughConfig),
     ];
-    const router = createRouter(providers, 'test', {});
+    const router = createRouter(providers, {});
     server = createServer(router, config, new LogManager(200, 100, ':memory:'));
     await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', () => resolve()));
   });
@@ -182,7 +181,7 @@ describe('server with admin auth', () => {
   beforeAll(async () => {
     const config = makeConfig({ adminToken: 'test-secret-token' });
     const providers = [new GenericOpenAIProvider(testProviderConfig)];
-    const router = createRouter(providers, 'test', {});
+    const router = createRouter(providers, {});
     server = createServer(router, config, new LogManager(200, 100, ':memory:'));
     await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', () => resolve()));
   });
@@ -257,7 +256,7 @@ describe('server with rate limiting', () => {
   beforeAll(async () => {
     const config = makeConfig({ rateLimitRpm: 2 });
     const providers = [new GenericOpenAIProvider(testProviderConfig)];
-    const router = createRouter(providers, 'test', {});
+    const router = createRouter(providers, {});
     server = createServer(router, config, new LogManager(200, 100, ':memory:'));
     await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', () => resolve()));
   });
@@ -292,7 +291,7 @@ describe('server SSE /api/events', () => {
     eventBus = new EventBus();
     const config = makeConfig();
     const providers = [new GenericOpenAIProvider(testProviderConfig)];
-    const router = createRouter(providers, 'test', {});
+    const router = createRouter(providers, {});
     server = createServer(router, config, new LogManager(200, 100, ':memory:'), eventBus);
     await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', () => resolve()));
   });
@@ -344,7 +343,7 @@ describe('server /api/stats', () => {
     rateTracker = new RateTracker();
     const config = makeConfig();
     const providers = [new GenericOpenAIProvider(testProviderConfig)];
-    const router = createRouter(providers, 'test', {});
+    const router = createRouter(providers, {});
     server = createServer(router, config, new LogManager(200, 100, ':memory:'), undefined, rateTracker);
     await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', () => resolve()));
   });
@@ -378,7 +377,7 @@ describe('server /api/config/import', () => {
     loadConfig(tmpConfigPath);
     const config = makeConfig({ adminToken: 'import-token' });
     const providers = [new GenericOpenAIProvider(testProviderConfig)];
-    const router = createRouter(providers, 'test', {});
+    const router = createRouter(providers, {});
     server = createServer(router, config, new LogManager(200, 100, ':memory:'));
     await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', () => resolve()));
   });
@@ -413,7 +412,7 @@ describe('server /api/config/import', () => {
       method: 'POST',
       path: '/api/config/import',
       headers: { 'Content-Type': 'application/json', 'x-admin-token': 'import-token' },
-      body: JSON.stringify({ defaultProvider: 'test' }),
+      body: JSON.stringify({}),
     });
     expect(res.status).toBe(400);
     const json = JSON.parse(res.body);
@@ -426,7 +425,6 @@ describe('server /api/config/import', () => {
         test: testProviderConfig,
         extra: { ...testProviderConfig, name: 'extra', prefix: 'extra-' },
       },
-      defaultProvider: 'test',
     };
     const res = await request(server, {
       method: 'POST',
@@ -451,7 +449,7 @@ describe('server /api/auth/login', () => {
   beforeAll(async () => {
     const config = makeConfig({ password: 'login-secret' });
     const providers = [new GenericOpenAIProvider(testProviderConfig)];
-    const router = createRouter(providers, 'test', {});
+    const router = createRouter(providers, {});
     server = createServer(router, config, new LogManager(200, 100, ':memory:'));
     await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', () => resolve()));
   });
@@ -519,7 +517,7 @@ describe('server /api/auth/login without adminToken', () => {
   beforeAll(async () => {
     const config = makeConfig();
     const providers = [new GenericOpenAIProvider(testProviderConfig)];
-    const router = createRouter(providers, 'test', {});
+    const router = createRouter(providers, {});
     server = createServer(router, config, new LogManager(200, 100, ':memory:'));
     await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', () => resolve()));
   });
@@ -539,5 +537,113 @@ describe('server /api/auth/login without adminToken', () => {
     const json = JSON.parse(res.body);
     expect(json.success).toBe(true);
     expect(json.token).toBe('');
+  });
+});
+
+describe('public routes edge cases', () => {
+  let server: http.Server;
+
+  beforeAll(async () => {
+    const config = makeConfig();
+    const providers = [
+      new GenericOpenAIProvider(testProviderConfig),
+      new ClaudeProvider(passthroughConfig),
+    ];
+    const router = createRouter(providers, {});
+    server = createServer(router, config, new LogManager(200, 100, ':memory:'));
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', () => resolve()));
+  });
+
+  afterAll(async () => {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  });
+
+  it('GET / returns 304 when if-none-match matches ETag', async () => {
+    // First request — get the ETag
+    const res1 = await request(server, { method: 'GET', path: '/' });
+    expect(res1.status).toBe(200);
+    const etag = res1.headers['etag'] as string;
+    expect(etag).toBeDefined();
+
+    // Second request with matching if-none-match
+    const res2 = await request(server, {
+      method: 'GET',
+      path: '/',
+      headers: { 'if-none-match': etag },
+    });
+    expect(res2.status).toBe(304);
+  });
+
+  it('GET / returns 200 when if-none-match does not match ETag', async () => {
+    const res = await request(server, {
+      method: 'GET',
+      path: '/',
+      headers: { 'if-none-match': '"non-matching-etag"' },
+    });
+    expect(res.status).toBe(200);
+    expect(res.body).toContain('API Hub');
+  });
+
+  it('GET / with accept-encoding gzip returns compressed response', async () => {
+    const res = await request(server, {
+      method: 'GET',
+      path: '/',
+      headers: { 'accept-encoding': 'gzip' },
+    });
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toContain('text/html');
+    expect(res.headers['content-encoding']).toBe('gzip');
+    // Body should be gzip compressed (not plaintext HTML)
+    expect(res.body).not.toContain('API Hub');
+  });
+
+  it('GET /icon.png returns image/png', async () => {
+    const res = await request(server, { method: 'GET', path: '/icon.png' });
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toBe('image/png');
+    expect(res.headers['cache-control']).toContain('max-age=86400');
+    // Verify it's a PNG (starts with PNG magic bytes)
+    expect(res.body.length).toBeGreaterThan(0);
+  });
+
+  it('GET /api/auth/check returns required status (false when no password)', async () => {
+    const res = await request(server, { method: 'GET', path: '/api/auth/check' });
+    expect(res.status).toBe(200);
+    const json = JSON.parse(res.body);
+    expect(json).toHaveProperty('required');
+    expect(json.required).toBe(false);
+  });
+
+  it('GET /api/auth/check returns required=true when password is set', async () => {
+    // Create a new server with password configured
+    const pwConfig = makeConfig({ password: 'test-password' });
+    const pwProviders = [new GenericOpenAIProvider(testProviderConfig)];
+    const pwRouter = createRouter(pwProviders, {});
+    const pwServer = createServer(pwRouter, pwConfig, new LogManager(200, 100, ':memory:'));
+    await new Promise<void>((resolve) => pwServer.listen(0, '127.0.0.1', () => resolve()));
+    const addr = pwServer.address() as { port: number };
+
+    const res = await new Promise<{ status: number; body: string }>((resolve, reject) => {
+      const req = http.request({
+        hostname: '127.0.0.1',
+        port: addr.port,
+        method: 'GET',
+        path: '/api/auth/check',
+      }, (response) => {
+        const chunks: Buffer[] = [];
+        response.on('data', (c: Buffer) => chunks.push(c));
+        response.on('end', () => resolve({
+          status: response.statusCode ?? 500,
+          body: Buffer.concat(chunks).toString('utf-8'),
+        }));
+      });
+      req.on('error', reject);
+      req.end();
+    });
+    expect(res.status).toBe(200);
+    const json = JSON.parse(res.body);
+    expect(json.required).toBe(true);
+
+    await new Promise<void>((resolve) => pwServer.close(() => resolve()));
   });
 });

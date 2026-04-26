@@ -1,6 +1,6 @@
 {
   "name": "claude-api-hub",
-  "version": "6.2.0",
+  "version": "6.3.0",
   "description": "Multi-provider API gateway for Claude Code — route requests to any LLM provider with zero config switching",
   "type": "module",
   "main": "dist/index.js",
@@ -16,7 +16,6 @@
   },
   "files": [
     "dist",
-    "config",
     "static",
     "README.md",
     "README.en.md"
@@ -82,6 +81,6 @@
     "vitest": "^3.1.0"
   },
   "dependencies": {
-    "claude-api-hub": "^6.1.1"
+    "claude-api-hub": "^6.2.0"
   }
 }

@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.3.0] - 2026-04-26
+
+### Added
+- Config schema system (`src/config-schema.ts`) — single source of truth for all parameters
+- Auto-clean: deprecated keys removed, missing keys filled with defaults on startup
+- Config backup before update, auto-restore on update failure
+- 106 new tests (377 → 483), coverage thresholds set to 70%
+
+### Changed
+- Config file no longer shipped in npm package — user data never touched by updates
+- Config stored exclusively in `~/.claude-api-hub/providers.json` (0600 permissions)
+- First startup auto-creates a clean default config
+- Config save/import now uses schema-driven allowed keys
+
+### Removed
+- `defaultProvider` — router auto-selects first healthy enabled provider
+- `config/providers.json` from npm package distribution
+- `configVersion` migration system (replaced by schema-driven normalization)
+
+### Fixed
+- Update no longer wipes provider configuration
+- Select dropdown z-index clipping in dashboard cards
+
 ## [6.2.0] - 2026-04-26
 
 ### Added

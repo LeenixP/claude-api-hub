@@ -1,6 +1,7 @@
 import http from 'http';
 import { sendJson, sendError, maskKey } from '../utils/http.js';
 import { getConfigPath, loadConfig, normalizeProviders } from '../config.js';
+import { getAllowedConfigKeys } from '../config-schema.js';
 import { writeFileSync, renameSync } from 'fs';
 import type { GatewayConfig, ProviderConfig } from '../providers/types.js';
 import type { RouteContext } from './types.js';
@@ -289,7 +290,7 @@ export async function handleAdminConfigRoutes(
           }
         }
       }
-      const allowedConfigKeys = ['providers', 'aliases', 'tierTimeouts', 'defaultProvider', 'password', 'adminToken', 'corsOrigins', 'rateLimitRpm', 'logLevel', 'trustProxy', 'streamTimeoutMs', 'streamIdleTimeoutMs', 'maxResponseBytes', 'host', 'port', 'fallbackChain', 'tokenRefreshMinutes'];
+      const allowedConfigKeys = getAllowedConfigKeys();
       for (const key of allowedConfigKeys) {
         if (key in newConfig) {
           (config as unknown as Record<string, unknown>)[key] = (newConfig as unknown as Record<string, unknown>)[key];
