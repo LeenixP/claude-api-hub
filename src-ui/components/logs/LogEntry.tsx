@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'preact/hooks';
 import type { LogEntry as LogEntryType } from '../../types.js';
-import { formatDuration, formatRelativeTime } from '../../lib/utils.js';
+import { formatDuration } from '../../lib/utils.js';
 import { useLocale } from '../../lib/i18n.js';
 
 interface LogEntryProps {
@@ -46,7 +46,6 @@ function copyText(text: string): Promise<void> {
   if (navigator.clipboard) {
     return navigator.clipboard.writeText(text);
   }
-  // Fallback for non-HTTPS environments
   const ta = document.createElement('textarea');
   ta.value = text;
   ta.style.position = 'fixed';
@@ -83,130 +82,143 @@ export function LogEntryRow({ entry }: LogEntryProps) {
   const toggle = useCallback(() => setExpanded(v => !v), []);
   const s = statusStyle(entry.status, t);
   const isAliased = entry.claudeModel !== entry.resolvedModel;
+  const isOk = entry.status >= 200 && entry.status < 300;
   const totalTokens = (entry.inputTokens || 0) + (entry.outputTokens || 0);
   const inputPct = totalTokens > 0 ? Math.round(((entry.inputTokens || 0) / totalTokens) * 100) : 0;
   const outputPct = totalTokens > 0 ? Math.round(((entry.outputTokens || 0) / totalTokens) * 100) : 0;
   const formattedError = entry.error ? tryFormatJson(entry.error) : null;
 
   return (
-    <div class="log-row">
-      <div onClick={toggle}
-        style="display:flex;align-items:center;gap:12px;padding:12px 16px;cursor:pointer;user-select:none"
-        title="Click to expand">
-        {/* Status badge */}
-        <span style={`display:inline-flex;align-items:center;justify-content:center;min-width:36px;height:24px;padding:0 8px;border-radius:5px;font-size:12px;font-weight:700;color:${s.color};background:${s.bg}`}>
-          {entry.status}
-        </span>
+    <div>
+      <div class="log-row" style={`border-left:3px solid ${s.color}`}>
+        <div onClick={toggle}
+          style="display:flex;align-items:center;gap:12px;padding:12px 16px;cursor:pointer;user-select:none"
+          title={t('logs.clickToExpand')}>
 
-        {/* Model */}
-        <span style="flex:1;min-width:0;font-size:13px;font-weight:600;color:var(--color-text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
-          {entry.claudeModel}
-          {isAliased && <span style="color:var(--color-primary);margin-left:4px">→ {entry.resolvedModel}</span>}
-        </span>
-
-        {/* Provider */}
-        <span style="font-size:12px;color:var(--color-text-muted);white-space:nowrap">{entry.provider}</span>
-
-        {/* Token bar */}
-        {totalTokens > 0 && (
-          <span style="display:flex;align-items:center;gap:4px;min-width:80px;max-width:120px">
-            <span style="display:flex;height:6px;border-radius:3px;overflow:hidden;flex:1;background:var(--color-border)">
-              <span style={`width:${inputPct}%;background:var(--color-primary);display:block`} />
-              <span style={`width:${outputPct}%;background:var(--color-success);display:block`} />
-            </span>
-            <span style="font-size:10px;color:var(--color-text-muted);white-space:nowrap;font-family:monospace">{totalTokens}</span>
+          {/* Status label */}
+          <span style={`display:inline-flex;align-items:center;justify-content:center;min-width:46px;height:22px;padding:0 8px;border-radius:4px;font-size:11px;font-weight:700;color:${s.color};background:${s.bg};white-space:nowrap;flex-shrink:0`}>
+            {s.label}
           </span>
-        )}
 
-        {/* Protocol */}
-        <span style="font-size:11px;color:var(--color-text-muted);white-space:nowrap;background:var(--color-bg-elevated);padding:2px 6px;border-radius:4px;border:1px solid var(--color-border)">
-          {entry.protocol}
-        </span>
+          {/* Model */}
+          <span style="flex:1;min-width:0;font-size:13px;font-weight:600;color:var(--color-text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+            {entry.claudeModel}
+            {isAliased && <span style="color:var(--color-primary);margin-left:4px;font-size:12px">→ {entry.resolvedModel}</span>}
+          </span>
 
-        {/* Latency with color */}
-        <span style={`font-size:12px;font-family:monospace;white-space:nowrap;min-width:52px;text-align:right;padding:2px 6px;border-radius:4px;background:${latencyBg(entry.durationMs)};color:${latencyColor(entry.durationMs)}`}>
-          {formatDuration(entry.durationMs)}
-        </span>
+          {/* Error preview in collapsed state — always visible */}
+          {!expanded && !isOk && entry.error && (
+            <span style="font-size:11px;color:var(--color-danger);white-space:nowrap;max-width:200px;overflow:hidden;text-overflow:ellipsis;opacity:0.85;flex-shrink:1">
+              {entry.error.slice(0, 70)}
+            </span>
+          )}
 
-        {/* Time */}
-        <span style="font-size:12px;color:var(--color-text-muted);white-space:nowrap;min-width:72px;text-align:right">
-          {formatRelativeTime(entry.time)}
-        </span>
+          {/* Provider */}
+          <span style="font-size:12px;color:var(--color-text-muted);white-space:nowrap;flex-shrink:0">{entry.provider}</span>
 
-        {/* Expand arrow */}
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-muted)" stroke-width="2" stroke-linecap="round"
-          style={`transition:transform 0.15s;flex-shrink:0;transform:rotate(${expanded ? 180 : 0}deg)`}>
-          <polyline points="6 9 12 15 18 9" />
-        </svg>
-      </div>
+          {/* Token bar */}
+          {totalTokens > 0 && (
+            <span style="display:flex;align-items:center;gap:4px;min-width:80px;max-width:120px;flex-shrink:0">
+              <span style="display:flex;height:6px;border-radius:3px;overflow:hidden;flex:1;background:var(--color-border)">
+                <span style={`width:${inputPct}%;background:var(--color-primary);display:block`} />
+                <span style={`width:${outputPct}%;background:var(--color-success);display:block`} />
+              </span>
+              <span style="font-size:10px;color:var(--color-text-muted);white-space:nowrap;font-family:monospace">{totalTokens}</span>
+            </span>
+          )}
 
-      <div
-        style={{
-          maxHeight: expanded ? '600px' : '0px',
-          overflow: 'hidden',
-          transition: 'max-height 0.25s ease, opacity 0.2s ease',
-          opacity: expanded ? 1 : 0,
-        }}
-      >
-        <div style="padding:14px 20px;border-top:1px solid var(--color-border);background:var(--color-bg);font-size:13px">
-          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px 24px">
-            <div>
-              <div style="color:var(--color-text-muted);margin-bottom:1px">{t('logs.requestId')}</div>
-              <div style="font-family:monospace;color:var(--color-text-dim);font-size:12px;display:flex;align-items:center">
-                {entry.requestId}
-                <CopyBtn text={entry.requestId} />
-              </div>
-            </div>
-            <div>
-              <div style="color:var(--color-text-muted);margin-bottom:1px">{t('logs.fullTime')}</div>
-              <div style="color:var(--color-text-dim)">{new Date(entry.time).toLocaleString()}</div>
-            </div>
-            <div>
-              <div style="color:var(--color-text-muted);margin-bottom:1px">{t('logs.protocol')}</div>
-              <div style="color:var(--color-text-dim)">{entry.protocol}{entry.stream ? ` · ${t('logs.streaming')}` : ''}</div>
-            </div>
-            {entry.targetUrl && (
+          {/* Stream badge */}
+          {entry.stream && (
+            <span style="font-size:10px;color:var(--color-text-muted);white-space:nowrap;background:var(--color-bg-elevated);padding:1px 5px;border-radius:3px;border:1px solid var(--color-border);flex-shrink:0">
+              SSE
+            </span>
+          )}
+
+          {/* Latency */}
+          <span style={`font-size:11px;font-family:monospace;white-space:nowrap;min-width:48px;text-align:right;padding:2px 6px;border-radius:4px;background:${latencyBg(entry.durationMs)};color:${latencyColor(entry.durationMs)};flex-shrink:0`}>
+            {formatDuration(entry.durationMs)}
+          </span>
+
+          {/* Time */}
+          <span style="font-size:11px;color:var(--color-text-muted);white-space:nowrap;text-align:right;font-family:monospace;flex-shrink:0">
+            {new Date(entry.time).toLocaleTimeString('zh-CN', { hour12: false })}
+          </span>
+
+          {/* Expand arrow */}
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-muted)" stroke-width="2" stroke-linecap="round"
+            style={`transition:transform 0.15s;transform:rotate(${expanded ? 180 : 0}deg);flex-shrink:0`}>
+            <polyline points="6 9 12 15 18 9" />
+          </svg>
+        </div>
+
+        <div
+          style={{
+            maxHeight: expanded ? '600px' : '0px',
+            overflow: 'hidden',
+            transition: 'max-height 0.25s ease, opacity 0.2s ease',
+            opacity: expanded ? 1 : 0,
+          }}
+        >
+          <div style="padding:14px 20px;border-top:1px solid var(--color-border);background:var(--color-bg);font-size:13px">
+            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px 24px">
               <div>
-                <div style="color:var(--color-text-muted);margin-bottom:1px">{t('logs.targetUrl')}</div>
-                <div style="color:var(--color-text-dim);font-size:12px;word-break:break-all;display:flex;align-items:flex-start">
-                  {entry.targetUrl}
-                  <CopyBtn text={entry.targetUrl} />
+                <div style="color:var(--color-text-muted);margin-bottom:1px">{t('logs.requestId')}</div>
+                <div style="font-family:monospace;color:var(--color-text-dim);font-size:12px;display:flex;align-items:center">
+                  {entry.requestId}
+                  <CopyBtn text={entry.requestId} />
                 </div>
               </div>
-            )}
-            {entry.responseSize !== undefined && (
               <div>
-                <div style="color:var(--color-text-muted);margin-bottom:1px">{t('logs.responseSize')}</div>
-                <div style="color:var(--color-text-dim)">{formatBytes(entry.responseSize)}</div>
+                <div style="color:var(--color-text-muted);margin-bottom:1px">{t('logs.fullTime')}</div>
+                <div style="color:var(--color-text-dim)">{new Date(entry.time).toLocaleString()}</div>
               </div>
-            )}
-            {totalTokens > 0 && (
               <div>
-                <div style="color:var(--color-text-muted);margin-bottom:1px">{t('logs.tokensDetail')}</div>
-                <div style="color:var(--color-text-dim);font-size:12px">
-                  <span style="display:inline-flex;align-items:center;gap:4px;margin-right:12px">
-                    <span style="width:8px;height:8px;border-radius:2px;background:var(--color-primary);display:inline-block" />
-                    {t('logs.inputTokens')}: {entry.inputTokens || 0}
-                  </span>
-                  <span style="display:inline-flex;align-items:center;gap:4px;margin-right:12px">
-                    <span style="width:8px;height:8px;border-radius:2px;background:var(--color-success);display:inline-block" />
-                    {t('logs.outputTokens')}: {entry.outputTokens || 0}
-                  </span>
-                  <span style="color:var(--color-text-muted)">= {totalTokens}</span>
+                <div style="color:var(--color-text-muted);margin-bottom:1px">{t('logs.protocol')}</div>
+                <div style="color:var(--color-text-dim)">{entry.protocol}{entry.stream ? ` · ${t('logs.streaming')}` : ''}</div>
+              </div>
+              {entry.targetUrl && (
+                <div>
+                  <div style="color:var(--color-text-muted);margin-bottom:1px">{t('logs.targetUrl')}</div>
+                  <div style="color:var(--color-text-dim);font-size:12px;word-break:break-all;display:flex;align-items:flex-start">
+                    {entry.targetUrl}
+                    <CopyBtn text={entry.targetUrl} />
+                  </div>
                 </div>
+              )}
+              {entry.responseSize !== undefined && (
+                <div>
+                  <div style="color:var(--color-text-muted);margin-bottom:1px">{t('logs.responseSize')}</div>
+                  <div style="color:var(--color-text-dim)">{formatBytes(entry.responseSize)}</div>
+                </div>
+              )}
+              {totalTokens > 0 && (
+                <div>
+                  <div style="color:var(--color-text-muted);margin-bottom:1px">{t('logs.tokensDetail')}</div>
+                  <div style="color:var(--color-text-dim);font-size:12px">
+                    <span style="display:inline-flex;align-items:center;gap:4px;margin-right:12px">
+                      <span style="width:8px;height:8px;border-radius:2px;background:var(--color-primary);display:inline-block" />
+                      {t('logs.inputTokens')}: {entry.inputTokens || 0}
+                    </span>
+                    <span style="display:inline-flex;align-items:center;gap:4px;margin-right:12px">
+                      <span style="width:8px;height:8px;border-radius:2px;background:var(--color-success);display:inline-block" />
+                      {t('logs.outputTokens')}: {entry.outputTokens || 0}
+                    </span>
+                    <span style="color:var(--color-text-muted)">= {totalTokens}</span>
+                  </div>
+                </div>
+              )}
+            </div>
+            {entry.error && (
+              <div style="margin-top:10px;padding:10px 14px;border-radius:6px;background:rgba(231,76,60,0.08);border:1px solid rgba(231,76,60,0.15)">
+                <div style="font-size:12px;font-weight:600;color:var(--color-danger);margin-bottom:4px">{t('logs.error')}</div>
+                {formattedError ? (
+                  <pre style="font-family:monospace;font-size:12px;color:var(--color-danger);white-space:pre-wrap;word-break:break-all;margin:0;line-height:1.5">{formattedError}</pre>
+                ) : (
+                  <div style="font-family:monospace;font-size:12px;color:var(--color-danger);word-break:break-all">{entry.error}</div>
+                )}
               </div>
             )}
           </div>
-          {entry.error && (
-            <div style="margin-top:10px;padding:10px 14px;border-radius:6px;background:rgba(231,76,60,0.08);border:1px solid rgba(231,76,60,0.15)">
-              <div style="font-size:12px;font-weight:600;color:var(--color-danger);margin-bottom:4px">{t('logs.error')}</div>
-              {formattedError ? (
-                <pre style="font-family:monospace;font-size:12px;color:var(--color-danger);white-space:pre-wrap;word-break:break-all;margin:0;line-height:1.5">{formattedError}</pre>
-              ) : (
-                <div style="font-family:monospace;font-size:12px;color:var(--color-danger);word-break:break-all">{entry.error}</div>
-              )}
-            </div>
-          )}
         </div>
       </div>
     </div>

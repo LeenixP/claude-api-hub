@@ -279,6 +279,7 @@ const zh: Record<string, string> = {
 
   // Logs
   'logs.title': '请求日志',
+  'logs.clickToExpand': '点击展开详情',
   'logs.connected': '已连接',
   'logs.disconnected': '已断开',
   'logs.entries': '{count} 条记录',
