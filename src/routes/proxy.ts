@@ -89,6 +89,9 @@ async function handleStreamProxy(
   const streamContext = !isPassthrough && hasParser ? provider.createStreamContext!(anthropicReq.model) : null;
   let sseBuffer = '';
   let preHeaderBuffer: string[] = [];
+  // Token accumulator from parsed Anthropic events (works for all non-passthrough providers)
+  let parsedInputTokens = 0;
+  let parsedOutputTokens = 0;
 
   /** Parse and write a single SSE data field to the response, shared by streaming and tail buffer. */
   function parseAndWriteChunk(data: string): void {
@@ -108,6 +111,13 @@ async function handleStreamProxy(
       throw new Error(`Stream chunk parse failed: ${getErrorMessage(err)}`);
     }
     for (const ev of events) {
+      // Extract token usage from parsed Anthropic events — works for all providers
+      if (ev.type === 'message_start' && ev.message?.usage) {
+        if (ev.message.usage.input_tokens) parsedInputTokens = ev.message.usage.input_tokens;
+      }
+      if (ev.type === 'message_delta' && ev.usage?.output_tokens) {
+        parsedOutputTokens = ev.usage.output_tokens;
+      }
       res.write(`data: ${JSON.stringify(ev)}\n\n`);
     }
   }
@@ -165,15 +175,20 @@ async function handleStreamProxy(
         }
       }
 
-      const usage = sniffer.getUsage();
+      // Prefer parsed tokens (from provider.parseStreamChunk Anthropic events);
+      // fall back to sniffer (raw SSE parsing, used for passthrough providers)
+      const sniffed = sniffer.getUsage();
+      const inputTok = parsedInputTokens || sniffed?.inputTokens || 0;
+      const outputTok = parsedOutputTokens || sniffed?.outputTokens || 0;
+      const totalTok = inputTok + outputTok;
       provider.reportSuccess?.(built.usedKey);
-      ctx.rateTracker?.record((usage?.inputTokens ?? 0) + (usage?.outputTokens ?? 0) || undefined);
+      ctx.rateTracker?.record(totalTok || undefined);
       ctx.logManager?.addLog({
         ...logEntry,
         status: 200,
         durationMs: Date.now() - startTime,
-        inputTokens: usage?.inputTokens ?? 0,
-        outputTokens: usage?.outputTokens ?? 0,
+        inputTokens: inputTok,
+        outputTokens: outputTok,
       }, logDetail);
       res.end();
     },
