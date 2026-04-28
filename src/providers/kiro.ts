@@ -37,6 +37,20 @@ export class KiroProvider implements Provider {
     this.cachedToken = await this.auth.getAccessToken();
   }
 
+  private credentialsLoaded = false;
+
+  /** Return the current access token, with lazy sync credential loading. */
+  private getToken(): string {
+    if (this.cachedToken) return this.cachedToken;
+    if (!this.credentialsLoaded) {
+      try { this.auth.loadCredentialsSync(); } catch { /* will be loaded via ensureReady */ }
+      this.credentialsLoaded = true;
+    }
+    const sync = this.auth.getAccessTokenSync();
+    if (sync) return sync;
+    throw new Error('Kiro: no valid access token. Call ensureReady() first.');
+  }
+
   matchModel(model: string): boolean {
     if (this.config.models && this.config.models.length > 0) {
       return this.config.models.some((m) => model === m || model.startsWith(m + '-'));
@@ -49,9 +63,7 @@ export class KiroProvider implements Provider {
   }
 
   buildRequest(req: AnthropicRequest): { url: string; headers: Record<string, string>; body: string; usedKey: string } {
-    if (!this.cachedToken) {
-      throw new Error('Kiro: no valid access token. Call ensureReady() first.');
-    }
+    const token = this.getToken();
 
     const kiroReq = convertToCodeWhisperer(
       req.messages,
@@ -73,7 +85,7 @@ export class KiroProvider implements Provider {
       headers: {
         'Content-Type': 'application/json',
         'Accept': 'application/json',
-        'Authorization': `Bearer ${this.cachedToken}`,
+        'Authorization': `Bearer ${token}`,
         'amz-sdk-invocation-id': crypto.randomUUID(),
         'amz-sdk-request': 'attempt=1; max=3',
         'x-amzn-codewhisperer-optout': 'true',
@@ -82,7 +94,7 @@ export class KiroProvider implements Provider {
         'user-agent': `aws-sdk-js/1.0.34 ua/2.1 os/${osName} lang/js md/nodejs#${nodeVersion} api/codewhispererstreaming#1.0.34 m/E KiroIDE-${KIRO_VERSION}-${this.machineId}`,
       },
       body: JSON.stringify(body),
-      usedKey: this.cachedToken,
+      usedKey: token,
     };
   }
 
