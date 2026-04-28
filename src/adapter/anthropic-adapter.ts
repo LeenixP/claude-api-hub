@@ -71,7 +71,7 @@ function convertAnthropicMessage(msg: AnthropicMessage): InternalMessage[] {
 
   const results: InternalMessage[] = [];
   const userParts: InternalContentPart[] = [];
-  let toolResultMessages: InternalMessage[] = [];
+  const toolResultMessages: InternalMessage[] = [];
 
   if (msg.role === 'user') {
     for (const block of msg.content) {

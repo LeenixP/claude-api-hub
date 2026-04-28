@@ -37,7 +37,7 @@ export class GenericOpenAIProvider implements Provider {
   buildRequest(req: AnthropicRequest): { url: string; headers: Record<string, string>; body: string; usedKey: string } {
     const resolvedModel = this.resolveModel(req.model);
     const openaiReq = translateRequest(req, resolvedModel);
-    let apiKey = this.pool?.getKey() ?? this.config.apiKey;
+    const apiKey = this.pool?.getKey() ?? this.config.apiKey;
     if (this.pool?.isKnownBadKey(apiKey)) {
       throw new Error('All API keys in the pool are unhealthy');
     }
