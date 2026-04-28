@@ -22,7 +22,7 @@ import { MobileNav } from './components/MobileNav.js';
 import { useSSE } from './hooks/useSSE.js';
 import { useApi } from './hooks/useApi.js';
 import { useAuth } from './hooks/useAuth.js';
-import { testProvider, deleteProvider } from './lib/api.js';
+import { testProvider, deleteProvider, checkUpdate } from './lib/api.js';
 import type { Stats, ProviderConfig, TokenStats } from './types.js';
 import { LocaleContext, useLocaleProvider, useLocale } from './lib/i18n.js';
 
@@ -54,6 +54,12 @@ function AppContent() {
   const { logs, connected, clearLogs } = useSSE(adminToken);
   const { data: stats } = useApi<Stats>('/api/stats', { immediate: true, pollIntervalMs: 5000 });
   const { data: tokenStats } = useApi<TokenStats>('/api/token-stats', { immediate: true, pollIntervalMs: 30000 });
+  const [updateInfo, setUpdateInfo] = useState<{ hasUpdate: boolean; latestVersion: string | null } | null>(null);
+
+  useEffect(() => {
+    if (!config) return;
+    checkUpdate().then(info => { if (info.hasUpdate) setUpdateInfo(info); }).catch(() => {});
+  }, [config]);
 
   useEffect(() => {
     const handler = () => {
@@ -197,6 +203,17 @@ function AppContent() {
             #main-content { padding: 16px !important; }
           }
         `}</style>
+        {updateInfo && (
+          <div style={`margin-bottom:20px;padding:12px 18px;border-radius:8px;display:flex;align-items:center;gap:12px;background:rgba(59,130,246,0.1);border:1px solid rgba(59,130,246,0.25)`}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--color-primary)" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+            <span style="font-size:13px;color:var(--color-text);font-weight:500">
+              v{updateInfo.latestVersion} 可用 (当前 {config.version})
+            </span>
+            <a href="https://github.com/LeenixP/claude-api-hub/releases" target="_blank" rel="noopener" style="margin-left:auto;font-size:12px;color:var(--color-primary);text-decoration:none;font-weight:600;white-space:nowrap">
+              查看更新 →
+            </a>
+          </div>
+        )}
         {page === 'dashboard' && (
           <div>
             <h1 class="section-title" style="margin-bottom:28px">{t('app.dashboard')}</h1>
