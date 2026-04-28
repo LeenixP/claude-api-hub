@@ -2,7 +2,7 @@
 import { readFileSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
-import { loadConfig } from './config.js';
+import { loadConfig, migratePassword, getConfigPath } from './config.js';
 import { createRouter } from './router.js';
 import { createServer } from './server.js';
 import { rebuildProviders } from './server.js';
@@ -15,7 +15,6 @@ import { DEFAULT_TOKEN_REFRESH_MINUTES } from './constants.js';
 import { LogManager } from './services/log-manager.js';
 import { EventBus } from './services/event-bus.js';
 import { RateTracker } from './services/rate-tracker.js';
-import { KeyPool } from './services/pool-manager.js';
 import { detectInstallMethod, saveRestartInfo } from './install-info.js';
 import { getErrorMessage } from './utils/error.js';
 
@@ -53,6 +52,7 @@ Environment variables:
 async function main(): Promise<void> {
   const args = parseArgs();
   const config = await loadConfig(args.config);
+  await migratePassword(config, getConfigPath());
   if (config.logLevel) setLogLevel(config.logLevel);
 
   // Detect install method and save restart info for auto-update
@@ -69,10 +69,13 @@ async function main(): Promise<void> {
     config.version = pkg.version;
   } catch (err) { logger.warn('Failed to read package.json', { error: getErrorMessage(err) }); }
 
-  const providers = Object.entries(config.providers)
-    .filter(([, pc]) => pc.enabled)
-    .map(([key, pc]) => { pc.key = key; return createProvider(pc); })
-    .filter((p): p is Provider => p !== null);
+  const providers: Provider[] = [];
+  for (const [key, pc] of Object.entries(config.providers)) {
+    if (!pc.enabled) continue;
+    pc.key = key;
+    const p = await createProvider(pc);
+    if (p) providers.push(p);
+  }
 
   if (providers.length === 0) {
     logger.error('No providers loaded. Check provider configuration or credentials. Exiting.');
@@ -83,6 +86,12 @@ async function main(): Promise<void> {
   const eventBus = new EventBus();
   const rateTracker = new RateTracker();
   const logManager = new LogManager(undefined, undefined, undefined, eventBus);
+  // Restore cumulative totals from SQLite so /api/stats survives restarts
+  rateTracker.setCumulativeTotals(logManager.loadCumulativeTotals());
+  // Persist cumulative totals every 30 seconds
+  const statsPersistTimer = setInterval(() => {
+    logManager.saveCumulativeTotals(rateTracker.getCumulativeState());
+  }, 30_000).unref();
   const server = createServer(router, config, logManager, eventBus, rateTracker);
 
   // Auto-refresh OAuth tokens (default 30 min, configurable via tokenRefreshMinutes)
@@ -111,8 +120,6 @@ async function main(): Promise<void> {
     }
   });
 
-  // Restore KeyPool state on startup
-  KeyPool.loadState([]);
 
   let isShuttingDown = false;
   function gracefulShutdown(signal: string): void {
@@ -130,6 +137,7 @@ async function main(): Promise<void> {
     server.maxHeadersCount = 0;
 
     tokenRefresher.stop();
+    logManager.saveCumulativeTotals(rateTracker.getCumulativeState());
 
     const startTime = Date.now();
     const timeoutMs = 30000;
@@ -149,12 +157,12 @@ async function main(): Promise<void> {
       process.exit(0);
     });
 
-    setTimeout(() => {
+    setTimeout(async () => {
       clearInterval(progressInterval);
       logger.warn('Graceful shutdown timed out after 30s, forcing exit.');
       destroyAgents();
       rateTracker.destroy();
-      logManager.close();
+      await logManager.close();
       process.exit(1);
     }, timeoutMs).unref();
   }

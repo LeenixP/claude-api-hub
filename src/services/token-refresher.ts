@@ -8,13 +8,13 @@ export class TokenRefresher {
   private timer: ReturnType<typeof setInterval> | null = null;
   private router: ModelRouter;
   private config: GatewayConfig;
-  private rebuildFn: (router: ModelRouter, config: GatewayConfig) => void;
+  private rebuildFn: (router: ModelRouter, config: GatewayConfig) => Promise<void>;
   private intervalMs: number;
 
   constructor(
     router: ModelRouter,
     config: GatewayConfig,
-    rebuildFn: (router: ModelRouter, config: GatewayConfig) => void,
+    rebuildFn: (router: ModelRouter, config: GatewayConfig) => Promise<void>,
     intervalMinutes = DEFAULT_TOKEN_REFRESH_MINUTES,
   ) {
     this.router = router;
@@ -71,7 +71,7 @@ export class TokenRefresher {
     // Rebuild providers to pick up fresh tokens
     if (refreshed > 0) {
       try {
-        this.rebuildFn(this.router, this.config);
+        await this.rebuildFn(this.router, this.config);
         logger.info(`[TokenRefresher] Refreshed ${refreshed} credential(s), providers rebuilt`);
       } catch (err) {
         logger.error(`[TokenRefresher] Rebuild failed: ${(err as Error).message}`);

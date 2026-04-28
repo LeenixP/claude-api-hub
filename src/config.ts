@@ -245,15 +245,25 @@ export async function loadConfig(configPath?: string): Promise<GatewayConfig> {
   normalizeProviders(config);
   validateConfig(config);
 
-  // Auto-hash plaintext password on first load
-  if (config.password && !config.password.includes(':')) {
-    try {
-      const { hashPassword } = await import('./middleware/auth.js');
-      config.password = hashPassword(config.password);
-      if (filePath) writeFileSync(filePath, JSON.stringify(merged, null, 2), 'utf-8');
-      logger.info('Password auto-hashed and saved to config');
-    } catch { /* non-fatal */ }
-  }
-
   return config;
+}
+
+/**
+ * Migrate plaintext password to hashed form.
+ * Checks if the password needs hashing, hashes it, and writes back to disk.
+ * Returns true if migration was performed.
+ */
+export async function migratePassword(config: GatewayConfig, filePath: string): Promise<boolean> {
+  if (!config.password || config.password.includes(':')) {
+    return false; // already hashed or no password
+  }
+  try {
+    const { hashPassword } = await import('./middleware/auth.js');
+    config.password = hashPassword(config.password);
+    writeFileSync(filePath, JSON.stringify(config, null, 2), 'utf-8');
+    logger.info('Password auto-hashed and saved to config');
+    return true;
+  } catch {
+    return false;
+  }
 }

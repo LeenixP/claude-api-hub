@@ -4,8 +4,7 @@ import { sendJson, sendError, readBody, maskKey } from '../utils/http.js';
 import { getErrorMessage } from '../utils/error.js';
 import { forwardRequest, forwardStream } from '../services/forwarder.js';
 import { logger } from '../logger.js';
-import { isKiroProvider } from '../providers/factory.js';
-import type { AnthropicRequest, Provider } from '../providers/types.js';
+import type { AnthropicRequest, Provider, AnthropicStreamEvent } from '../providers/types.js';
 import type { LogEntry, LogDetail } from '../services/log-manager.js';
 import type { RouteContext } from './types.js';
 import type { PerIpRateLimiter } from '../middleware/auth.js';
@@ -32,7 +31,8 @@ function createTokenSniffer(): {
   function processChunk(chunk: string) {
     chunkBuf += chunk;
     if (chunkBuf.length > 1024 * 1024) {
-      chunkBuf = chunkBuf.slice(-512 * 1024);
+      const trimAt = chunkBuf.lastIndexOf('\n', chunkBuf.length - 512 * 1024);
+      chunkBuf = trimAt > 0 ? chunkBuf.slice(trimAt + 1) : chunkBuf.slice(-512 * 1024);
       return;
     }
     const lines = chunkBuf.split('\n');
@@ -83,15 +83,88 @@ async function handleStreamProxy(
   origin: string | undefined,
 ): Promise<void> {
   const sniffer = createTokenSniffer();
+  const isPassthrough = provider.config.passthrough;
+  const isKiro = provider.config.providerType === 'kiro';
+  const hasParser = !!provider.parseStreamChunk && !!provider.createStreamContext;
+  const streamContext = !isPassthrough && hasParser ? provider.createStreamContext!(anthropicReq.model) : null;
+  let sseBuffer = '';
+  let preHeaderBuffer: string[] = [];
+
+  /** Parse and write a single SSE data field to the response, shared by streaming and tail buffer. */
+  function parseAndWriteChunk(data: string): void {
+    if (!streamContext) {
+      logger.warn('parseAndWriteChunk called without stream context');
+      return;
+    }
+    let events: AnthropicStreamEvent[];
+    try {
+      if (isKiro) {
+        events = provider.parseStreamChunk!(data, anthropicReq.model, streamContext);
+      } else {
+        const parsed = JSON.parse(data);
+        events = provider.parseStreamChunk!(parsed, anthropicReq.model, streamContext);
+      }
+    } catch (err) {
+      throw new Error(`Stream chunk parse failed: ${getErrorMessage(err)}`);
+    }
+    for (const ev of events) {
+      res.write(`data: ${JSON.stringify(ev)}\n\n`);
+    }
+  }
+
+  function processAndWrite(rawChunk: string): void {
+    sniffer.processChunk(rawChunk);
+
+    if (isPassthrough || !hasParser) {
+      res.write(rawChunk);
+      return;
+    }
+
+    sseBuffer += rawChunk;
+    const lines = sseBuffer.split('\n');
+    sseBuffer = lines.pop() || '';
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed.startsWith('data:')) continue;
+      const data = trimmed.replace(/^data:\s*/, '').trim();
+      if (!data || data === '[DONE]') continue;
+
+      try {
+        parseAndWriteChunk(data);
+      } catch (err) {
+        const errMsg = getErrorMessage(err);
+        logger.warn('Stream chunk parse error', { error: errMsg, preview: data.slice(0, 200) });
+        res.write(`data: ${JSON.stringify({ type: 'error', error: { type: 'api_error', message: errMsg } })}\n\n`);
+      }
+    }
+  }
 
   forwardStream(
     built.url, built.headers, built.body,
     (chunk) => {
-      sniffer.processChunk(chunk);
-      if (res.headersSent) return res.write(chunk);
-      return;
+      if (res.headersSent) {
+        processAndWrite(chunk);
+        return;
+      }
+      preHeaderBuffer.push(chunk);
     },
     () => {
+      // Flush any remaining buffered data
+      if (!isPassthrough && hasParser && sseBuffer.trim()) {
+        const trimmed = sseBuffer.trim();
+        if (trimmed.startsWith('data:')) {
+          const data = trimmed.replace(/^data:\s*/, '').trim();
+          if (data && data !== '[DONE]') {
+            try {
+              parseAndWriteChunk(data);
+            } catch (err) {
+              logger.warn('Stream tail buffer parse error', { error: getErrorMessage(err), preview: data.slice(0, 200) });
+            }
+          }
+        }
+      }
+
       const usage = sniffer.getUsage();
       provider.reportSuccess?.(built.usedKey);
       ctx.rateTracker?.record((usage?.inputTokens ?? 0) + (usage?.outputTokens ?? 0) || undefined);
@@ -131,6 +204,11 @@ async function handleStreamProxy(
         'X-Request-Id': requestId,
         ...cors,
       });
+      // Flush any chunks that arrived before headers were sent
+      for (const buffered of preHeaderBuffer) {
+        processAndWrite(buffered);
+      }
+      preHeaderBuffer = [];
     },
     timeoutMs,
     idleTimeoutMs,
@@ -150,58 +228,87 @@ async function handleNonStreamProxy(
   startTime: number,
   cors: Record<string, string>,
   origin: string | undefined,
+  fallbackProvider?: Provider,
 ): Promise<void> {
-  let upstream;
-  try {
-    upstream = await forwardRequest(built.url, built.headers, built.body, ctx.config.streamTimeoutMs ?? 120000, ctx.config.maxResponseBytes);
-  } catch (err) {
-    provider.reportError?.(built.usedKey);
-    const errMsg = getErrorMessage(err);
-    ctx.logManager?.addLog({ ...logEntry, status: 502, durationMs: Date.now() - startTime, error: errMsg }, logDetail);
-    sendError(res, 502, 'api_error', `Upstream request failed: ${errMsg}`, ctx.config, origin);
-    return;
-  }
+  const attempts = fallbackProvider ? [provider, fallbackProvider] : [provider];
 
-  if (upstream.status !== 200) {
-    provider.reportError?.(built.usedKey);
-    let errMsg = '';
-    try { const j = JSON.parse(upstream.body); errMsg = j.error?.message || j.message || upstream.body.slice(0, 200); } catch { errMsg = upstream.body.slice(0, 200); }
-    ctx.logManager?.addLog({ ...logEntry, status: upstream.status, durationMs: Date.now() - startTime, error: errMsg }, { ...logDetail, upstreamBody: upstream.body });
-    res.writeHead(upstream.status, { 'Content-Type': 'application/json', 'X-Request-Id': requestId, ...cors });
-    res.end(upstream.body);
-    return;
-  }
+  for (let attempt = 0; attempt < attempts.length; attempt++) {
+    const p = attempts[attempt];
+    const isFallback = attempt > 0;
+    const currentBuilt = isFallback ? p.buildRequest(anthropicReq) : built;
 
-  let upstreamJson;
-  if (isKiroProvider(provider.config)) {
-    upstreamJson = upstream.body;
-  } else {
-    try { upstreamJson = JSON.parse(upstream.body); } catch {
-      ctx.logManager?.addLog({ ...logEntry, status: 502, durationMs: Date.now() - startTime, error: 'Invalid JSON from upstream' }, { ...logDetail, upstreamBody: upstream.body });
-      sendError(res, 502, 'api_error', 'Invalid JSON from upstream provider', ctx.config, origin);
+    let upstream;
+    try {
+      upstream = await forwardRequest(currentBuilt.url, currentBuilt.headers, currentBuilt.body, ctx.config.streamTimeoutMs ?? 120000, ctx.config.maxResponseBytes);
+    } catch (err) {
+      if (isFallback) {
+        p.reportError?.(currentBuilt.usedKey);
+        const errMsg = getErrorMessage(err);
+        ctx.logManager?.addLog({ ...logEntry, status: 502, durationMs: Date.now() - startTime, error: errMsg }, logDetail);
+        sendError(res, 502, 'api_error', `Upstream request failed: ${errMsg}`, ctx.config, origin);
+        return;
+      }
+      continue; // Try fallback on connection error
+    }
+
+    if (upstream.status !== 200) {
+      if (isFallback || upstream.status < 500) {
+        // Non-5xx or already on fallback: report error immediately
+        p.reportError?.(currentBuilt.usedKey);
+        let errMsg = '';
+        try { const j = JSON.parse(upstream.body); errMsg = j.error?.message || j.message || upstream.body.slice(0, 200); } catch { errMsg = upstream.body.slice(0, 200); }
+        ctx.logManager?.addLog({ ...logEntry, status: upstream.status, durationMs: Date.now() - startTime, error: errMsg }, { ...logDetail, upstreamBody: upstream.body });
+        res.writeHead(upstream.status, { 'Content-Type': 'application/json', 'X-Request-Id': requestId, ...cors });
+        res.end(upstream.body);
+        return;
+      }
+      // 5xx on primary: try fallback
+      p.reportError?.(currentBuilt.usedKey);
+      continue;
+    }
+
+    // Success: process response
+    let upstreamJson;
+    if (p.config.providerType === 'kiro') {
+      upstreamJson = upstream.body;
+    } else {
+      try { upstreamJson = JSON.parse(upstream.body); } catch {
+        p.reportError?.(currentBuilt.usedKey);
+        ctx.logManager?.addLog({ ...logEntry, status: 502, durationMs: Date.now() - startTime, error: 'Invalid JSON from upstream' }, { ...logDetail, upstreamBody: upstream.body });
+        sendError(res, 502, 'api_error', 'Invalid JSON from upstream provider', ctx.config, origin);
+        return;
+      }
+    }
+
+    let anthropicResp;
+    try { anthropicResp = p.parseResponse(upstreamJson, anthropicReq.model); } catch (err) {
+      p.reportError?.(currentBuilt.usedKey);
+      const errMsg = getErrorMessage(err);
+      ctx.logManager?.addLog({ ...logEntry, status: 502, durationMs: Date.now() - startTime, error: `Parse error: ${errMsg}` }, logDetail);
+      sendError(res, 502, 'api_error', `Response parse error: ${errMsg}`, ctx.config, origin);
       return;
     }
-  }
 
-  let anthropicResp;
-  try { anthropicResp = provider.parseResponse(upstreamJson, anthropicReq.model); } catch (err) {
-    const errMsg = getErrorMessage(err);
-    ctx.logManager?.addLog({ ...logEntry, status: 502, durationMs: Date.now() - startTime, error: `Parse error: ${errMsg}` }, logDetail);
-    sendError(res, 502, 'api_error', `Response parse error: ${errMsg}`, ctx.config, origin);
+    const usedKey = currentBuilt.usedKey;
+    const usage = anthropicResp.usage || (upstreamJson.usage ? { input_tokens: upstreamJson.usage.prompt_tokens, output_tokens: upstreamJson.usage.completion_tokens } : null);
+    p.reportSuccess?.(usedKey);
+    ctx.rateTracker?.record((usage?.input_tokens ?? 0) + (usage?.output_tokens ?? 0) || undefined);
+    ctx.logManager?.addLog({
+      ...logEntry,
+      provider: p.config.key || p.name,
+      status: 200,
+      durationMs: Date.now() - startTime,
+      inputTokens: usage?.input_tokens ?? 0,
+      outputTokens: usage?.output_tokens ?? 0,
+    }, logDetail);
+    sendJson(res, 200, anthropicResp, ctx.config, origin);
     return;
   }
 
-  const usage = anthropicResp.usage || (upstreamJson.usage ? { input_tokens: upstreamJson.usage.prompt_tokens, output_tokens: upstreamJson.usage.completion_tokens } : null);
-  provider.reportSuccess?.(built.usedKey);
-  ctx.rateTracker?.record((usage?.input_tokens ?? 0) + (usage?.output_tokens ?? 0) || undefined);
-  ctx.logManager?.addLog({
-    ...logEntry,
-    status: 200,
-    durationMs: Date.now() - startTime,
-    inputTokens: usage?.input_tokens ?? 0,
-    outputTokens: usage?.output_tokens ?? 0,
-  }, logDetail);
-  sendJson(res, 200, anthropicResp, ctx.config, origin);
+  // All attempts exhausted without a successful response
+  provider.reportError?.(built.usedKey);
+  ctx.logManager?.addLog({ ...logEntry, status: 502, durationMs: Date.now() - startTime, error: 'All providers exhausted' }, logDetail);
+  sendError(res, 502, 'api_error', 'All providers failed', ctx.config, origin);
 }
 
 export async function handleProxyRoute(
@@ -265,6 +372,7 @@ export async function handleProxyRoute(
 
     const { provider, resolvedModel } = routeResult;
     anthropicReq.model = resolvedModel;
+    const fallbackProvider = router.resolveFallback(provider.config.key || provider.name);
 
     // Strip unsupported fields for providers that don't fully support Anthropic API
     const sanitize = provider.config.sanitize;
@@ -285,7 +393,9 @@ export async function handleProxyRoute(
       sendError(res, 500, 'api_error', `Provider build error: ${getErrorMessage(err)}`, config, origin); return true;
     }
 
-    if (provider.config.passthrough) {
+    // Forward Claude Code identity headers to all providers — many upstream APIs
+    // (including OpenAI-compatible ones) reject requests that lack coding agent signals.
+    {
       const skipHeaders = new Set([
         'host', 'connection', 'content-length', 'transfer-encoding', 'accept-encoding',
         'x-api-key', 'authorization',
@@ -296,6 +406,9 @@ export async function handleProxyRoute(
           if (h === 'anthropic-beta') captureBetaHeader(v);
         }
       }
+    }
+
+    if (provider.config.passthrough) {
       built.url = withBetaQueryParam(built.url, true);
     }
 
@@ -322,6 +435,7 @@ export async function handleProxyRoute(
     await handleNonStreamProxy(
       res, ctx, provider, built, anthropicReq,
       requestId, logEntry, logDetail, startTime, cors, origin,
+      fallbackProvider,
     );
     return true;
   }

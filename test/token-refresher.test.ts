@@ -12,7 +12,7 @@ describe('TokenRefresher', () => {
     providers: {},
     logLevel: 'error',
   };
-  const rebuildFn = vi.fn();
+  const rebuildFn = vi.fn().mockResolvedValue(undefined);
 
   beforeEach(() => {
     vi.useFakeTimers();

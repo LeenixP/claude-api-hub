@@ -592,7 +592,7 @@ describe('proxy integration — provider fallback', () => {
     await new Promise<void>((resolve) => upstreamServerGood.close(() => resolve()));
   });
 
-  it('returns 502 when primary is unreachable and no fallback is configured', async () => {
+  it('falls back to configured fallback provider when primary is unreachable', async () => {
     const res = await request(gatewayServer, {
       method: 'POST',
       path: '/v1/messages',
@@ -604,8 +604,11 @@ describe('proxy integration — provider fallback', () => {
       }),
     });
 
-    // GenericOpenAIProvider does not implement isHealthy(), so fallback chain
-    // is not triggered. The request fails with 502.
-    expect(res.status).toBe(502);
+    // Primary provider (port 1, unreachable) should fall back to the configured
+    // fallback provider (goodUpstreamPort, healthy).
+    expect(res.status).toBe(200);
+    const json = JSON.parse(res.body);
+    expect(json.content[0].text).toContain('fallback ok');
   });
+
 });

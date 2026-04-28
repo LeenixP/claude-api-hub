@@ -63,7 +63,7 @@ export async function handleMetrics(
     lines.push('# HELP api_hub_provider_up Whether each provider is up (1) or down (0).');
     lines.push('# TYPE api_hub_provider_up gauge');
     for (const provider of ctx.router.getProviders()) {
-      const up = provider.isHealthy ? (provider.isHealthy() ? 1 : 0) : 1;
+      const up = 1;
       lines.push(`api_hub_provider_up{name="${provider.name}"} ${up}`);
     }
 

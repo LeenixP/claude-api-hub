@@ -41,7 +41,7 @@ export async function handleProbeRoute(
     }
     let testProvider: Provider | null;
     try {
-      testProvider = createProvider(pc);
+      testProvider = await createProvider(pc);
     } catch (err) {
       sendError(res, 500, 'api_error', `Provider init failed: ${(err as Error).message}`, config, origin);
       return true;

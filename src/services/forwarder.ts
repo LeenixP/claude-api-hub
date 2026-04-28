@@ -204,15 +204,19 @@ export async function forwardStream(
       const ok = onChunk(chunk.toString('utf-8'));
       if (ok === false && downstreamRes && !paused) {
         paused = true;
+        if (idleTimer) { clearTimeout(idleTimer); idleTimer = null; }
         upstreamRes.pause();
         downstreamRes.once('drain', () => {
           paused = false;
+          resetIdleTimer();
           upstreamRes.resume();
         });
       }
     });
+
     upstreamRes.on('end', () => { if (idleTimer) clearTimeout(idleTimer); onEnd(); });
     upstreamRes.on('error', (err) => { if (idleTimer) clearTimeout(idleTimer); onError(err); });
+
   });
 
   req.on('timeout', () => {

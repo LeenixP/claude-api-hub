@@ -42,6 +42,7 @@ export class LogManager {
   private stmtClear: ReturnType<InstanceType<typeof DatabaseSync>['prepare']>;
   private stmtCount: ReturnType<InstanceType<typeof DatabaseSync>['prepare']>;
   private stmtTrim: ReturnType<InstanceType<typeof DatabaseSync>['prepare']>;
+  private stmtUpsertStats: ReturnType<InstanceType<typeof DatabaseSync>['prepare']>;
   private stmtGetSetting: ReturnType<InstanceType<typeof DatabaseSync>['prepare']>;
   private stmtSetSetting: ReturnType<InstanceType<typeof DatabaseSync>['prepare']>;
 
@@ -49,8 +50,8 @@ export class LogManager {
 
   private buffer: Array<{ entry: LogEntry; detail?: LogDetail }> = [];
   private flushTimer: ReturnType<typeof setInterval> | null = null;
-  private readonly flushIntervalMs = 5000;
-  private readonly maxBufferSize = 100;
+  private readonly flushIntervalMs = 1000;
+  private readonly maxBufferSize = 20;
 
   constructor(maxLogs = MAX_LOG_ROWS, maxLogFiles = MAX_LOG_FILES, dbPath?: string, eventBus?: EventBus) {
     this.eventBus = eventBus;
@@ -96,12 +97,31 @@ export class LogManager {
         value TEXT NOT NULL
       )
     `);
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS aggregated_stats (
+        date             TEXT NOT NULL,
+        provider         TEXT NOT NULL DEFAULT '',
+        model            TEXT NOT NULL DEFAULT '',
+        prompt_tokens    INTEGER DEFAULT 0,
+        completion_tokens INTEGER DEFAULT 0,
+        request_count    INTEGER DEFAULT 0,
+        PRIMARY KEY (date, provider, model)
+      )
+    `);
 
     this.stmtInsert = this.db.prepare(`
       INSERT INTO request_logs (request_id, time, claude_model, resolved_model, provider, protocol, target_url, stream, status, duration_ms, input_tokens, output_tokens, error, log_file)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
-    this.stmtGetLogs = this.db.prepare('SELECT * FROM request_logs ORDER BY id DESC LIMIT ?');
+    this.stmtUpsertStats = this.db.prepare(`
+      INSERT INTO aggregated_stats (date, provider, model, prompt_tokens, completion_tokens, request_count)
+      VALUES (?, ?, ?, ?, ?, 1)
+      ON CONFLICT(date, provider, model) DO UPDATE SET
+        prompt_tokens = prompt_tokens + excluded.prompt_tokens,
+        completion_tokens = completion_tokens + excluded.completion_tokens,
+        request_count = request_count + 1
+    `);
+    this.stmtGetLogs = this.db.prepare('SELECT * FROM request_logs ORDER BY id DESC LIMIT ? OFFSET ?');
     this.stmtClear = this.db.prepare('DELETE FROM request_logs');
     this.stmtCount = this.db.prepare('SELECT COUNT(*) as cnt FROM request_logs');
     this.stmtTrim = this.db.prepare('DELETE FROM request_logs WHERE id IN (SELECT id FROM request_logs ORDER BY id ASC LIMIT ?)');
@@ -113,7 +133,6 @@ export class LogManager {
         logger.warn('Scheduled log flush failed', { error: getErrorMessage(err) });
       });
     }, this.flushIntervalMs);
-    this.flushTimer.unref();
   }
 
   private rowToLogEntry(row: Record<string, unknown>): LogEntry {
@@ -165,6 +184,12 @@ export class LogManager {
           entry.status, entry.durationMs, entry.inputTokens ?? 0, entry.outputTokens ?? 0,
           entry.error ?? null, entry.logFile ?? null
         );
+        // Aggregate into daily stats (not affected by trimLogs)
+        const date = entry.time.slice(0, 10);
+        this.stmtUpsertStats.run(
+          date, entry.provider, entry.resolvedModel,
+          entry.inputTokens ?? 0, entry.outputTokens ?? 0,
+        );
         this.eventBus?.emit('log', entry);
       }
       this.db.exec('COMMIT');
@@ -177,16 +202,22 @@ export class LogManager {
     }
   }
 
-  getLogs(limit = 200): LogEntry[] {
+  getLogs(limit = 200, offset = 0): LogEntry[] {
     try {
-      const rows = this.stmtGetLogs.all(limit) as Record<string, unknown>[];
+      const rows = this.stmtGetLogs.all(limit, offset) as Record<string, unknown>[];
       return rows.map(r => this.rowToLogEntry(r));
     } catch (err) { logger.warn('Failed to read logs', { error: getErrorMessage(err) }); return []; }
   }
 
+  getLogCount(): number {
+    try {
+      const row = this.stmtCount.get() as { cnt: number };
+      return row.cnt;
+    } catch (err) { logger.warn('Failed to count logs', { error: getErrorMessage(err) }); return 0; }
+  }
+
   clearLogs(): void {
     try { this.stmtClear.run(); } catch (err) { logger.warn('Failed to clear logs', { error: getErrorMessage(err) }); }
-    this.logCount = -1;
   }
 
   isFileLogging(): boolean {
@@ -221,10 +252,10 @@ export class LogManager {
   } {
     try {
       const summaryRow = this.db.prepare(`
-        SELECT COALESCE(SUM(input_tokens), 0) AS promptTokens,
-               COALESCE(SUM(output_tokens), 0) AS completionTokens,
-               COUNT(*) AS requestCount
-        FROM request_logs
+        SELECT COALESCE(SUM(prompt_tokens), 0) AS promptTokens,
+               COALESCE(SUM(completion_tokens), 0) AS completionTokens,
+               COALESCE(SUM(request_count), 0) AS requestCount
+        FROM aggregated_stats
       `).get() as { promptTokens: number; completionTokens: number; requestCount: number };
       const summary = {
         totalTokens: summaryRow.promptTokens + summaryRow.completionTokens,
@@ -235,13 +266,13 @@ export class LogManager {
 
       const byProviderRows = this.db.prepare(`
         SELECT provider,
-               COALESCE(SUM(input_tokens), 0) AS promptTokens,
-               COALESCE(SUM(output_tokens), 0) AS completionTokens,
-               COUNT(*) AS requestCount
-        FROM request_logs
+               COALESCE(SUM(prompt_tokens), 0) AS promptTokens,
+               COALESCE(SUM(completion_tokens), 0) AS completionTokens,
+               COALESCE(SUM(request_count), 0) AS requestCount
+        FROM aggregated_stats
         WHERE provider != ''
         GROUP BY provider
-        ORDER BY SUM(input_tokens + output_tokens) DESC
+        ORDER BY SUM(prompt_tokens + completion_tokens) DESC
       `).all() as Array<{ provider: string; promptTokens: number; completionTokens: number; requestCount: number }>;
       const byProvider = byProviderRows.map(r => ({
         provider: r.provider,
@@ -253,16 +284,15 @@ export class LogManager {
 
       const byModelRows = this.db.prepare(`
         SELECT provider,
-               resolved_model AS model,
-               COALESCE(SUM(input_tokens), 0) AS promptTokens,
-               COALESCE(SUM(output_tokens), 0) AS completionTokens,
-               COUNT(*) AS requestCount,
-               MAX(time) AS lastUsedAt
-        FROM request_logs
-        WHERE resolved_model != ''
-        GROUP BY provider, resolved_model
-        ORDER BY SUM(input_tokens + output_tokens) DESC
-      `).all() as Array<{ provider: string; model: string; promptTokens: number; completionTokens: number; requestCount: number; lastUsedAt: string }>;
+               model,
+               COALESCE(SUM(prompt_tokens), 0) AS promptTokens,
+               COALESCE(SUM(completion_tokens), 0) AS completionTokens,
+               COALESCE(SUM(request_count), 0) AS requestCount
+        FROM aggregated_stats
+        WHERE model != ''
+        GROUP BY provider, model
+        ORDER BY SUM(prompt_tokens + completion_tokens) DESC
+      `).all() as Array<{ provider: string; model: string; promptTokens: number; completionTokens: number; requestCount: number }>;
       const byModel = byModelRows.map(r => ({
         provider: r.provider,
         model: r.model,
@@ -270,16 +300,15 @@ export class LogManager {
         promptTokens: r.promptTokens,
         completionTokens: r.completionTokens,
         requestCount: r.requestCount,
-        lastUsedAt: r.lastUsedAt,
       }));
 
       const dailyRows = this.db.prepare(`
-        SELECT strftime('%Y-%m-%d', time) AS date,
-               COALESCE(SUM(input_tokens), 0) AS promptTokens,
-               COALESCE(SUM(output_tokens), 0) AS completionTokens,
-               COUNT(*) AS requestCount
-        FROM request_logs
-        WHERE time >= date('now', '-30 days')
+        SELECT date,
+               COALESCE(SUM(prompt_tokens), 0) AS promptTokens,
+               COALESCE(SUM(completion_tokens), 0) AS completionTokens,
+               COALESCE(SUM(request_count), 0) AS requestCount
+        FROM aggregated_stats
+        WHERE date >= date('now', '-30 days')
         GROUP BY date
         ORDER BY date ASC
       `).all() as Array<{ date: string; promptTokens: number; completionTokens: number; requestCount: number }>;
@@ -316,18 +345,12 @@ export class LogManager {
     try { this.db.close(); } catch (err) { logger.warn('Failed to close database', { error: getErrorMessage(err) }); }
   }
 
-  private logCount = -1;
-
   private trimLogs(): void {
     try {
-      if (this.logCount < 0) {
-        const row = this.stmtCount.get() as { cnt: number };
-        this.logCount = row.cnt;
-      }
-      this.logCount++;
-      if (this.logCount > this.maxLogs + 500) {
-        this.stmtTrim.run(this.logCount - this.maxLogs);
-        this.logCount = this.maxLogs;
+      const row = this.stmtCount.get() as { cnt: number };
+      const overflow = row.cnt - this.maxLogs;
+      if (overflow > 0) {
+        this.stmtTrim.run(overflow);
       }
     } catch (err) { logger.warn('Failed to trim logs', { error: getErrorMessage(err) }); }
   }
@@ -340,5 +363,38 @@ export class LogManager {
       const toDelete = jsonFiles.slice(0, Math.floor(jsonFiles.length / 2));
       Promise.all(toDelete.map(f => unlink(join(this.logDir, f)).catch((err) => { logger.warn(`Failed to delete log file ${f}`, { error: getErrorMessage(err) }); }))).catch((err) => { logger.warn('Failed to clean log directory', { error: getErrorMessage(err) }); });
     }).catch((err) => { logger.warn('Failed to read log directory', { error: getErrorMessage(err) }); });
+  }
+
+  // ─── Persistent cumulative totals (survives restarts) ───
+
+  /** Save RateTracker cumulative state to SQLite settings table. */
+  saveCumulativeTotals(totals: { totalTokens: number; totalRequests: number; maxQps: number; maxRpm: number; maxTps: number }): void {
+    try {
+      this.stmtSetSetting.run('totalTokens', String(totals.totalTokens));
+      this.stmtSetSetting.run('totalRequests', String(totals.totalRequests));
+      this.stmtSetSetting.run('maxQps', String(totals.maxQps));
+      this.stmtSetSetting.run('maxRpm', String(totals.maxRpm));
+      this.stmtSetSetting.run('maxTps', String(totals.maxTps));
+    } catch (err) { logger.warn('Failed to save cumulative totals', { error: getErrorMessage(err) }); }
+  }
+
+  /** Load RateTracker cumulative state from SQLite settings table. */
+  loadCumulativeTotals(): { totalTokens: number; totalRequests: number; maxQps: number; maxRpm: number; maxTps: number } {
+    try {
+      const get = (key: string): number => {
+        const row = this.stmtGetSetting.get(key) as { value: string } | undefined;
+        return row ? parseInt(row.value, 10) || 0 : 0;
+      };
+      return {
+        totalTokens: get('totalTokens'),
+        totalRequests: get('totalRequests'),
+        maxQps: get('maxQps'),
+        maxRpm: get('maxRpm'),
+        maxTps: get('maxTps'),
+      };
+    } catch (err) {
+      logger.warn('Failed to load cumulative totals', { error: getErrorMessage(err) });
+      return { totalTokens: 0, totalRequests: 0, maxQps: 0, maxRpm: 0, maxTps: 0 };
+    }
   }
 }

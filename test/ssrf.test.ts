@@ -83,6 +83,26 @@ describe('isSSRFSafe - IPv6 private ranges', () => {
     expect(await isSSRFSafe('::ffff:127.0.0.1')).toBe(true);
   });
 
+  it('rejects ::ffff:10.0.0.1 (IPv4-mapped RFC1918)', async () => {
+    expect(await isSSRFSafe('::ffff:10.0.0.1')).toBe(false);
+  });
+
+  it('rejects ::ffff:172.16.0.1 (IPv4-mapped RFC1918)', async () => {
+    expect(await isSSRFSafe('::ffff:172.16.0.1')).toBe(false);
+  });
+
+  it('rejects ::ffff:169.254.0.1 (IPv4-mapped link-local)', async () => {
+    expect(await isSSRFSafe('::ffff:169.254.0.1')).toBe(false);
+  });
+
+  it('rejects ::ffff:0.0.0.0 (IPv4-mapped broadcast)', async () => {
+    expect(await isSSRFSafe('::ffff:0.0.0.0')).toBe(false);
+  });
+
+  it('allows ::ffff:8.8.8.8 (IPv4-mapped public)', async () => {
+    expect(await isSSRFSafe('::ffff:8.8.8.8')).toBe(true);
+  });
+
   it('allows public IPv6 addresses', async () => {
     expect(await isSSRFSafe('2001:4860:4860::8888')).toBe(true);
   });

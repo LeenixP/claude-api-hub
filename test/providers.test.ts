@@ -83,14 +83,13 @@ describe('ClaudeProvider', () => {
   });
 
   it('parseResponse passes through as-is', () => {
-    const raw = { id: 'msg_1', type: 'message', role: 'assistant', content: [] } as any;
+    const raw = { id: 'msg_1', type: 'message', role: 'assistant', content: [], usage: { input_tokens: 1, output_tokens: 2 } } as any;
     const result = provider.parseResponse(raw, 'claude-sonnet-4-6');
     expect(result).toBe(raw);
   });
 
-  it('createStreamContext returns initialized context', () => {
-    const ctx = provider.createStreamContext('claude-sonnet-4-6');
-    expect(ctx.initialized).toBe(true);
+  it('does not expose createStreamContext (passthrough provider)', () => {
+    expect(provider.createStreamContext).toBeUndefined();
   });
 });
 
@@ -139,6 +138,7 @@ describe('GenericOpenAIProvider', () => {
     const result = provider.parseResponse(openaiResp, 'gpt-4');
     expect(result.type).toBe('message');
     expect(result.role).toBe('assistant');
+    expect(result.id).toBe('chatcmpl-1');
     expect(result.content[0]).toEqual({ type: 'text', text: 'Hello!' });
     expect(result.stop_reason).toBe('end_turn');
     expect(result.usage.input_tokens).toBe(10);

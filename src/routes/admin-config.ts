@@ -39,7 +39,7 @@ export async function rebuildProviders(router: RouteContext['router'], config: G
     if (!pc.enabled) continue;
     pc.key = key;
     try {
-      const p = createProvider(pc);
+      const p = await createProvider(pc);
       if (p) providers.push(p);
     } catch (err) {
       logger.warn(`Skipping provider "${pc.name}": ${getErrorMessage(err)}`);

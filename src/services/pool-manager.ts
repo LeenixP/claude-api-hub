@@ -107,6 +107,11 @@ export class KeyPool {
     return this.keys.every(k => !k.healthy);
   }
 
+  isKnownBadKey(key: string): boolean {
+    const state = this.keys.find(k => k.key === key);
+    return state ? !state.healthy : false;
+  }
+
   private recover(): void {
     const now = Date.now();
     for (const state of this.keys) {

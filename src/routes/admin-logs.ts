@@ -28,16 +28,16 @@ export async function handleAdminLogsRoutes(
   }
 
   if (req.method === 'GET' && pathname === '/api/logs') {
-    const allLogs = logManager.getLogs();
     const url = new URL(req.url || '', `http://${req.headers.host || 'localhost'}`);
     const limit = Math.min(parseInt(url.searchParams.get('limit') || '200'), 500);
     const offset = parseInt(url.searchParams.get('offset') || '0');
     const providerFilter = url.searchParams.get('provider');
     const statusFilter = url.searchParams.get('status');
+    const allLogs = logManager.getLogs(limit, offset);
     let filtered = allLogs;
     if (providerFilter) filtered = filtered.filter(l => l.provider === providerFilter);
     if (statusFilter) filtered = filtered.filter(l => String(l.status) === statusFilter);
-    await sendJsonAsync(res, 200, { total: filtered.length, logs: filtered.slice(offset, offset + limit) }, config, origin);
+    await sendJsonAsync(res, 200, { total: logManager.getLogCount(), logs: filtered }, config, origin);
     return true;
   }
 
@@ -69,7 +69,7 @@ export async function handleAdminLogsRoutes(
       if (!p.apiKey) { results[p.name || key] = { status: 'no_key', latencyMs: 0 }; return; }
       const start = Date.now();
       try {
-        const provider = createProvider(p);
+        const provider = await createProvider(p);
         if (!provider) { results[p.name || key] = { status: 'init_failed', latencyMs: 0 }; return; }
         const model = p.defaultModel || p.models[0];
         if (!model) { results[p.name || key] = { status: 'no_model', latencyMs: 0 }; return; }

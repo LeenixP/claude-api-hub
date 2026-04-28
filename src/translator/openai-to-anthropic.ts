@@ -21,22 +21,12 @@ export interface StreamState {
   textStarted: boolean;
   thinkingBlockIndex: number;
   thinkingStarted: boolean;
-  toolCalls: Map<number, {
-    id: string;
-    name: string;
-    argumentsJson: string;
-    blockIndex: number;
-  }>;
+  toolCalls: Map<number, { id: string; name: string; argumentsJson: string; blockIndex: number }>;
   nextBlockIndex: number;
   initialized: boolean;
   finished: boolean;
 }
 
-/**
- * Create a fresh StreamState for tracking an OpenAI-to-Anthropic streaming session.
- * @param model - The original model name from the client request
- * @returns A new StreamState with default values
- */
 export function createStreamState(model: string): StreamState {
   return {
     messageId: `msg_${Date.now()}`,
@@ -66,6 +56,13 @@ function mapFinishReason(
   return 'end_turn';
 }
 
+function mapUsage(openaiUsage: OpenAIResponse['usage']): AnthropicUsage {
+  return {
+    input_tokens: openaiUsage?.prompt_tokens ?? 0,
+    output_tokens: openaiUsage?.completion_tokens ?? 0,
+  };
+}
+
 /**
  * Translate a complete OpenAI Chat Completions response into Anthropic Messages format.
  * @param res - The OpenAI response from the upstream
@@ -92,41 +89,37 @@ export function translateResponse(
     };
   }
 
-  const choice = res.choices[0];
   const content: AnthropicContentBlock[] = [];
 
-  // Handle reasoning_content (DeepSeek and similar models)
-  const msg = choice.message as Record<string, unknown>;
-  if (msg.reasoning_content && typeof msg.reasoning_content === 'string') {
-    content.push({ type: 'thinking', thinking: msg.reasoning_content });
+  const choice = res.choices[0];
+  const message = choice.message;
+
+  // Handle reasoning_content (DeepSeek and similar)
+  const msgRecord = message as Record<string, unknown> | undefined;
+  if (msgRecord?.reasoning_content && typeof msgRecord.reasoning_content === 'string') {
+    content.push({ type: 'thinking', thinking: msgRecord.reasoning_content });
   }
 
-  if (choice.message.content) {
-    content.push({ type: 'text', text: choice.message.content });
+  if (message?.content) {
+    content.push({ type: 'text', text: message.content });
   }
 
-  if (choice.message.tool_calls) {
-    for (const tc of choice.message.tool_calls) {
+  if (message?.tool_calls) {
+    for (const tc of message.tool_calls) {
       let input: Record<string, unknown> = {};
       try {
         input = JSON.parse(tc.function.arguments);
       } catch {
-        // leave as empty object if parse fails
+        // leave empty
       }
-      const block: AnthropicToolUseBlock = {
+      content.push({
         type: 'tool_use',
         id: tc.id,
         name: tc.function.name,
         input,
-      };
-      content.push(block);
+      });
     }
   }
-
-  const usage: AnthropicUsage = {
-    input_tokens: res.usage?.prompt_tokens ?? 0,
-    output_tokens: res.usage?.completion_tokens ?? 0,
-  };
 
   return {
     id: res.id,
@@ -134,9 +127,9 @@ export function translateResponse(
     role: 'assistant',
     content,
     model: originalModel,
-    stop_reason: mapFinishReason(choice.finish_reason),
+    stop_reason: mapFinishReason(choice?.finish_reason ?? null),
     stop_sequence: null,
-    usage,
+    usage: mapUsage(res.usage),
   };
 }
 

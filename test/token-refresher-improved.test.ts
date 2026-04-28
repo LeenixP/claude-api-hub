@@ -17,7 +17,7 @@ import { getCredentialStatus, refreshCredentials } from '../src/providers/kiro-o
 
 describe('TokenRefresher with OAuth providers', () => {
   let refresher: TokenRefresher;
-  const rebuildFn = vi.fn();
+  const rebuildFn = vi.fn().mockResolvedValue(undefined);
 
   const oauthProviderConfig: ProviderConfig = {
     name: 'test-oauth',

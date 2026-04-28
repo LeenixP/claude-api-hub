@@ -7,8 +7,6 @@ import type {
   AnthropicRequest,
   AnthropicResponse,
   AnthropicStreamEvent,
-  OpenAIResponse,
-  OpenAIStreamChunk,
 } from './types.js';
 import { KiroAuth } from './kiro-auth.js';
 import { convertToCodeWhisperer } from './kiro-converter.js';
@@ -32,17 +30,9 @@ export class KiroProvider implements Provider {
     this.region = (opts.kiroRegion as string) || 'us-east-1';
     this.machineId = crypto.randomBytes(16).toString('hex');
     this.auth = new KiroAuth(this.region, opts.kiroCredsPath as string | undefined);
-
-    // Load credentials synchronously at construction time so buildRequest works
-    try {
-      this.auth.loadCredentialsSync();
-      this.cachedToken = this.auth.getAccessTokenSync() ?? null;
-    } catch (err) {
-      throw new Error(`Kiro initialization failed: ${(err as Error).message}`);
-    }
   }
 
-  /** Refresh access token asynchronously (call when token expires). */
+  /** Initialize credentials asynchronously. Safe to call multiple times. */
   async ensureReady(): Promise<void> {
     this.cachedToken = await this.auth.getAccessToken();
   }
@@ -64,7 +54,11 @@ export class KiroProvider implements Provider {
     }
 
     const kiroReq = convertToCodeWhisperer(
-      req.messages, req.model, req.system, req.tools, req.thinking,
+      req.messages,
+      req.model,
+      req.system,
+      req.tools,
+      req.thinking,
     );
 
     const body: Record<string, unknown> = { conversationState: kiroReq.conversationState };
@@ -92,7 +86,7 @@ export class KiroProvider implements Provider {
     };
   }
 
-  parseResponse(raw: OpenAIResponse, originalModel: string): AnthropicResponse {
+  parseResponse(raw: unknown, originalModel: string): AnthropicResponse {
     const rawStr = typeof raw === 'string' ? raw : JSON.stringify(raw);
     return parseKiroResponse(rawStr, originalModel);
   }
@@ -101,8 +95,7 @@ export class KiroProvider implements Provider {
     return createKiroStreamState(originalModel) as StreamContext;
   }
 
-  parseStreamChunk(chunk: OpenAIStreamChunk, _originalModel: string, ctx: StreamContext): AnthropicStreamEvent[] {
-    const chunkStr = typeof chunk === 'string' ? chunk : JSON.stringify(chunk);
-    return parseKiroStreamChunk(chunkStr, ctx as KiroStreamState);
+  parseStreamChunk(chunk: string, _originalModel: string, ctx: StreamContext): AnthropicStreamEvent[] {
+    return parseKiroStreamChunk(chunk, ctx as KiroStreamState);
   }
 }

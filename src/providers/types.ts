@@ -17,9 +17,10 @@ export interface ProviderConfig {
   enabled: boolean;
   apiKeys?: string[];
   prefix?: string | string[];
+  /** @deprecated Derived from authMode='anthropic' — set authMode instead */
   passthrough?: boolean;
-  authMode?: 'apikey' | 'oauth' | 'anthropic' | 'openai';
-  providerType?: 'standard' | 'kiro';
+  authMode?: 'apikey' | 'oauth' | 'anthropic';
+  providerType?: 'kiro';
   options?: Record<string, unknown>;
   sanitize?: string[];
 }
@@ -262,6 +263,96 @@ export interface OpenAIStreamChoice {
   finish_reason: string | null;
 }
 
+// ─── Internal (Provider-Agnostic) Message Types ───
+// These types are the core abstraction — providers only deal with these.
+// Adapters convert between these and wire-protocol-specific types (Anthropic, OpenAI, etc.).
+
+export interface InternalRequest {
+  model: string;
+  messages: InternalMessage[];
+  max_tokens?: number;
+  stream?: boolean;
+  temperature?: number;
+  top_p?: number;
+  top_k?: number;
+  stop_sequences?: string[];
+  tools?: InternalTool[];
+  tool_choice?: InternalToolChoice;
+  thinking?: { type: 'enabled'; budget_tokens: number };
+  metadata?: Record<string, unknown>;
+}
+
+export interface InternalMessage {
+  role: 'system' | 'user' | 'assistant' | 'tool';
+  content: string | InternalContentPart[];
+  name?: string;
+  tool_calls?: InternalToolCall[];
+  tool_call_id?: string;
+}
+
+export type InternalContentPart =
+  | { type: 'text'; text: string }
+  | { type: 'image'; media_type: string; data: string }
+  | { type: 'thinking'; thinking: string };
+
+export interface InternalToolCall {
+  id: string;
+  type: 'function';
+  function: { name: string; arguments: string };
+}
+
+export interface InternalTool {
+  name: string;
+  description: string;
+  input_schema: Record<string, unknown>;
+}
+
+export type InternalToolChoice =
+  | { type: 'auto' }
+  | { type: 'any' }
+  | { type: 'tool'; name: string };
+
+export interface InternalUsage {
+  input_tokens: number;
+  output_tokens: number;
+  cache_creation_input_tokens?: number;
+  cache_read_input_tokens?: number;
+}
+
+export interface InternalContentBlock {
+  type: 'text' | 'tool_use' | 'thinking';
+  text?: string;
+  id?: string;
+  name?: string;
+  input?: Record<string, unknown>;
+  thinking?: string;
+  signature?: string;
+}
+
+export interface InternalResponse {
+  id: string;
+  content: InternalContentBlock[];
+  model: string;
+  stop_reason: 'end_turn' | 'max_tokens' | 'stop_sequence' | 'tool_use' | null;
+  stop_sequence: string | null;
+  usage: InternalUsage;
+}
+
+export type InternalStreamEvent =
+  | { type: 'message_start'; message: InternalResponse }
+  | { type: 'content_block_start'; index: number; content_block: InternalContentBlock }
+  | { type: 'content_block_delta'; index: number; delta: InternalDelta }
+  | { type: 'content_block_stop'; index: number }
+  | { type: 'message_delta'; delta: { stop_reason: string | null; stop_sequence: string | null }; usage: { output_tokens: number } }
+  | { type: 'message_stop' }
+  | { type: 'ping' }
+  | { type: 'error'; error: { type: string; message: string } };
+
+export type InternalDelta =
+  | { type: 'text_delta'; text: string }
+  | { type: 'input_json_delta'; partial_json: string }
+  | { type: 'thinking_delta'; thinking: string };
+
 // ─── Provider Interface ───
 
 export interface StreamContext {
@@ -272,59 +363,37 @@ export interface StreamContext {
 /**
  * Provider interface that all provider implementations must satisfy.
  * Handles model matching, request building, and response/stream parsing.
+ *
+ * All providers operate on Internal* types — protocol-specific conversion
+ * (Anthropic ↔ Internal, OpenAI ↔ Internal) is handled by the adapter layer.
  */
 export interface Provider {
   name: string;
   config: ProviderConfig;
 
-  /**
-   * Determine whether this provider can handle the given model name.
-   * @param model - The model name from the incoming request
-   * @returns true if this provider should handle the model
-   */
   matchModel(model: string): boolean;
-
-  /**
-   * Resolve the model name to the actual model ID used by the upstream API.
-   * @param model - The model name from the incoming request
-   * @returns The resolved model ID for the upstream provider
-   */
   resolveModel(model: string): string;
 
   /**
    * Build the upstream HTTP request from an Anthropic-format request.
-   * @param req - The incoming Anthropic request
+   * @param req - The original Anthropic request from the client
    * @returns URL, headers, and JSON body for the upstream API call
    */
   buildRequest(req: AnthropicRequest): { url: string; headers: Record<string, string>; body: string; usedKey: string };
 
   /**
-   * Parse an OpenAI-format response back into Anthropic format.
-   * @param raw - The raw OpenAI response from the upstream
+   * Parse the upstream response into Anthropic format.
+   * @param raw - The raw upstream response body (OpenAI format for translated providers, Anthropic for passthrough)
    * @param originalModel - The original model name from the client request
    * @returns An Anthropic-format response
    */
   parseResponse(raw: OpenAIResponse, originalModel: string): AnthropicResponse;
 
-  /**
-   * Create a fresh stream context for tracking streaming state.
-   * @param originalModel - The original model name from the client request
-   * @returns A new StreamContext instance
-   */
-  createStreamContext(originalModel: string): StreamContext;
-
-  /**
-   * Parse a single OpenAI streaming chunk into Anthropic stream events.
-   * @param chunk - One SSE chunk from the upstream
-   * @param originalModel - The original model name from the client request
-   * @param ctx - Mutable stream context tracking accumulated state
-   * @returns Array of Anthropic stream events to emit
-   */
-  parseStreamChunk(chunk: OpenAIStreamChunk, originalModel: string, ctx: StreamContext): AnthropicStreamEvent[];
+  createStreamContext?(originalModel: string): StreamContext;
+  parseStreamChunk?(chunk: OpenAIStreamChunk | string, originalModel: string, ctx: StreamContext): AnthropicStreamEvent[];
 
   reportSuccess?(key?: string): void;
   reportError?(key?: string): void;
-  isHealthy?(): boolean;
 }
 
 // ─── Router Types ───

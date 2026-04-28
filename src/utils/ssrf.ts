@@ -64,7 +64,12 @@ function isPrivateIPv4(ip: string): boolean {
 
 function isPrivateIPv6(ip: string): boolean {
   const lower = ip.toLowerCase();
-  // ::1 (loopback) and ffff:127. (IPv4-mapped loopback) allowed for local access
+  // Check IPv4-mapped addresses ::ffff:x.x.x.x
+  if (lower.startsWith('::ffff:')) {
+    const ipv4 = lower.slice(7);
+    return isPrivateIPv4(ipv4);
+  }
+  // ::1 (loopback) allowed for local access
   return lower.startsWith('fc') || lower.startsWith('fd') || lower.startsWith('fe80') || lower === '::';
 }
 
