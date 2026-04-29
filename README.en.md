@@ -296,6 +296,36 @@ curl -X POST http://localhost:9800/v1/messages \
 
 If `sonnet` is aliased to `kimi-k2.6`, the request is automatically routed to Kimi with protocol conversion.
 
+### Access Control (Optional)
+
+If you expose the hub to a LAN or public network, set the `ADMIN_TOKEN` environment variable:
+
+```bash
+export ADMIN_TOKEN="your-secret-token"
+```
+
+Clients must then include the `x-hub-token` header:
+
+```bash
+curl -X POST http://localhost:9800/v1/messages \
+  -H "x-hub-token: your-secret-token" \
+  -H "Content-Type: application/json" \
+  -H "x-api-key: sk-ant-xxx" \
+  -d '{"model":"claude-sonnet-4-6","max_tokens":100,"messages":[{"role":"user","content":"Hello"}]}'
+```
+
+Claude Code configuration (in settings.json):
+
+```json
+{
+  "env": {
+    "CLAUDE_CODE_EXTRA_HEADERS": "x-hub-token: your-secret-token"
+  }
+}
+```
+
+No authentication is required when `ADMIN_TOKEN` is not configured.
+
 ---
 
 ## Alias Mapping
