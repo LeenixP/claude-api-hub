@@ -302,7 +302,30 @@ curl -X POST http://localhost:9800/v1/messages \
 
 ### 访问控制（可选）
 
-如果你暴露到局域网或公网，建议开启 `ADMIN_TOKEN` 环境变量：
+如果你暴露到局域网或公网，建议开启认证。
+
+#### 方式一：ANTHROPIC_AUTH_TOKEN（推荐）
+
+设置环境变量 `ANTHROPIC_AUTH_TOKEN`，Claude Code 会自动通过 `x-api-key` 头发送此 token 进行认证：
+
+```bash
+# 在 Claude Code 的 settings.json 中设置
+{
+  "env": {
+    "ANTHROPIC_AUTH_TOKEN": "your-secret-token",
+    "ANTHROPIC_BASE_URL": "http://127.0.0.1:9800"
+  }
+}
+```
+
+Hub 启动时设置相同的环境变量：
+```bash
+ANTHROPIC_AUTH_TOKEN=your-secret-token claude-api-hub
+```
+
+#### 方式二：ADMIN_TOKEN + x-hub-token
+
+设置 `ADMIN_TOKEN` 环境变量：
 
 ```bash
 export ADMIN_TOKEN="your-secret-token"
@@ -619,14 +642,10 @@ OAuth token 在过期前由后台服务自动刷新。在配置页面或配置�
 
 计划的功能和增强（尚未实现）：
 
-### 进行中
-- 当前无进行中项目
-
 ### 计划中
 - **Gemini 支持** —— 添加 Google Gemini 作为路由目标
 - **插件系统** —— 可扩展架构，支持自定义供应商和转换
 - **Webhook 集成** —— 请求事件的实时通知
-- **Prometheus 指标** —— 导出指标用于 Prometheus/Grafana 监控
 - **请求重放** —— 重放历史请求用于调试
 
 ### 待办

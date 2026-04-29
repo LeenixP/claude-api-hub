@@ -9,7 +9,7 @@
 | 公共端点 | `/`, `/health`, `/v1/models` 等 | 无需认证即可访问 |
 | 认证端点 | `/api/auth/*` | 登录、登出、检查认证状态 |
 | 管理端点 | `/api/*` | 需要管理员认证（session token 或 admin token） |
-| 代理端点 | `/v1/messages` | 转发到上游 LLM 提供商，支持可选的 IP 速率限制 |
+| 代理端点 | `/v1/messages` | 转发到上游 LLM 提供商，支持 ANTHROPIC_AUTH_TOKEN / x-hub-token 认证和 IP 速率限制 |
 | Prometheus 指标 | `/metrics` | 需要管理员认证 |
 | SSE 事件流 | `/api/events` | 需要管理员认证，实时事件推送 |
 
@@ -17,18 +17,53 @@
 
 ## 认证
 
-管理端点（`/api/*` 和 `/metrics`）需要以下三种认证方式之一：
+### 代理端点认证（/v1/*）
 
-### 1. 无密码模式
+代理端点支持以下认证方式（按优先级排列）：
 
-如果配置中未设置 `password` 且未设置 `adminToken`（或环境变量 `ADMIN_TOKEN`），则所有管理端点无需认证即可访问。生产环境强烈建议配置认证。
+#### 1. ANTHROPIC_AUTH_TOKEN（推荐）
 
-### 2. Session Token
+设置环境变量 `ANTHROPIC_AUTH_TOKEN`，Claude Code 会自动通过 `x-api-key` 头发送此 token。Hub 验证匹配后放行。
+
+```bash
+# Hub 启动时设置
+ANTHROPIC_AUTH_TOKEN=your-secret-token claude-api-hub
+
+# Claude Code settings.json
+{
+  "env": {
+    "ANTHROPIC_AUTH_TOKEN": "your-secret-token",
+    "ANTHROPIC_BASE_URL": "http://127.0.0.1:9800"
+  }
+}
+```
+
+#### 2. x-hub-token / ADMIN_TOKEN
+
+在配置文件中设置 `adminToken` 或通过环境变量 `ADMIN_TOKEN` 设置，客户端通过 `x-hub-token` 头或 `Authorization: Bearer <token>` 发送。
+
+#### 3. Session Token
+
+通过 `/api/auth/login` 登录获取的临时会话令牌（24 小时有效），通过 `Authorization: Bearer <token>` 发送。
+
+#### 4. 无认证模式
+
+如果未设置 `ANTHROPIC_AUTH_TOKEN`、`password`、`adminToken`（或 `ADMIN_TOKEN`），则代理端点无需认证即可访问。
+
+### 管理端点认证（/api/*）
+
+管理端点（`/api/*` 和 `/metrics`）需要以下认证方式之一：
+
+#### 1. ANTHROPIC_AUTH_TOKEN
+
+与代理端点相同，通过 `x-api-key` 头发送。
+
+#### 2. Session Token
 
 通过登录接口获取的临时会话令牌，有效期为 24 小时。
 
 ```bash
-curl -X POST http://localhost:3456/api/auth/login \
+curl -X POST http://localhost:9800/api/auth/login \
   -H "Content-Type: application/json" \
   -d '{"password": "your-password"}'
 ```
@@ -43,7 +78,7 @@ curl -X POST http://localhost:3456/api/auth/login \
 
 使用方式：
 ```bash
-curl -H "Authorization: Bearer <token>" http://localhost:3456/api/config
+curl -H "Authorization: Bearer <token>" http://localhost:9800/api/config
 ```
 
 ### 3. Admin Token
@@ -51,7 +86,7 @@ curl -H "Authorization: Bearer <token>" http://localhost:3456/api/config
 在配置文件中设置 `adminToken` 或通过环境变量 `ADMIN_TOKEN` 设置固定令牌。
 
 ```bash
-curl -H "x-admin-token: your-admin-token" http://localhost:3456/api/config
+curl -H "x-admin-token: your-admin-token" http://localhost:9800/api/config
 ```
 
 ---
@@ -66,7 +101,7 @@ curl -H "x-admin-token: your-admin-token" http://localhost:3456/api/config
 - **响应**: `text/html; charset=utf-8`
 
 ```bash
-curl -H "Accept-Encoding: gzip" http://localhost:3456/
+curl -H "Accept-Encoding: gzip" http://localhost:9800/
 ```
 
 ---
@@ -85,7 +120,7 @@ curl -H "Accept-Encoding: gzip" http://localhost:3456/
 ```
 
 ```bash
-curl http://localhost:3456/health
+curl http://localhost:9800/health
 ```
 
 ---
@@ -98,7 +133,7 @@ curl http://localhost:3456/health
 - **响应**: `image/png`
 
 ```bash
-curl http://localhost:3456/icon.png -o icon.png
+curl http://localhost:9800/icon.png -o icon.png
 ```
 
 ---
@@ -116,7 +151,7 @@ curl http://localhost:3456/icon.png -o icon.png
 ```
 
 ```bash
-curl http://localhost:3456/api/auth/check
+curl http://localhost:9800/api/auth/check
 ```
 
 ---
@@ -142,7 +177,7 @@ curl http://localhost:3456/api/auth/check
 - **错误**: 401（密码错误）、429（登录过于频繁或账户被锁定）
 
 ```bash
-curl -X POST http://localhost:3456/api/auth/login \
+curl -X POST http://localhost:9800/api/auth/login \
   -H "Content-Type: application/json" \
   -d '{"password": "your-password"}'
 ```
@@ -163,7 +198,7 @@ curl -X POST http://localhost:3456/api/auth/login \
 ```
 
 ```bash
-curl -X POST http://localhost:3456/api/auth/logout \
+curl -X POST http://localhost:9800/api/auth/logout \
   -H "Authorization: Bearer <token>"
 ```
 
@@ -189,7 +224,7 @@ curl -X POST http://localhost:3456/api/auth/logout \
 ```
 
 ```bash
-curl http://localhost:3456/v1/models
+curl http://localhost:9800/v1/models
 ```
 
 ---
@@ -202,7 +237,7 @@ SSE（Server-Sent Events）事件流，实时推送系统事件。
 - **响应**: `text/event-stream`
 
 ```bash
-curl -N -H "Authorization: Bearer <token>" http://localhost:3456/api/events
+curl -N -H "Authorization: Bearer <token>" http://localhost:9800/api/events
 ```
 
 事件格式：
@@ -224,8 +259,7 @@ data: {"rpm": 10, "tps": 50}
 
 代理 Claude API 消息请求到上游 LLM 提供商。这是核心代理端点，兼容 Anthropic Messages API 格式。
 
-- **认证**: 不需要
-- **速率限制**: 如果配置了 `rateLimitRpm`，按客户端 IP 限制
+- **认证**: 支持 `ANTHROPIC_AUTH_TOKEN`（通过 `x-api-key` 头）或 `x-hub-token` / `Authorization` 头
 - **请求体**（Anthropic Messages API 格式）:
 ```json
 {
@@ -245,7 +279,7 @@ data: {"rpm": 10, "tps": 50}
 
 非流式请求：
 ```bash
-curl -X POST http://localhost:3456/v1/messages \
+curl -X POST http://localhost:9800/v1/messages \
   -H "Content-Type: application/json" \
   -H "x-api-key: your-api-key" \
   -d '{
@@ -258,7 +292,7 @@ curl -X POST http://localhost:3456/v1/messages \
 
 流式请求：
 ```bash
-curl -X POST http://localhost:3456/v1/messages \
+curl -X POST http://localhost:9800/v1/messages \
   -H "Content-Type: application/json" \
   -H "x-api-key: your-api-key" \
   -d '{
@@ -281,7 +315,7 @@ curl -X POST http://localhost:3456/v1/messages \
 - **响应**: 完整的 `GatewayConfig` JSON，其中 `providers[].apiKey` 被替换为 `前4位***后4位`
 
 ```bash
-curl -H "Authorization: Bearer <token>" http://localhost:3456/api/config
+curl -H "Authorization: Bearer <token>" http://localhost:9800/api/config
 ```
 
 ---
@@ -302,7 +336,7 @@ curl -H "Authorization: Bearer <token>" http://localhost:3456/api/config
 ```
 
 ```bash
-curl -X POST http://localhost:3456/api/config \
+curl -X POST http://localhost:9800/api/config \
   -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
   -d @config.json
@@ -324,7 +358,7 @@ curl -X POST http://localhost:3456/api/config \
 ```
 
 ```bash
-curl -X POST http://localhost:3456/api/config/reload \
+curl -X POST http://localhost:9800/api/config/reload \
   -H "Authorization: Bearer <token>"
 ```
 
@@ -344,7 +378,7 @@ curl -X POST http://localhost:3456/api/config/reload \
 ```
 
 ```bash
-curl -H "Authorization: Bearer <token>" http://localhost:3456/api/fetch-models
+curl -H "Authorization: Bearer <token>" http://localhost:9800/api/fetch-models
 ```
 
 ---
@@ -370,7 +404,7 @@ curl -H "Authorization: Bearer <token>" http://localhost:3456/api/fetch-models
 ```
 
 ```bash
-curl -X POST http://localhost:3456/api/probe-models \
+curl -X POST http://localhost:9800/api/probe-models \
   -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
   -d '{
@@ -402,7 +436,7 @@ curl -X POST http://localhost:3456/api/probe-models \
 - **错误**: 400（缺少必填字段）、409（提供商已存在）
 
 ```bash
-curl -X POST http://localhost:3456/api/config/providers \
+curl -X POST http://localhost:9800/api/config/providers \
   -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
   -d '{
@@ -429,7 +463,7 @@ curl -X POST http://localhost:3456/api/config/providers \
 注意：如果请求中的 `apiKey` 包含 `***`，系统会保留原有的真实 API Key 而不被覆盖。
 
 ```bash
-curl -X PUT http://localhost:3456/api/config/providers/my-provider \
+curl -X PUT http://localhost:9800/api/config/providers/my-provider \
   -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
   -d '{
@@ -454,7 +488,7 @@ curl -X PUT http://localhost:3456/api/config/providers/my-provider \
 ```
 
 ```bash
-curl -X DELETE http://localhost:3456/api/config/providers/my-provider \
+curl -X DELETE http://localhost:9800/api/config/providers/my-provider \
   -H "Authorization: Bearer <token>"
 ```
 
@@ -475,7 +509,7 @@ curl -X DELETE http://localhost:3456/api/config/providers/my-provider \
 ```
 
 ```bash
-curl -H "Authorization: Bearer <token>" http://localhost:3456/api/aliases
+curl -H "Authorization: Bearer <token>" http://localhost:9800/api/aliases
 ```
 
 ---
@@ -496,7 +530,7 @@ curl -H "Authorization: Bearer <token>" http://localhost:3456/api/aliases
 - **错误**: 400（包含无效的别名键）
 
 ```bash
-curl -X PUT http://localhost:3456/api/aliases \
+curl -X PUT http://localhost:9800/api/aliases \
   -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
   -d '{
@@ -530,7 +564,7 @@ curl -X PUT http://localhost:3456/api/aliases \
 ```
 
 ```bash
-curl -H "Authorization: Bearer <token>" http://localhost:3456/api/tier-timeouts
+curl -H "Authorization: Bearer <token>" http://localhost:9800/api/tier-timeouts
 ```
 
 ---
@@ -552,7 +586,7 @@ curl -H "Authorization: Bearer <token>" http://localhost:3456/api/tier-timeouts
 ```
 
 ```bash
-curl -X PUT http://localhost:3456/api/tier-timeouts \
+curl -X PUT http://localhost:9800/api/tier-timeouts \
   -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
   -d '{
@@ -602,7 +636,7 @@ curl -X PUT http://localhost:3456/api/tier-timeouts \
 ```
 
 ```bash
-curl "http://localhost:3456/api/logs?limit=50&offset=0&provider=my-provider" \
+curl "http://localhost:9800/api/logs?limit=50&offset=0&provider=my-provider" \
   -H "Authorization: Bearer <token>"
 ```
 
@@ -621,7 +655,7 @@ curl "http://localhost:3456/api/logs?limit=50&offset=0&provider=my-provider" \
 ```
 
 ```bash
-curl -X POST http://localhost:3456/api/logs/clear \
+curl -X POST http://localhost:9800/api/logs/clear \
   -H "Authorization: Bearer <token>"
 ```
 
@@ -643,7 +677,7 @@ curl -X POST http://localhost:3456/api/logs/clear \
 ```
 
 ```bash
-curl -H "Authorization: Bearer <token>" http://localhost:3456/api/logs/file-status
+curl -H "Authorization: Bearer <token>" http://localhost:9800/api/logs/file-status
 ```
 
 ---
@@ -661,7 +695,7 @@ curl -H "Authorization: Bearer <token>" http://localhost:3456/api/logs/file-stat
 ```
 
 ```bash
-curl -X PUT http://localhost:3456/api/logs/file-toggle \
+curl -X PUT http://localhost:9800/api/logs/file-toggle \
   -H "Authorization: Bearer <token>"
 ```
 
@@ -677,7 +711,7 @@ curl -X PUT http://localhost:3456/api/logs/file-toggle \
 - **响应**: 速率追踪器统计对象
 
 ```bash
-curl -H "Authorization: Bearer <token>" http://localhost:3456/api/stats
+curl -H "Authorization: Bearer <token>" http://localhost:9800/api/stats
 ```
 
 ---
@@ -690,7 +724,7 @@ curl -H "Authorization: Bearer <token>" http://localhost:3456/api/stats
 - **响应**: Token 统计对象
 
 ```bash
-curl -H "Authorization: Bearer <token>" http://localhost:3456/api/token-stats
+curl -H "Authorization: Bearer <token>" http://localhost:9800/api/token-stats
 ```
 
 ---
@@ -718,7 +752,7 @@ curl -H "Authorization: Bearer <token>" http://localhost:3456/api/token-stats
 状态值：`ok`、`disabled`、`no_key`、`init_failed`、`no_model`、`error`、`timeout`
 
 ```bash
-curl -H "Authorization: Bearer <token>" http://localhost:3456/api/health/providers
+curl -H "Authorization: Bearer <token>" http://localhost:9800/api/health/providers
 ```
 
 ---
@@ -740,7 +774,7 @@ curl -H "Authorization: Bearer <token>" http://localhost:3456/api/health/provide
 ```
 
 ```bash
-curl -X POST http://localhost:3456/api/test-provider/my-provider \
+curl -X POST http://localhost:9800/api/test-provider/my-provider \
   -H "Authorization: Bearer <token>"
 ```
 
@@ -776,7 +810,7 @@ curl -X POST http://localhost:3456/api/test-provider/my-provider \
 ```
 
 ```bash
-curl -H "Authorization: Bearer <token>" http://localhost:3456/api/system-info
+curl -H "Authorization: Bearer <token>" http://localhost:9800/api/system-info
 ```
 
 ---
@@ -796,7 +830,7 @@ curl -H "Authorization: Bearer <token>" http://localhost:3456/api/system-info
 ```
 
 ```bash
-curl -H "Authorization: Bearer <token>" http://localhost:3456/api/check-update
+curl -H "Authorization: Bearer <token>" http://localhost:9800/api/check-update
 ```
 
 ---
@@ -818,7 +852,7 @@ curl -H "Authorization: Bearer <token>" http://localhost:3456/api/check-update
 - **错误**: 409（更新正在进行中）
 
 ```bash
-curl -X POST http://localhost:3456/api/update \
+curl -X POST http://localhost:9800/api/update \
   -H "Authorization: Bearer <token>"
 ```
 
@@ -839,7 +873,7 @@ curl -X POST http://localhost:3456/api/update \
 注意：响应发送后，服务会在 500ms 延迟后重启。
 
 ```bash
-curl -X POST http://localhost:3456/api/restart \
+curl -X POST http://localhost:9800/api/restart \
   -H "Authorization: Bearer <token>"
 ```
 
@@ -871,7 +905,7 @@ curl -X POST http://localhost:3456/api/restart \
 `method` 可选值：`google`、`github`、`builder-id`
 
 ```bash
-curl -X POST http://localhost:3456/api/oauth/kiro/auth-url \
+curl -X POST http://localhost:9800/api/oauth/kiro/auth-url \
   -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
   -d '{
@@ -900,7 +934,7 @@ curl -X POST http://localhost:3456/api/oauth/kiro/auth-url \
 ```
 
 ```bash
-curl -X POST http://localhost:3456/api/oauth/kiro/import \
+curl -X POST http://localhost:9800/api/oauth/kiro/import \
   -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
   -d '{
@@ -922,7 +956,7 @@ curl -X POST http://localhost:3456/api/oauth/kiro/import \
 - **响应**: 凭证状态对象
 
 ```bash
-curl "http://localhost:3456/api/oauth/kiro/status?credsPath=/path/to/creds" \
+curl "http://localhost:9800/api/oauth/kiro/status?credsPath=/path/to/creds" \
   -H "Authorization: Bearer <token>"
 ```
 
@@ -948,7 +982,7 @@ curl "http://localhost:3456/api/oauth/kiro/status?credsPath=/path/to/creds" \
 ```
 
 ```bash
-curl -X POST http://localhost:3456/api/oauth/kiro/refresh \
+curl -X POST http://localhost:9800/api/oauth/kiro/refresh \
   -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
   -d '{"credsPath": "/path/to/creds"}'
@@ -964,7 +998,7 @@ curl -X POST http://localhost:3456/api/oauth/kiro/refresh \
 - **响应**: OAuth 结果对象
 
 ```bash
-curl -H "Authorization: Bearer <token>" http://localhost:3456/api/oauth/kiro/result
+curl -H "Authorization: Bearer <token>" http://localhost:9800/api/oauth/kiro/result
 ```
 
 ---
@@ -982,7 +1016,7 @@ curl -H "Authorization: Bearer <token>" http://localhost:3456/api/oauth/kiro/res
 ```
 
 ```bash
-curl -X POST http://localhost:3456/api/oauth/kiro/cancel \
+curl -X POST http://localhost:9800/api/oauth/kiro/cancel \
   -H "Authorization: Bearer <token>"
 ```
 
@@ -1005,7 +1039,7 @@ curl -X POST http://localhost:3456/api/oauth/kiro/cancel \
 ```
 
 ```bash
-curl -H "Authorization: Bearer <token>" http://localhost:3456/api/oauth/kiro/models
+curl -H "Authorization: Bearer <token>" http://localhost:9800/api/oauth/kiro/models
 ```
 
 ---
@@ -1020,7 +1054,7 @@ curl -H "Authorization: Bearer <token>" http://localhost:3456/api/oauth/kiro/mod
 - **响应**: `text/plain; charset=utf-8`
 
 ```bash
-curl -H "Authorization: Bearer <token>" http://localhost:3456/metrics
+curl -H "Authorization: Bearer <token>" http://localhost:9800/metrics
 ```
 
 指标包括：

@@ -1,5 +1,7 @@
 # Contributing to Claude API Hub
 
+> This document is bilingual (English / 中文). English sections come first, followed by Chinese translations.
+
 Thank you for your interest in contributing to Claude API Hub! This document provides guidelines and instructions for contributing.
 
 ## Development Environment Setup
