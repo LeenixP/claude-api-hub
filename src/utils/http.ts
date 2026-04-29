@@ -20,9 +20,16 @@ export function getCorsHeaders(config: GatewayConfig, reqOrigin?: string): Recor
       headers['Access-Control-Allow-Origin'] = reqOrigin;
     }
   } else {
-    const defaultOrigin = `http://${config.host === '0.0.0.0' ? 'localhost' : config.host}:${config.port}`;
-    if (!reqOrigin || reqOrigin === defaultOrigin) {
-      headers['Access-Control-Allow-Origin'] = defaultOrigin;
+    if (config.host === '0.0.0.0' && reqOrigin) {
+      const url = new URL(reqOrigin);
+      if (url.port === String(config.port) || (!url.port && config.port === 80)) {
+        headers['Access-Control-Allow-Origin'] = reqOrigin;
+      }
+    } else {
+      const defaultOrigin = `http://${config.host === '0.0.0.0' ? 'localhost' : config.host}:${config.port}`;
+      if (!reqOrigin || reqOrigin === defaultOrigin) {
+        headers['Access-Control-Allow-Origin'] = defaultOrigin;
+      }
     }
   }
   return headers;
