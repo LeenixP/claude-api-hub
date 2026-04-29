@@ -108,18 +108,20 @@ export function createServer(router: ModelRouter, config: GatewayConfig, logMana
       if (await handleProbeRoute(req, res, ctx, pathname, cors, origin)) return;
 
       // ─── Proxy Auth Gate ───
+      // Uses x-hub-token header to avoid conflicting with provider API keys
+      // that Claude Code sends via x-api-key for upstream authentication.
 
       if (pathname === '/v1/messages') {
         const proxySecret = config.password || config.adminToken || process.env.ADMIN_TOKEN;
         if (proxySecret) {
-          const token = (req.headers['x-api-key'] as string)
+          const token = (req.headers['x-hub-token'] as string)
             || req.headers['authorization']?.replace(/^Bearer\s+/i, '');
           if (!token) {
-            sendError(res, 401, 'authentication_error', 'Missing API key. Provide an x-api-key or Authorization header.', config, origin);
+            sendError(res, 401, 'authentication_error', 'Missing hub token. Set x-hub-token header.', config, origin);
             return;
           }
           if (!isValidSession(token) && !verifyProxyToken(token, config)) {
-            sendError(res, 401, 'authentication_error', 'Invalid API key.', config, origin);
+            sendError(res, 401, 'authentication_error', 'Invalid hub token.', config, origin);
             return;
           }
         }
