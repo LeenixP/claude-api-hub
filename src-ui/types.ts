@@ -14,6 +14,7 @@ export interface GatewayConfig {
   streamIdleTimeoutMs?: number;
   maxResponseBytes?: number;
   trustProxy?: boolean;
+  proxyApiKey?: string;
   fallbackChain?: Record<string, string>;
   tokenRefreshMinutes?: number;
 }

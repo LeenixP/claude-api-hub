@@ -25,7 +25,7 @@ export function createServer(router: ModelRouter, config: GatewayConfig, logMana
   if (config.rateLimitRpm && config.rateLimitRpm > 0) {
     rateLimiter = new PerIpRateLimiter(config.rateLimitRpm);
   }
-  if (!config.password && !config.adminToken && !process.env.ADMIN_TOKEN) {
+  if (!config.password && !config.adminToken && !process.env.ADMIN_TOKEN && !config.proxyApiKey) {
     logger.warn('No password configured — management API is unprotected. Set password in config or ADMIN_TOKEN env var.');
   }
 
@@ -114,16 +114,18 @@ export function createServer(router: ModelRouter, config: GatewayConfig, logMana
 
         let proxyAuthed = false;
 
-        // Check x-api-key against ANTHROPIC_AUTH_TOKEN first
-        if (authToken) {
-          const apiKey = req.headers['x-api-key'] as string;
-          if (apiKey && timingSafeCompare(apiKey, authToken)) {
+        // Check x-api-key against ANTHROPIC_AUTH_TOKEN or proxyApiKey
+        const apiKey = req.headers['x-api-key'] as string;
+        if (apiKey) {
+          if (authToken && timingSafeCompare(apiKey, authToken)) {
+            proxyAuthed = true;
+          } else if (config.proxyApiKey && timingSafeCompare(apiKey, config.proxyApiKey)) {
             proxyAuthed = true;
           }
         }
 
         // Fall back to existing auth methods if not yet authenticated
-        if (!proxyAuthed && (authToken || proxySecret)) {
+        if (!proxyAuthed && (authToken || proxySecret || config.proxyApiKey)) {
           const token = (req.headers['x-hub-token'] as string)
             || req.headers['authorization']?.replace(/^Bearer\s+/i, '');
           if (token && isValidSession(token)) {

@@ -164,6 +164,11 @@ export async function requireAdmin(req: http.IncomingMessage, res: http.ServerRe
     const apiKey = req.headers['x-api-key'] as string;
     if (apiKey && timingSafeCompare(apiKey, authToken)) return true;
   }
+  // Accept proxyApiKey via x-api-key
+  if (config.proxyApiKey) {
+    const apiKey = req.headers['x-api-key'] as string;
+    if (apiKey && timingSafeCompare(apiKey, config.proxyApiKey)) return true;
+  }
   await sendError(res, 401, 'authentication_error', 'Invalid or missing admin token', config, req.headers['origin'] as string);
   return false;
 }

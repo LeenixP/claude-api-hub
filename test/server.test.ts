@@ -725,3 +725,90 @@ describe('server with ANTHROPIC_AUTH_TOKEN proxy auth', () => {
     expect(res.status).not.toBe(401);
   });
 });
+
+describe('server with proxyApiKey proxy auth', () => {
+  let server: http.Server;
+  let serverBoth: http.Server;
+
+  beforeAll(async () => {
+    vi.stubEnv('ANTHROPIC_AUTH_TOKEN', '');
+    const config = makeConfig({ proxyApiKey: 'sk-hub-testproxykey123' });
+    const providers = [new GenericOpenAIProvider(testProviderConfig)];
+    const router = createRouter(providers, {});
+    server = createServer(router, config, new LogManager(200, 100, ':memory:'));
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', () => resolve()));
+
+    // Server with both ANTHROPIC_AUTH_TOKEN and proxyApiKey
+    vi.stubEnv('ANTHROPIC_AUTH_TOKEN', 'env-auth-token');
+    const bothConfig = makeConfig({ proxyApiKey: 'sk-hub-testproxykey123' });
+    const bothProviders = [new GenericOpenAIProvider(testProviderConfig)];
+    const bothRouter = createRouter(bothProviders, {});
+    serverBoth = createServer(bothRouter, bothConfig, new LogManager(200, 100, ':memory:'));
+    await new Promise<void>((resolve) => serverBoth.listen(0, '127.0.0.1', () => resolve()));
+  });
+
+  afterAll(async () => {
+    vi.unstubAllEnvs();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    await new Promise<void>((resolve) => serverBoth.close(() => resolve()));
+  });
+
+  it('correct x-api-key matching proxyApiKey passes auth gate', async () => {
+    vi.stubEnv('ANTHROPIC_AUTH_TOKEN', '');
+    const res = await request(server, {
+      method: 'POST',
+      path: '/v1/messages',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': 'sk-hub-testproxykey123',
+      },
+      body: JSON.stringify({ model: 'test-model-1', messages: [{ role: 'user', content: 'hi' }], max_tokens: 10 }),
+    });
+    // Auth passes — upstream is fake so expect 502, not 401
+    expect(res.status).not.toBe(401);
+  });
+
+  it('wrong x-api-key returns 401', async () => {
+    vi.stubEnv('ANTHROPIC_AUTH_TOKEN', '');
+    const res = await request(server, {
+      method: 'POST',
+      path: '/v1/messages',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': 'sk-hub-wrongkey',
+      },
+      body: JSON.stringify({ model: 'test-model-1', messages: [{ role: 'user', content: 'hi' }], max_tokens: 10 }),
+    });
+    expect(res.status).toBe(401);
+    const json = JSON.parse(res.body);
+    expect(json.error.type).toBe('authentication_error');
+  });
+
+  it('when both proxyApiKey and ANTHROPIC_AUTH_TOKEN set, env token works', async () => {
+    vi.stubEnv('ANTHROPIC_AUTH_TOKEN', 'env-auth-token');
+    const res = await request(serverBoth, {
+      method: 'POST',
+      path: '/v1/messages',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': 'env-auth-token',
+      },
+      body: JSON.stringify({ model: 'test-model-1', messages: [{ role: 'user', content: 'hi' }], max_tokens: 10 }),
+    });
+    expect(res.status).not.toBe(401);
+  });
+
+  it('when both proxyApiKey and ANTHROPIC_AUTH_TOKEN set, proxyApiKey also works', async () => {
+    vi.stubEnv('ANTHROPIC_AUTH_TOKEN', 'env-auth-token');
+    const res = await request(serverBoth, {
+      method: 'POST',
+      path: '/v1/messages',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': 'sk-hub-testproxykey123',
+      },
+      body: JSON.stringify({ model: 'test-model-1', messages: [{ role: 'user', content: 'hi' }], max_tokens: 10 }),
+    });
+    expect(res.status).not.toBe(401);
+  });
+});

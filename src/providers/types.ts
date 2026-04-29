@@ -52,6 +52,7 @@ export interface GatewayConfig {
   /** Override the anthropic-beta header for provider test probes. Auto-captured from real traffic if not set. */
   codingAgentBetas?: string;
   ssrfAllowlist?: string[];
+  proxyApiKey?: string;
 }
 
 // ─── Anthropic API Types (incoming from Claude Code) ───

@@ -121,6 +121,9 @@ async function main(): Promise<void> {
     if (process.env.ANTHROPIC_AUTH_TOKEN) {
       logger.info('Proxy auth: ANTHROPIC_AUTH_TOKEN detected — x-api-key authentication enabled');
     }
+    if (config.proxyApiKey) {
+      logger.info('Proxy auth: API Key configured — x-api-key authentication enabled');
+    }
   });
 
 

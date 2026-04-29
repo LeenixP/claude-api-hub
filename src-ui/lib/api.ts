@@ -166,3 +166,11 @@ export async function checkAuth(): Promise<{ required: boolean; authenticated?: 
   }
   return res.json();
 }
+
+export function generateProxyKey(): Promise<{ key: string }> {
+  return api<{ key: string }>('/api/generate-key', { method: 'POST' });
+}
+
+export function revokeProxyKey(): Promise<{ revoked: boolean }> {
+  return api<{ revoked: boolean }>('/api/proxy-key', { method: 'DELETE' });
+}

@@ -73,6 +73,7 @@ export const PRESERVED_KEYS = new Set([
   'fallbackChain',  // provider fallback chain
   'version',        // gateway version stamp
   'ssrfAllowlist',  // SSRF allowlist for trusted hostnames
+  'proxyApiKey',    // proxy API key for x-api-key authentication
 ]);
 
 // ── Derived helpers (no need to edit these) ──────────────────────────

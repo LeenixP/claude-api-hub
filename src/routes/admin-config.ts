@@ -1,4 +1,5 @@
 import http from 'http';
+import crypto from 'crypto';
 import { sendJson, sendError, maskKey } from '../utils/http.js';
 import { getErrorMessage } from '../utils/error.js';
 import { getConfigPath, loadConfig, normalizeProviders } from '../config.js';
@@ -65,6 +66,9 @@ export async function handleAdminConfigRoutes(
         Object.entries(config.providers).map(([key, p]) => [key, { ...p, apiKey: maskKey(p.apiKey) }]),
       ),
     };
+    if (masked.proxyApiKey) {
+      masked.proxyApiKey = maskKey(masked.proxyApiKey);
+    }
     await sendJson(res, 200, masked, config, origin);
     return true;
   }
@@ -241,6 +245,23 @@ export async function handleAdminConfigRoutes(
     return true;
   }
 
+  if (req.method === 'POST' && pathname === '/api/generate-key') {
+    const key = 'sk-hub-' + crypto.randomBytes(24).toString('hex');
+    config.proxyApiKey = key;
+    saveConfig(config);
+    logger.info('Proxy API key generated');
+    await sendJson(res, 200, { key }, config, origin);
+    return true;
+  }
+
+  if (req.method === 'DELETE' && pathname === '/api/proxy-key') {
+    delete (config as unknown as Record<string, unknown>).proxyApiKey;
+    saveConfig(config);
+    logger.info('Proxy API key revoked');
+    await sendJson(res, 200, { revoked: true }, config, origin);
+    return true;
+  }
+
   if (req.method === 'POST' && (pathname === '/api/config' || pathname === '/api/config/import')) {
     const newConfig = await readJson<GatewayConfig>(req, res, config);
     if (!newConfig) return true;
@@ -261,6 +282,10 @@ export async function handleAdminConfigRoutes(
             p.apiKey = config.providers[key].apiKey;
           }
         }
+      }
+      // Preserve real proxyApiKey when frontend sends masked value back
+      if (newConfig.proxyApiKey && newConfig.proxyApiKey.includes('***')) {
+        newConfig.proxyApiKey = config.proxyApiKey;
       }
       const allowedConfigKeys = getAllowedConfigKeys();
       for (const key of allowedConfigKeys) {
@@ -291,6 +316,9 @@ export async function handleAdminConfigRoutes(
           Object.entries(config.providers).map(([key, p]) => [key, { ...p, apiKey: maskKey(p.apiKey) }]),
         ),
       };
+      if (masked.proxyApiKey) {
+        masked.proxyApiKey = maskKey(masked.proxyApiKey);
+      }
       await sendJson(res, 200, { reloaded: true, config: masked }, config, origin);
     } catch (err) {
       await sendError(res, 500, 'api_error', `Reload failed: ${getErrorMessage(err)}`, config, origin);
