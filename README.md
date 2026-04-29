@@ -300,6 +300,36 @@ curl -X POST http://localhost:9800/v1/messages \
 
 如果 `sonnet` 被别名为 `kimi-k2.6`，请求将自动路由到 Kimi 并进行协议转换。
 
+### 访问控制（可选）
+
+如果你暴露到局域网或公网，建议开启 `ADMIN_TOKEN` 环境变量：
+
+```bash
+export ADMIN_TOKEN="your-secret-token"
+```
+
+然后客户端请求时加上 `x-hub-token` header：
+
+```bash
+curl -X POST http://localhost:9800/v1/messages \
+  -H "x-hub-token: your-secret-token" \
+  -H "Content-Type: application/json" \
+  -H "x-api-key: sk-ant-xxx" \
+  -d '{"model":"claude-sonnet-4-6","max_tokens":100,"messages":[{"role":"user","content":"Hello"}]}'
+```
+
+Claude Code 客户端配置（在 settings.json 中）：
+
+```json
+{
+  "env": {
+    "CLAUDE_CODE_EXTRA_HEADERS": "x-hub-token: your-secret-token"
+  }
+}
+```
+
+未配置 `ADMIN_TOKEN` 时不需鉴权，和以前一样。
+
 ---
 
 ## 别名映射
