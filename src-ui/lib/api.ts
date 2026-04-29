@@ -78,6 +78,10 @@ export function saveTierTimeouts(timeouts: Record<string, { timeoutMs: number; s
   });
 }
 
+export function checkUpdate(): Promise<{ localVersion: string; latestVersion: string | null; hasUpdate: boolean }> {
+  return api<{ localVersion: string; latestVersion: string | null; hasUpdate: boolean }>('/api/check-update');
+}
+
 // Provider CRUD
 export function createProvider(key: string, config: ProviderConfig): Promise<void> {
   return api<void>('/api/config/providers', {
@@ -161,4 +165,12 @@ export async function checkAuth(): Promise<{ required: boolean; authenticated?: 
     return { required: true, authenticated: false };
   }
   return res.json();
+}
+
+export function generateProxyKey(): Promise<{ key: string }> {
+  return api<{ key: string }>('/api/generate-key', { method: 'POST' });
+}
+
+export function revokeProxyKey(): Promise<{ revoked: boolean }> {
+  return api<{ revoked: boolean }>('/api/proxy-key', { method: 'DELETE' });
 }

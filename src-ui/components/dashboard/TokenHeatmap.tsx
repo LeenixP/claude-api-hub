@@ -84,6 +84,8 @@ export function TokenHeatmap({ tokenStats }: TokenHeatmapProps) {
               {wk.map((d, di) => (
                 <div
                   key={di}
+                  role="gridcell"
+                  aria-label={`${d.date}: ${formatTokens(d.tokens)} tokens`}
                   onMouseEnter={e => handleEnter(e, d)}
                   onMouseLeave={handleLeave}
                   style={{

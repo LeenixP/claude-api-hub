@@ -296,6 +296,58 @@ curl -X POST http://localhost:9800/v1/messages \
 
 If `sonnet` is aliased to `kimi-k2.6`, the request is automatically routed to Kimi with protocol conversion.
 
+### Access Control (Optional)
+
+If you expose the hub to a LAN or public network, authentication is recommended.
+
+#### Option 1: ANTHROPIC_AUTH_TOKEN (Recommended)
+
+Set the `ANTHROPIC_AUTH_TOKEN` environment variable. Claude Code automatically sends this token via the `x-api-key` header:
+
+```json
+{
+  "env": {
+    "ANTHROPIC_AUTH_TOKEN": "your-secret-token",
+    "ANTHROPIC_BASE_URL": "http://127.0.0.1:9800"
+  }
+}
+```
+
+Start the hub with the same environment variable:
+```bash
+ANTHROPIC_AUTH_TOKEN=your-secret-token claude-api-hub
+```
+
+#### Option 2: ADMIN_TOKEN + x-hub-token
+
+Set the `ADMIN_TOKEN` environment variable:
+
+```bash
+export ADMIN_TOKEN="your-secret-token"
+```
+
+Clients must then include the `x-hub-token` header:
+
+```bash
+curl -X POST http://localhost:9800/v1/messages \
+  -H "x-hub-token: your-secret-token" \
+  -H "Content-Type: application/json" \
+  -H "x-api-key: sk-ant-xxx" \
+  -d '{"model":"claude-sonnet-4-6","max_tokens":100,"messages":[{"role":"user","content":"Hello"}]}'
+```
+
+Claude Code configuration (in settings.json):
+
+```json
+{
+  "env": {
+    "CLAUDE_CODE_EXTRA_HEADERS": "x-hub-token: your-secret-token"
+  }
+}
+```
+
+No authentication is required when `ADMIN_TOKEN` is not configured.
+
 ---
 
 ## Alias Mapping
@@ -585,14 +637,10 @@ If you need to access internal resources, ensure the provider baseUrl uses a pub
 
 Planned features and enhancements (not yet implemented):
 
-### In Progress
-- Nothing currently in progress
-
 ### Planned
 - **Gemini Support** — add Google Gemini as a routing target
 - **Plugin System** — extensible architecture for custom providers and transforms
 - **Webhook Integration** — real-time notifications for request events
-- **Prometheus Metrics** — export metrics for Prometheus/Grafana monitoring
 - **Request Replay** — replay historical requests for debugging
 
 ### Backlog

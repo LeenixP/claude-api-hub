@@ -45,62 +45,85 @@ describe('KiroProvider', () => {
   });
 
   describe('constructor', () => {
-    it('constructs with valid credentials', () => {
-      (fs.readFileSync as ReturnType<typeof vi.fn>).mockReturnValue(JSON.stringify(createValidCredentials()));
+    it('constructs without blocking IO', () => {
       const config = createValidKiroConfig();
       const provider = new KiroProvider(config);
       expect(provider.name).toBe('test-kiro');
       expect(provider.config).toBe(config);
+      // fs.readFileSync should NOT be called during construction
+      expect(fs.readFileSync).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('ensureReady', () => {
+    it('loads credentials asynchronously and caches token', async () => {
+      (fs.readFileSync as ReturnType<typeof vi.fn>).mockReturnValue(JSON.stringify(createValidCredentials()));
+      const provider = new KiroProvider(createValidKiroConfig());
+      await provider.ensureReady();
+
+      const req: AnthropicRequest = {
+        model: 'claude-sonnet-4-6',
+        messages: [{ role: 'user', content: 'Hello' }],
+        max_tokens: 1024,
+      };
+      const built = provider.buildRequest(req);
+      expect(built.headers['Authorization']).toContain('Bearer kiro-token-123');
     });
 
-    it('throws when credentials are missing', () => {
+    it('throws when credentials are missing', async () => {
       (fs.readFileSync as ReturnType<typeof vi.fn>).mockImplementation(() => { throw new Error('ENOENT'); });
-      const config = createValidKiroConfig();
-      expect(() => new KiroProvider(config)).toThrow('Kiro initialization failed');
+      const provider = new KiroProvider(createValidKiroConfig());
+      await expect(provider.ensureReady()).rejects.toThrow('Failed to load Kiro credentials');
     });
   });
 
   describe('matchModel', () => {
-    it('matches configured models', () => {
+    it('matches configured models', async () => {
       (fs.readFileSync as ReturnType<typeof vi.fn>).mockReturnValue(JSON.stringify(createValidCredentials()));
       const provider = new KiroProvider(createValidKiroConfig());
+      await provider.ensureReady();
       expect(provider.matchModel('claude-sonnet-4-6')).toBe(true);
       expect(provider.matchModel('claude-haiku-4-5')).toBe(true);
     });
 
-    it('matches model prefixes', () => {
+    it('matches model prefixes', async () => {
       (fs.readFileSync as ReturnType<typeof vi.fn>).mockReturnValue(JSON.stringify(createValidCredentials()));
       const provider = new KiroProvider(createValidKiroConfig());
+      await provider.ensureReady();
       expect(provider.matchModel('claude-sonnet-4-6-20241022')).toBe(true);
     });
 
-    it('does not match unrelated models', () => {
+    it('does not match unrelated models', async () => {
       (fs.readFileSync as ReturnType<typeof vi.fn>).mockReturnValue(JSON.stringify(createValidCredentials()));
       const provider = new KiroProvider(createValidKiroConfig());
+      await provider.ensureReady();
       expect(provider.matchModel('gpt-4')).toBe(false);
       expect(provider.matchModel('llama-3')).toBe(false);
     });
 
-    it('falls back to claude- prefix when no models configured', () => {
+    it('falls back to claude- prefix when no models configured', async () => {
       (fs.readFileSync as ReturnType<typeof vi.fn>).mockReturnValue(JSON.stringify(createValidCredentials()));
       const provider = new KiroProvider(createValidKiroConfig({ models: [] }));
+      await provider.ensureReady();
       expect(provider.matchModel('claude-opus-4-7')).toBe(true);
       expect(provider.matchModel('gpt-4')).toBe(false);
     });
   });
 
   describe('resolveModel', () => {
-    it('returns model as-is', () => {
+    it('returns model as-is', async () => {
       (fs.readFileSync as ReturnType<typeof vi.fn>).mockReturnValue(JSON.stringify(createValidCredentials()));
       const provider = new KiroProvider(createValidKiroConfig());
+      await provider.ensureReady();
       expect(provider.resolveModel('claude-sonnet-4-6')).toBe('claude-sonnet-4-6');
     });
   });
 
   describe('buildRequest', () => {
-    it('returns proper structure with authorization header', () => {
+    it('returns proper structure with authorization header', async () => {
       (fs.readFileSync as ReturnType<typeof vi.fn>).mockReturnValue(JSON.stringify(createValidCredentials()));
       const provider = new KiroProvider(createValidKiroConfig());
+      await provider.ensureReady();
       const req: AnthropicRequest = {
         model: 'claude-sonnet-4-6',
         messages: [{ role: 'user', content: 'Hello' }],
@@ -118,10 +141,11 @@ describe('KiroProvider', () => {
       expect(body.conversationState).toBeDefined();
     });
 
-    it('includes profileArn when available', () => {
+    it('includes profileArn when available', async () => {
       const creds = { ...createValidCredentials(), profileArn: 'arn:aws:iam::123:profile' };
       (fs.readFileSync as ReturnType<typeof vi.fn>).mockReturnValue(JSON.stringify(creds));
       const provider = new KiroProvider(createValidKiroConfig());
+      await provider.ensureReady();
       const req: AnthropicRequest = {
         model: 'claude-sonnet-4-6',
         messages: [{ role: 'user', content: 'Hello' }],
@@ -133,9 +157,7 @@ describe('KiroProvider', () => {
       expect(body.profileArn).toBe('arn:aws:iam::123:profile');
     });
 
-    it('throws when no valid access token', () => {
-      const creds = { ...createValidCredentials(), accessToken: '' };
-      (fs.readFileSync as ReturnType<typeof vi.fn>).mockReturnValue(JSON.stringify(creds));
+    it('throws when no valid access token (ensureReady not called)', () => {
       const provider = new KiroProvider(createValidKiroConfig());
       const req: AnthropicRequest = {
         model: 'claude-sonnet-4-6',
@@ -146,9 +168,17 @@ describe('KiroProvider', () => {
       expect(() => provider.buildRequest(req)).toThrow('no valid access token');
     });
 
-    it('includes user-agent headers', () => {
+    it('throws when credentials have no tokens at all', async () => {
+      const creds = { accessToken: '', refreshToken: '' };
+      (fs.readFileSync as ReturnType<typeof vi.fn>).mockReturnValue(JSON.stringify(creds));
+      const provider = new KiroProvider(createValidKiroConfig());
+      await expect(provider.ensureReady()).rejects.toThrow('No refresh token available');
+    });
+
+    it('includes user-agent headers', async () => {
       (fs.readFileSync as ReturnType<typeof vi.fn>).mockReturnValue(JSON.stringify(createValidCredentials()));
       const provider = new KiroProvider(createValidKiroConfig());
+      await provider.ensureReady();
       const req: AnthropicRequest = {
         model: 'claude-sonnet-4-6',
         messages: [{ role: 'user', content: 'Hello' }],
@@ -162,9 +192,10 @@ describe('KiroProvider', () => {
   });
 
   describe('createStreamContext', () => {
-    it('creates valid stream context', () => {
+    it('creates valid stream context', async () => {
       (fs.readFileSync as ReturnType<typeof vi.fn>).mockReturnValue(JSON.stringify(createValidCredentials()));
       const provider = new KiroProvider(createValidKiroConfig());
+      await provider.ensureReady();
       const ctx = provider.createStreamContext('claude-sonnet-4-6');
       expect(ctx.initialized).toBe(true);
       expect(ctx.originalModel).toBe('claude-sonnet-4-6');
@@ -172,9 +203,10 @@ describe('KiroProvider', () => {
   });
 
   describe('parseResponse', () => {
-    it('parses Kiro response format', () => {
+    it('parses Kiro response format', async () => {
       (fs.readFileSync as ReturnType<typeof vi.fn>).mockReturnValue(JSON.stringify(createValidCredentials()));
       const provider = new KiroProvider(createValidKiroConfig());
+      await provider.ensureReady();
       const raw = {
         response: {
           content: 'Hello, world!',
@@ -182,16 +214,17 @@ describe('KiroProvider', () => {
         },
       };
       const result = provider.parseResponse(raw as any, 'claude-sonnet-4-6');
-      expect(result.type).toBe('message');
-      expect(result.role).toBe('assistant');
+      expect(result.id).toBeDefined();
       expect(result.content[0]).toEqual({ type: 'text', text: 'Hello, world!' });
+      expect(result.stop_reason).toBe('end_turn');
     });
   });
 
   describe('parseStreamChunk', () => {
-    it('parses Kiro stream chunk', () => {
+    it('parses Kiro stream chunk', async () => {
       (fs.readFileSync as ReturnType<typeof vi.fn>).mockReturnValue(JSON.stringify(createValidCredentials()));
       const provider = new KiroProvider(createValidKiroConfig());
+      await provider.ensureReady();
       const ctx = provider.createStreamContext('claude-sonnet-4-6');
       const chunk = {
         response: {
@@ -201,17 +234,6 @@ describe('KiroProvider', () => {
       };
       const events = provider.parseStreamChunk(chunk as any, 'claude-sonnet-4-6', ctx);
       expect(Array.isArray(events)).toBe(true);
-    });
-  });
-
-  describe('ensureReady', () => {
-    it('refreshes token when called', async () => {
-      const creds = createValidCredentials();
-      (fs.readFileSync as ReturnType<typeof vi.fn>).mockReturnValue(JSON.stringify(creds));
-      const provider = new KiroProvider(createValidKiroConfig());
-
-      // ensureReady should not throw with valid token
-      await expect(provider.ensureReady()).resolves.not.toThrow();
     });
   });
 });

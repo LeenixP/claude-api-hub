@@ -5,6 +5,47 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.5.0] - 2026-04-29
+
+### Added
+- Dashboard API Key management — generate, copy, revoke proxy keys from Security settings
+- ANTHROPIC_AUTH_TOKEN authentication — proxy accepts `x-api-key` header for seamless integration
+- Proxy API key authentication via `x-hub-token` header (backward compatible)
+- Circuit breaker and stream health tracking for provider keys
+- Auto version check on dashboard open
+- Frontend accessibility: ARIA attributes for Select, Canvas charts, Heatmap, LogPanel
+- Adapter unit tests (40 tests for format conversion layer)
+
+### Fixed
+- Lazy credential loading and token refresh for Kiro provider
+- Stream token counting for non-native protocol providers
+- BaseUrl validation in admin config routes
+- CORS: allow same-port origins when binding to 0.0.0.0 (Tailscale/LAN access)
+- Dashboard Loading screen caused by CSP blocking inline bundle
+- Token-refresher test flakiness (proper fake timer usage)
+- Integration test port conflicts (dynamic port allocation)
+
+### Changed
+- Provider abstraction layer and data persistence overhaul
+- Improved log entry readability with status indicator and time display
+- i18n: hardcoded strings replaced with translation keys
+- sendJson/sendError fully async across all routes
+
+### Security
+- Header forwarding whitelist (prevents header injection to upstream)
+- Proxy auth extended to all /v1/ endpoints
+- API key state file permission hardening (chmod 0o600, hashed key IDs)
+- Timing-safe comparison fix for token validation
+- CSP connect-src restricted to 'self'
+- Restart endpoint no longer uses persisted exec paths
+- proxyApiKey masked in config API responses
+
+### Performance
+- Async password hashing (scrypt) and response compression (gzip)
+- KeyPool O(1) lookup via Map, async factory constructor
+- TokenRefresher concurrency guard
+- Pre-header buffer overflow protection
+
 ## [6.3.0] - 2026-04-26
 
 ### Added
@@ -47,6 +88,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Dashboard card heights no longer extend indefinitely with many items
 
 ## [6.0.0] - 2026-04-25
+
+> Note: Versions 6.1.0–6.1.1 were internal releases with minor fixes, consolidated into 6.2.0.
 
 ### Added
 - Complete English documentation (README.en.md)
@@ -147,6 +190,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Session-based admin authentication
 - Security headers (CSP, X-Frame-Options, etc.)
 
+[6.5.0]: https://github.com/LeenixP/claude-api-hub/releases/tag/v6.5.0
+[6.4.0]: https://github.com/LeenixP/claude-api-hub/releases/tag/v6.4.0
 [6.0.0]: https://github.com/LeenixP/claude-api-hub/releases/tag/v6.0.0
 [5.1.1]: https://github.com/LeenixP/claude-api-hub/releases/tag/v5.1.1
 [5.1.0]: https://github.com/LeenixP/claude-api-hub/releases/tag/v5.1.0

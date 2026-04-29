@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import http from 'http';
+import type { AddressInfo } from 'net';
 
 vi.mock('../src/utils/ssrf.js', () => ({
   isSSRFSafe: vi.fn().mockResolvedValue(true),
@@ -7,6 +8,10 @@ vi.mock('../src/utils/ssrf.js', () => ({
 }));
 import { createServer } from '../src/server.js';
 import { createRouter } from '../src/router.js';
+
+// Clear ANTHROPIC_AUTH_TOKEN so proxy auth gate doesn't block test requests
+beforeAll(() => { vi.stubEnv('ANTHROPIC_AUTH_TOKEN', ''); });
+afterAll(() => { vi.unstubAllEnvs(); });
 import { GenericOpenAIProvider } from '../src/providers/generic.js';
 import { ClaudeProvider } from '../src/providers/claude.js';
 import { LogManager } from '../src/services/log-manager.js';
@@ -14,11 +19,15 @@ import type { GatewayConfig, ProviderConfig } from '../src/providers/types.js';
 
 // ─── Helpers ───
 
-function createMockUpstream(port: number, handler: (req: http.IncomingMessage, res: http.ServerResponse) => void): Promise<http.Server> {
+function createMockUpstream(handler: (req: http.IncomingMessage, res: http.ServerResponse) => void): Promise<http.Server> {
   return new Promise((resolve) => {
     const server = http.createServer(handler);
-    server.listen(port, '127.0.0.1', () => resolve(server));
+    server.listen(0, '127.0.0.1', () => resolve(server));
   });
+}
+
+function getPort(server: http.Server): number {
+  return (server.address() as AddressInfo).port;
 }
 
 function request(server: http.Server, opts: {
@@ -90,10 +99,9 @@ function makeConfig(overrides: Partial<GatewayConfig> = {}): GatewayConfig {
 describe('proxy integration — OpenAI provider', () => {
   let upstreamServer: http.Server;
   let gatewayServer: http.Server;
-  const upstreamPort = 19001;
 
   beforeAll(async () => {
-    upstreamServer = await createMockUpstream(upstreamPort, (req, res) => {
+    upstreamServer = await createMockUpstream((req, res) => {
       let body = '';
       req.on('data', (chunk) => { body += chunk; });
       req.on('end', () => {
@@ -108,7 +116,7 @@ describe('proxy integration — OpenAI provider', () => {
 
     const providerConfig: ProviderConfig = {
       name: 'test-provider',
-      baseUrl: `http://127.0.0.1:${upstreamPort}`,
+      baseUrl: `http://127.0.0.1:${getPort(upstreamServer)}`,
       apiKey: 'sk-test-key',
       models: ['test-model'],
       defaultModel: 'test-model',
@@ -190,10 +198,9 @@ describe('proxy integration — OpenAI provider', () => {
 describe('proxy integration — passthrough (Anthropic) provider', () => {
   let upstreamServer: http.Server;
   let gatewayServer: http.Server;
-  const upstreamPort = 19002;
 
   beforeAll(async () => {
-    upstreamServer = await createMockUpstream(upstreamPort, (req, res) => {
+    upstreamServer = await createMockUpstream((req, res) => {
       let body = '';
       req.on('data', (chunk) => { body += chunk; });
       req.on('end', () => {
@@ -207,7 +214,7 @@ describe('proxy integration — passthrough (Anthropic) provider', () => {
 
     const providerConfig: ProviderConfig = {
       name: 'passthrough-provider',
-      baseUrl: `http://127.0.0.1:${upstreamPort}`,
+      baseUrl: `http://127.0.0.1:${getPort(upstreamServer)}`,
       apiKey: 'sk-ant-test',
       models: ['claude-sonnet-4-6'],
       defaultModel: 'claude-sonnet-4-6',
@@ -257,10 +264,9 @@ describe('proxy integration — passthrough (Anthropic) provider', () => {
 describe('proxy integration — upstream errors', () => {
   let upstreamServer: http.Server;
   let gatewayServer: http.Server;
-  const upstreamPort = 19003;
 
   beforeAll(async () => {
-    upstreamServer = await createMockUpstream(upstreamPort, (req, res) => {
+    upstreamServer = await createMockUpstream((req, res) => {
       let body = '';
       req.on('data', (chunk) => { body += chunk; });
       req.on('end', () => {
@@ -284,7 +290,7 @@ describe('proxy integration — upstream errors', () => {
 
     const providerConfig: ProviderConfig = {
       name: 'test-provider',
-      baseUrl: `http://127.0.0.1:${upstreamPort}`,
+      baseUrl: `http://127.0.0.1:${getPort(upstreamServer)}`,
       apiKey: 'sk-test-key',
       models: ['test-model'],
       defaultModel: 'test-model',
@@ -341,17 +347,16 @@ describe('proxy integration — upstream errors', () => {
 describe('proxy integration — rate limiting', () => {
   let upstreamServer: http.Server;
   let gatewayServer: http.Server;
-  const upstreamPort = 19004;
 
   beforeAll(async () => {
-    upstreamServer = await createMockUpstream(upstreamPort, (_req, res) => {
+    upstreamServer = await createMockUpstream((_req, res) => {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(openaiMockResponse));
     });
 
     const providerConfig: ProviderConfig = {
       name: 'test-provider',
-      baseUrl: `http://127.0.0.1:${upstreamPort}`,
+      baseUrl: `http://127.0.0.1:${getPort(upstreamServer)}`,
       apiKey: 'sk-test-key',
       models: ['test-model'],
       defaultModel: 'test-model',
@@ -401,10 +406,9 @@ describe('proxy integration — rate limiting', () => {
 describe('proxy integration — streaming response', () => {
   let upstreamServer: http.Server;
   let gatewayServer: http.Server;
-  const upstreamPort = 19005;
 
   beforeAll(async () => {
-    upstreamServer = await createMockUpstream(upstreamPort, (_req, res) => {
+    upstreamServer = await createMockUpstream((_req, res) => {
       res.writeHead(200, {
         'Content-Type': 'text/event-stream',
         'Cache-Control': 'no-cache',
@@ -421,7 +425,7 @@ describe('proxy integration — streaming response', () => {
 
     const providerConfig: ProviderConfig = {
       name: 'test-provider',
-      baseUrl: `http://127.0.0.1:${upstreamPort}`,
+      baseUrl: `http://127.0.0.1:${getPort(upstreamServer)}`,
       apiKey: 'sk-test-key',
       models: ['test-model'],
       defaultModel: 'test-model',
@@ -533,11 +537,10 @@ describe('proxy integration — upstream connection error', () => {
 describe('proxy integration — provider fallback', () => {
   let upstreamServerGood: http.Server;
   let gatewayServer: http.Server;
-  const goodUpstreamPort = 19006;
 
   beforeAll(async () => {
-    // Healthy upstream on port 19006
-    upstreamServerGood = await createMockUpstream(goodUpstreamPort, (_req, res) => {
+    // Healthy upstream on dynamic port
+    upstreamServerGood = await createMockUpstream((_req, res) => {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({
         id: 'chatcmpl-fallback',
@@ -567,7 +570,7 @@ describe('proxy integration — provider fallback', () => {
     // Fallback provider points to the healthy upstream
     const fallbackConfig: ProviderConfig = {
       name: 'fallback',
-      baseUrl: `http://127.0.0.1:${goodUpstreamPort}`,
+      baseUrl: `http://127.0.0.1:${getPort(upstreamServerGood)}`,
       apiKey: 'sk-fallback',
       models: ['test-model'],
       defaultModel: 'test-model',
@@ -592,7 +595,7 @@ describe('proxy integration — provider fallback', () => {
     await new Promise<void>((resolve) => upstreamServerGood.close(() => resolve()));
   });
 
-  it('returns 502 when primary is unreachable and no fallback is configured', async () => {
+  it('falls back to configured fallback provider when primary is unreachable', async () => {
     const res = await request(gatewayServer, {
       method: 'POST',
       path: '/v1/messages',
@@ -604,8 +607,75 @@ describe('proxy integration — provider fallback', () => {
       }),
     });
 
-    // GenericOpenAIProvider does not implement isHealthy(), so fallback chain
-    // is not triggered. The request fails with 502.
-    expect(res.status).toBe(502);
+    // Primary provider (port 1, unreachable) should fall back to the configured
+    // fallback provider (goodUpstreamPort, healthy).
+    expect(res.status).toBe(200);
+    const json = JSON.parse(res.body);
+    expect(json.content[0].text).toContain('fallback ok');
+  });
+
+});
+
+describe('proxy integration — header forwarding whitelist', () => {
+  let upstreamServer: http.Server;
+  let gatewayServer: http.Server;
+  let capturedHeaders: http.IncomingHttpHeaders = {};
+
+  beforeAll(async () => {
+    upstreamServer = await createMockUpstream((req, res) => {
+      capturedHeaders = req.headers;
+      let body = '';
+      req.on('data', (chunk) => { body += chunk; });
+      req.on('end', () => {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(openaiMockResponse));
+      });
+    });
+
+    const providerConfig: ProviderConfig = {
+      name: 'header-test-provider',
+      baseUrl: `http://127.0.0.1:${getPort(upstreamServer)}`,
+      apiKey: 'sk-test-key',
+      models: ['test-model'],
+      defaultModel: 'test-model',
+      enabled: true,
+      prefix: 'test-',
+    };
+
+    const config = makeConfig({ providers: { test: providerConfig } });
+    const provider = new GenericOpenAIProvider(providerConfig);
+    const router = createRouter([provider], {});
+    gatewayServer = createServer(router, config, new LogManager(200, 100, ':memory:'));
+    await new Promise<void>((resolve) => gatewayServer.listen(0, '127.0.0.1', () => resolve()));
+  });
+
+  afterAll(async () => {
+    await new Promise<void>((resolve) => gatewayServer.close(() => resolve()));
+    await new Promise<void>((resolve) => upstreamServer.close(() => resolve()));
+  });
+
+  it('does not forward x-forwarded-for or x-amz-security-token, but does forward anthropic-version', async () => {
+    const body = JSON.stringify({
+      model: 'test-model',
+      messages: [{ role: 'user', content: 'hi' }],
+      max_tokens: 10,
+    });
+
+    const res = await request(gatewayServer, {
+      method: 'POST',
+      path: '/v1/messages',
+      headers: {
+        'Content-Type': 'application/json',
+        'anthropic-version': '2023-06-01',
+        'x-forwarded-for': '1.2.3.4',
+        'x-amz-security-token': 'secret-token',
+      },
+      body,
+    });
+
+    expect(res.status).toBe(200);
+    expect(capturedHeaders['x-forwarded-for']).toBeUndefined();
+    expect(capturedHeaders['x-amz-security-token']).toBeUndefined();
+    expect(capturedHeaders['anthropic-version']).toBe('2023-06-01');
   });
 });

@@ -19,23 +19,27 @@ export function useAuth(): UseAuthReturn {
   const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
+    const controller = new AbortController();
     (async () => {
       try {
         setLoadError(null);
-        const res = await fetch('/api/auth/check');
+        const res = await fetch('/api/auth/check', { signal: controller.signal });
         const data = await res.json();
         if (data.required && !adminToken) { setAuthRequired(true); return; }
         const cfgRes = await fetch('/api/config', {
           headers: adminToken ? { 'x-admin-token': adminToken } : {},
+          signal: controller.signal,
         });
         if (cfgRes.ok) { setConfig(await cfgRes.json()); setLoadError(null); }
         else if (cfgRes.status === 401) setAuthRequired(true);
         else setLoadError(`Config fetch failed: ${cfgRes.status}`);
       } catch (e) {
+        if ((e as Error).name === 'AbortError') return;
         setLoadError(`Network error: ${(e as Error).message || 'Cannot reach server'}`);
         setTimeout(() => setLoadError(l => l ? 'Retrying...' : null), 2000);
       }
     })();
+    return () => controller.abort();
   }, [adminToken]);
 
   useEffect(() => {

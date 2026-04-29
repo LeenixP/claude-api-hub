@@ -3,7 +3,7 @@ import type { GatewayConfig } from '../../types.js';
 import { showToast } from '../common/Toast.js';
 import { apiFetch } from '../../hooks/useApi.js';
 import { Select } from '../common/Select.js';
-import { getKiroAuthStatus } from '../../lib/api.js';
+import { getKiroAuthStatus, generateProxyKey, revokeProxyKey } from '../../lib/api.js';
 import { useLocale } from '../../lib/i18n.js';
 import { ConfirmDialog } from '../common/ConfirmDialog.js';
 
@@ -233,7 +233,7 @@ export function ConfigEditor({ config, onSaved }: ConfigEditorProps) {
         body: JSON.stringify({ providerId, credsPath: kp?.config.options?.credsPath }),
       });
       if (res.ok) {
-        showToast('Token refreshed', 'success');
+        showToast(t('config.oauthRefreshed'), 'success');
         const status = await getKiroAuthStatus(kp?.config.options?.credsPath as string);
         setOauthStatuses(prev => ({ ...prev, [providerId]: status }));
       } else {
@@ -319,29 +319,128 @@ export function ConfigEditor({ config, onSaved }: ConfigEditorProps) {
     </div>
   );
 
-  const SecurityCard = () => (
-    <div class="card" style="padding:28px">
-      <h3 style="font-size:15px;font-weight:700;color:var(--color-text);margin-bottom:6px">{highlight(t('config.security'))}</h3>
-      <p style="font-size:12px;color:var(--color-text-muted);margin-bottom:18px">{t('config.securityDesc')}</p>
-      <div class="grid grid-cols-1 sm:grid-cols-3 gap-5">
-        <SettingRow label={t('config.adminPassword')} tooltip="Password for dashboard login. Leave empty to disable auth." unit="">
-          <input id="cfg-password" type="password" value={password} class="form-input" placeholder={t('config.emptyNoAuth')}
-            onInput={e => { setPassword((e.target as HTMLInputElement).value); markChanged(); }} />
-        </SettingRow>
-        <SettingRow label={t('config.rateLimit')} tooltip="Max requests per minute per IP. 0 = unlimited." unit="RPM">
-          <input id="cfg-ratelimit" type="number" value={rateLimit} class="form-input" placeholder={t('config.unlimited')}
-            onInput={e => { setRateLimit(parseInt((e.target as HTMLInputElement).value) || 0); markChanged(); }} />
-        </SettingRow>
-        <div class="flex items-end" style="padding-bottom:4px">
-          <label class="flex items-center gap-2 text-sm cursor-pointer" style="color:var(--color-text)">
-            <input type="checkbox" checked={trustProxy} class="checkbox-custom"
-              onChange={e => { setTrustProxy((e.target as HTMLInputElement).checked); markChanged(); }} />
-            {t('config.trustProxy')}
-          </label>
+  const SecurityCard = () => {
+    const [showKey, setShowKey] = useState(false);
+    const [generating, setGenerating] = useState(false);
+    const [revoking, setRevoking] = useState(false);
+    const [showRevokeConfirm, setShowRevokeConfirm] = useState(false);
+    const [newKey, setNewKey] = useState<string | null>(null);
+
+    const currentKey = newKey || config?.proxyApiKey;
+    const maskedKey = currentKey ? currentKey.slice(0, 10) + '...' + currentKey.slice(-6) : '';
+
+    const handleGenerate = async () => {
+      setGenerating(true);
+      try {
+        const { key } = await generateProxyKey();
+        setNewKey(key);
+        setShowKey(true);
+        showToast(t('config.keyGenerated'), 'success');
+        onSaved();
+      } catch (err) {
+        showToast((err as Error).message, 'error');
+      } finally {
+        setGenerating(false);
+      }
+    };
+
+    const handleRevoke = async () => {
+      setRevoking(true);
+      try {
+        await revokeProxyKey();
+        setNewKey(null);
+        setShowKey(false);
+        setShowRevokeConfirm(false);
+        showToast(t('config.keyRevoked'), 'success');
+        onSaved();
+      } catch (err) {
+        showToast((err as Error).message, 'error');
+      } finally {
+        setRevoking(false);
+      }
+    };
+
+    const handleCopy = () => {
+      const key = newKey || config?.proxyApiKey;
+      if (key) {
+        navigator.clipboard.writeText(key);
+        showToast(t('config.keyCopied'), 'success');
+      }
+    };
+
+    return (
+      <div class="card" style="padding:28px">
+        <h3 style="font-size:15px;font-weight:700;color:var(--color-text);margin-bottom:6px">{highlight(t('config.security'))}</h3>
+        <p style="font-size:12px;color:var(--color-text-muted);margin-bottom:18px">{t('config.securityDesc')}</p>
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-5">
+          <SettingRow label={t('config.adminPassword')} tooltip="Password for dashboard login. Leave empty to disable auth." unit="">
+            <input id="cfg-password" type="password" value={password} class="form-input" placeholder={t('config.emptyNoAuth')}
+              onInput={e => { setPassword((e.target as HTMLInputElement).value); markChanged(); }} />
+          </SettingRow>
+          <SettingRow label={t('config.rateLimit')} tooltip="Max requests per minute per IP. 0 = unlimited." unit="RPM">
+            <input id="cfg-ratelimit" type="number" value={rateLimit} class="form-input" placeholder={t('config.unlimited')}
+              onInput={e => { setRateLimit(parseInt((e.target as HTMLInputElement).value) || 0); markChanged(); }} />
+          </SettingRow>
+          <div class="flex items-end" style="padding-bottom:4px">
+            <label class="flex items-center gap-2 text-sm cursor-pointer" style="color:var(--color-text)">
+              <input type="checkbox" checked={trustProxy} class="checkbox-custom"
+                onChange={e => { setTrustProxy((e.target as HTMLInputElement).checked); markChanged(); }} />
+              {t('config.trustProxy')}
+            </label>
+          </div>
+        </div>
+
+        <div style="margin-top:24px;padding-top:20px;border-top:1px solid var(--color-border)">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+            <div>
+              <h4 style="font-size:14px;font-weight:600;color:var(--color-text);margin:0">{t('config.proxyApiKey')}</h4>
+              <p style="font-size:12px;color:var(--color-text-muted);margin:4px 0 0">{t('config.proxyApiKeyDesc')}</p>
+            </div>
+          </div>
+          {currentKey ? (
+            <div>
+              <div style="display:flex;align-items:center;gap:8px;padding:12px 16px;background:var(--color-surface);border:1px solid var(--color-border);border-radius:10px;margin-bottom:12px">
+                <code style="flex:1;font-size:13px;color:var(--color-text);word-break:break-all">
+                  {showKey ? (newKey || config?.proxyApiKey) : maskedKey}
+                </code>
+                <button class="btn btn-sm" onClick={() => setShowKey(v => !v)} style="font-size:12px;padding:4px 10px;white-space:nowrap">
+                  {showKey ? t('config.hideKey') : t('config.showKey')}
+                </button>
+                <button class="btn btn-sm btn-primary" onClick={handleCopy} style="font-size:12px;padding:4px 10px;white-space:nowrap">
+                  {t('config.copyKey')}
+                </button>
+                <button class="btn btn-sm" onClick={() => setShowRevokeConfirm(true)} style="font-size:12px;padding:4px 10px;color:var(--color-danger);white-space:nowrap">
+                  {t('config.revokeKey')}
+                </button>
+              </div>
+              <div style="display:flex;align-items:center;gap:8px">
+                <button class="btn btn-sm" onClick={handleGenerate} disabled={generating} style="font-size:12px">
+                  {generating ? '...' : t('config.regenerateKey')}
+                </button>
+              </div>
+              <p style="font-size:11px;color:var(--color-text-dim);margin-top:10px">{t('config.keyUsageHint')}</p>
+              {showRevokeConfirm && (
+                <ConfirmDialog
+                  open={showRevokeConfirm}
+                  title={t('config.revokeKey')}
+                  message={t('config.revokeConfirm')}
+                  onConfirm={handleRevoke}
+                  onCancel={() => setShowRevokeConfirm(false)}
+                />
+              )}
+            </div>
+          ) : (
+            <div>
+              <p style="font-size:12px;color:var(--color-text-muted);margin-bottom:12px">{t('config.noKeyConfigured')}</p>
+              <button class="btn btn-primary" onClick={handleGenerate} disabled={generating} style="font-size:13px">
+                {generating ? '...' : t('config.generateKey')}
+              </button>
+            </div>
+          )}
         </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   const TimeoutsCard = () => (
     <div class="card" style="padding:28px">
@@ -369,7 +468,7 @@ export function ConfigEditor({ config, onSaved }: ConfigEditorProps) {
       <h3 style="font-size:15px;font-weight:700;color:var(--color-text);margin-bottom:6px">{highlight(t('config.kiroOAuth'))}</h3>
       <p style="font-size:12px;color:var(--color-text-muted);margin-bottom:18px">{t('config.kiroDesc')}</p>
       {kiroProviders.length === 0 ? (
-        <p style="font-size:14px;color:var(--color-text-dim)">No Kiro OAuth providers configured</p>
+        <p style="font-size:14px;color:var(--color-text-dim)">{t('config.noKiroProviders')}</p>
       ) : (
         kiroProviders.map(kp => {
           const status = oauthStatuses[kp.id];

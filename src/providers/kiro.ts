@@ -7,8 +7,6 @@ import type {
   AnthropicRequest,
   AnthropicResponse,
   AnthropicStreamEvent,
-  OpenAIResponse,
-  OpenAIStreamChunk,
 } from './types.js';
 import { KiroAuth } from './kiro-auth.js';
 import { convertToCodeWhisperer } from './kiro-converter.js';
@@ -32,19 +30,25 @@ export class KiroProvider implements Provider {
     this.region = (opts.kiroRegion as string) || 'us-east-1';
     this.machineId = crypto.randomBytes(16).toString('hex');
     this.auth = new KiroAuth(this.region, opts.kiroCredsPath as string | undefined);
-
-    // Load credentials synchronously at construction time so buildRequest works
-    try {
-      this.auth.loadCredentialsSync();
-      this.cachedToken = this.auth.getAccessTokenSync() ?? null;
-    } catch (err) {
-      throw new Error(`Kiro initialization failed: ${(err as Error).message}`);
-    }
   }
 
-  /** Refresh access token asynchronously (call when token expires). */
+  /** Initialize credentials asynchronously. Safe to call multiple times. */
   async ensureReady(): Promise<void> {
     this.cachedToken = await this.auth.getAccessToken();
+  }
+
+  private credentialsLoaded = false;
+
+  /** Return the current access token, with lazy sync credential loading. */
+  private getToken(): string {
+    if (this.cachedToken) return this.cachedToken;
+    if (!this.credentialsLoaded) {
+      try { this.auth.loadCredentialsSync(); } catch { /* will be loaded via ensureReady */ }
+      this.credentialsLoaded = true;
+    }
+    const sync = this.auth.getAccessTokenSync();
+    if (sync) return sync;
+    throw new Error('Kiro: no valid access token. Call ensureReady() first.');
   }
 
   matchModel(model: string): boolean {
@@ -59,12 +63,14 @@ export class KiroProvider implements Provider {
   }
 
   buildRequest(req: AnthropicRequest): { url: string; headers: Record<string, string>; body: string; usedKey: string } {
-    if (!this.cachedToken) {
-      throw new Error('Kiro: no valid access token. Call ensureReady() first.');
-    }
+    const token = this.getToken();
 
     const kiroReq = convertToCodeWhisperer(
-      req.messages, req.model, req.system, req.tools, req.thinking,
+      req.messages,
+      req.model,
+      req.system,
+      req.tools,
+      req.thinking,
     );
 
     const body: Record<string, unknown> = { conversationState: kiroReq.conversationState };
@@ -79,7 +85,7 @@ export class KiroProvider implements Provider {
       headers: {
         'Content-Type': 'application/json',
         'Accept': 'application/json',
-        'Authorization': `Bearer ${this.cachedToken}`,
+        'Authorization': `Bearer ${token}`,
         'amz-sdk-invocation-id': crypto.randomUUID(),
         'amz-sdk-request': 'attempt=1; max=3',
         'x-amzn-codewhisperer-optout': 'true',
@@ -88,11 +94,11 @@ export class KiroProvider implements Provider {
         'user-agent': `aws-sdk-js/1.0.34 ua/2.1 os/${osName} lang/js md/nodejs#${nodeVersion} api/codewhispererstreaming#1.0.34 m/E KiroIDE-${KIRO_VERSION}-${this.machineId}`,
       },
       body: JSON.stringify(body),
-      usedKey: this.cachedToken,
+      usedKey: token,
     };
   }
 
-  parseResponse(raw: OpenAIResponse, originalModel: string): AnthropicResponse {
+  parseResponse(raw: unknown, originalModel: string): AnthropicResponse {
     const rawStr = typeof raw === 'string' ? raw : JSON.stringify(raw);
     return parseKiroResponse(rawStr, originalModel);
   }
@@ -101,8 +107,7 @@ export class KiroProvider implements Provider {
     return createKiroStreamState(originalModel) as StreamContext;
   }
 
-  parseStreamChunk(chunk: OpenAIStreamChunk, _originalModel: string, ctx: StreamContext): AnthropicStreamEvent[] {
-    const chunkStr = typeof chunk === 'string' ? chunk : JSON.stringify(chunk);
-    return parseKiroStreamChunk(chunkStr, ctx as KiroStreamState);
+  parseStreamChunk(chunk: string, _originalModel: string, ctx: StreamContext): AnthropicStreamEvent[] {
+    return parseKiroStreamChunk(chunk, ctx as KiroStreamState);
   }
 }

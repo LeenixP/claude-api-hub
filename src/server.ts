@@ -5,7 +5,7 @@ import { createProvider } from './providers/factory.js';
 import { getConfigPath } from './config.js';
 import { logger } from './logger.js';
 import { getCorsHeaders, sendError, sendJson, readBody, maskKey } from './utils/http.js';
-import { PerIpRateLimiter, requireAdmin, setSecurityHeaders, createSessionToken, verifyPassword, loginRateLimiter, revokeSession } from './middleware/auth.js';
+import { PerIpRateLimiter, requireAdmin, setSecurityHeaders, createSessionToken, verifyPassword, verifyProxyToken, isValidSession, loginRateLimiter, revokeSession, timingSafeCompare } from './middleware/auth.js';
 import { LogManager } from './services/log-manager.js';
 import type { EventBus } from './services/event-bus.js';
 import type { RateTracker } from './services/rate-tracker.js';
@@ -25,7 +25,7 @@ export function createServer(router: ModelRouter, config: GatewayConfig, logMana
   if (config.rateLimitRpm && config.rateLimitRpm > 0) {
     rateLimiter = new PerIpRateLimiter(config.rateLimitRpm);
   }
-  if (!config.password && !config.adminToken && !process.env.ADMIN_TOKEN) {
+  if (!config.password && !config.adminToken && !process.env.ADMIN_TOKEN && !config.proxyApiKey) {
     logger.warn('No password configured — management API is unprotected. Set password in config or ADMIN_TOKEN env var.');
   }
 
@@ -51,34 +51,34 @@ export function createServer(router: ModelRouter, config: GatewayConfig, logMana
         const clientIp = req.socket.remoteAddress?.replace('::ffff:', '') || 'unknown';
         const rateCheck = loginRateLimiter.tryConsume(clientIp);
         if (!rateCheck.allowed) {
-          sendJson(res, 429, { error: rateCheck.reason });
+          await sendJson(res, 429, { error: rateCheck.reason });
           return;
         }
         let bodyStr: string;
         try { bodyStr = await readBody(req); } catch {
-          sendError(res, 400, 'invalid_request_error', 'Failed to read request body', config, origin); return;
+          await sendError(res, 400, 'invalid_request_error', 'Failed to read request body', config, origin); return;
         }
         let body: { password?: string };
         try { body = JSON.parse(bodyStr); } catch {
-          sendError(res, 400, 'invalid_request_error', 'Invalid JSON body', config, origin); return;
+          await sendError(res, 400, 'invalid_request_error', 'Invalid JSON body', config, origin); return;
         }
         const password = config.password;
         if (!password) {
-          sendJson(res, 200, { success: true, token: '' }, config, origin);
+          await sendJson(res, 200, { success: true, token: '' }, config, origin);
           return;
         }
         if (!body.password) {
           loginRateLimiter.recordFailure(clientIp);
-          sendError(res, 401, 'authentication_error', 'Invalid credentials', config, origin);
+          await sendError(res, 401, 'authentication_error', 'Invalid credentials', config, origin);
           return;
         }
-        const match = verifyPassword(body.password, password);
+        const match = await verifyPassword(body.password, password);
         if (match) {
           const sessionToken = createSessionToken();
-          sendJson(res, 200, { success: true, token: sessionToken }, config, origin);
+          await sendJson(res, 200, { success: true, token: sessionToken }, config, origin);
         } else {
           loginRateLimiter.recordFailure(clientIp);
-          sendError(res, 401, 'authentication_error', 'Invalid credentials', config, origin);
+          await sendError(res, 401, 'authentication_error', 'Invalid credentials', config, origin);
         }
         return;
       }
@@ -86,7 +86,7 @@ export function createServer(router: ModelRouter, config: GatewayConfig, logMana
       if (pathname === '/api/auth/logout' && req.method === 'POST') {
         const token = req.headers.authorization?.replace('Bearer ', '') || req.headers['x-admin-token'] as string;
         if (token) revokeSession(token);
-        sendJson(res, 200, { ok: true });
+        await sendJson(res, 200, { ok: true });
         return;
       }
 
@@ -96,7 +96,7 @@ export function createServer(router: ModelRouter, config: GatewayConfig, logMana
 
       const isAdminEndpoint = pathname.startsWith('/api/');
       if (isAdminEndpoint) {
-        if (!requireAdmin(req, res, config)) return;
+        if (!await requireAdmin(req, res, config)) return;
       }
 
       // ─── Admin API Routes ───
@@ -107,16 +107,52 @@ export function createServer(router: ModelRouter, config: GatewayConfig, logMana
       if (await handleOAuthRoutes(req, res, ctx, pathname, cors, origin)) return;
       if (await handleProbeRoute(req, res, ctx, pathname, cors, origin)) return;
 
+      // ─── Proxy Auth Gate ───
+      if (pathname.startsWith('/v1/') && pathname !== '/v1/models') {
+        const authToken = process.env.ANTHROPIC_AUTH_TOKEN;
+        const proxySecret = config.password || config.adminToken || process.env.ADMIN_TOKEN;
+
+        let proxyAuthed = false;
+
+        // Check x-api-key against ANTHROPIC_AUTH_TOKEN or proxyApiKey
+        const apiKey = req.headers['x-api-key'] as string;
+        if (apiKey) {
+          if (authToken && timingSafeCompare(apiKey, authToken)) {
+            proxyAuthed = true;
+          } else if (config.proxyApiKey && timingSafeCompare(apiKey, config.proxyApiKey)) {
+            proxyAuthed = true;
+          }
+        }
+
+        // Fall back to existing auth methods if not yet authenticated
+        if (!proxyAuthed && (authToken || proxySecret || config.proxyApiKey)) {
+          const token = (req.headers['x-hub-token'] as string)
+            || req.headers['authorization']?.replace(/^Bearer\s+/i, '');
+          if (token && isValidSession(token)) {
+            proxyAuthed = true;
+          } else if (token && await verifyProxyToken(token, config)) {
+            proxyAuthed = true;
+          }
+
+          if (!proxyAuthed) {
+            await sendError(res, 401, 'authentication_error',
+              authToken ? 'Invalid API key. Set x-api-key header with your ANTHROPIC_AUTH_TOKEN.' : 'Missing hub token. Set x-hub-token header.',
+              config, origin);
+            return;
+          }
+        }
+      }
+
       // ─── Proxy: /v1/messages ───
 
       if (await handleProxyRoute(req, res, ctx, pathname, cors, origin, rateLimiter)) return;
       if (await handleMetrics(req, res, ctx, pathname, cors)) return;
 
-      sendError(res, 404, 'not_found_error', `Unknown endpoint: ${req.method} ${pathname}`, config, origin);
+      await sendError(res, 404, 'not_found_error', `Unknown endpoint: ${req.method} ${pathname}`, config, origin);
     } catch (err) {
       logger.error(`Unhandled request error: ${(err as Error).message}`);
       if (!res.headersSent) {
-        try { sendError(res, 500, 'internal_error', 'Internal server error'); } catch { /* response already sent or closed */ }
+        try { await sendError(res, 500, 'internal_error', 'Internal server error'); } catch { /* response already sent or closed */ }
       }
     }
   });

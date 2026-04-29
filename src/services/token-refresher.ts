@@ -8,13 +8,14 @@ export class TokenRefresher {
   private timer: ReturnType<typeof setInterval> | null = null;
   private router: ModelRouter;
   private config: GatewayConfig;
-  private rebuildFn: (router: ModelRouter, config: GatewayConfig) => void;
+  private rebuildFn: (router: ModelRouter, config: GatewayConfig) => Promise<void>;
   private intervalMs: number;
+  private ticking = false;
 
   constructor(
     router: ModelRouter,
     config: GatewayConfig,
-    rebuildFn: (router: ModelRouter, config: GatewayConfig) => void,
+    rebuildFn: (router: ModelRouter, config: GatewayConfig) => Promise<void>,
     intervalMinutes = DEFAULT_TOKEN_REFRESH_MINUTES,
   ) {
     this.router = router;
@@ -40,42 +41,48 @@ export class TokenRefresher {
   }
 
   private async tick(): Promise<void> {
-    const oauthProviders = Object.entries(this.config.providers)
-      .filter((entry): entry is [string, ProviderConfig] => {
-        const pc = entry[1] as ProviderConfig;
-        return pc.enabled && pc.authMode === 'oauth';
-      });
+    if (this.ticking) return;
+    this.ticking = true;
+    try {
+      const oauthProviders = Object.entries(this.config.providers)
+        .filter((entry): entry is [string, ProviderConfig] => {
+          const pc = entry[1] as ProviderConfig;
+          return pc.enabled && pc.authMode === 'oauth';
+        });
 
-    if (oauthProviders.length === 0) return;
+      if (oauthProviders.length === 0) return;
 
-    let refreshed = 0;
-    for (const [key, pc] of oauthProviders) {
-      const credsPath = (pc.options?.kiroCredsPath as string | undefined) || getDefaultCredsPath();
-      try {
-        const status = getCredentialStatus(credsPath);
-        if (!status.canRefresh) continue;
+      let refreshed = 0;
+      for (const [key, pc] of oauthProviders) {
+        const credsPath = (pc.options?.kiroCredsPath as string | undefined) || getDefaultCredsPath();
+        try {
+          const status = getCredentialStatus(credsPath);
+          if (!status.canRefresh) continue;
 
-        // Refresh if expired or within 10 minutes of expiry
-        const expiresAt = status.expiresAt ? new Date(status.expiresAt).getTime() : 0;
-        const buffer = 10 * 60 * 1000; // 10 min
-        if (Date.now() > expiresAt - buffer) {
-          logger.info(`[TokenRefresher] Refreshing credentials for "${pc.name}" (${credsPath})`);
-          await refreshCredentials(credsPath);
-          refreshed++;
+          // Refresh if expired or within 10 minutes of expiry
+          const expiresAt = status.expiresAt ? new Date(status.expiresAt).getTime() : 0;
+          const buffer = 10 * 60 * 1000; // 10 min
+          if (Date.now() > expiresAt - buffer) {
+            logger.info(`[TokenRefresher] Refreshing credentials for "${pc.name}" (${credsPath})`);
+            await refreshCredentials(credsPath);
+            refreshed++;
+          }
+        } catch (err) {
+          logger.warn(`[TokenRefresher] Failed to refresh "${pc.name}": ${(err as Error).message}`);
         }
-      } catch (err) {
-        logger.warn(`[TokenRefresher] Failed to refresh "${pc.name}": ${(err as Error).message}`);
       }
-    }
 
-    // Rebuild providers to pick up fresh tokens
-    if (refreshed > 0) {
-      try {
-        this.rebuildFn(this.router, this.config);
-        logger.info(`[TokenRefresher] Refreshed ${refreshed} credential(s), providers rebuilt`);
-      } catch (err) {
-        logger.error(`[TokenRefresher] Rebuild failed: ${(err as Error).message}`);
+      // Rebuild providers to pick up fresh tokens
+      if (refreshed > 0) {
+        try {
+          await this.rebuildFn(this.router, this.config);
+          logger.info(`[TokenRefresher] Refreshed ${refreshed} credential(s), providers rebuilt`);
+        } catch (err) {
+          logger.error(`[TokenRefresher] Rebuild failed: ${(err as Error).message}`);
+        }
       }
+    } finally {
+      this.ticking = false;
     }
   }
 }

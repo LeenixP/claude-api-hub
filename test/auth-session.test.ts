@@ -21,53 +21,53 @@ describe('SessionManager', () => {
     vi.useRealTimers();
   });
 
-  it('creates a valid session token', () => {
+  it('creates a valid session token', async () => {
     const token = createSessionToken();
     expect(token).toBeDefined();
     expect(typeof token).toBe('string');
     expect(token.length).toBeGreaterThan(0);
   });
 
-  it('validates a freshly created token', () => {
+  it('validates a freshly created token', async () => {
     const token = createSessionToken();
     expect(isValidSession(token)).toBe(true);
   });
 
-  it('rejects unknown token', () => {
+  it('rejects unknown token', async () => {
     expect(isValidSession('nonexistent-token-12345')).toBe(false);
   });
 
-  it('rejects expired token after 24 hours', () => {
+  it('rejects expired token after 24 hours', async () => {
     const token = createSessionToken();
     expect(isValidSession(token)).toBe(true);
     vi.advanceTimersByTime(24 * 60 * 60 * 1000 + 1);
     expect(isValidSession(token)).toBe(false);
   });
 
-  it('accepts token just before 24 hour expiry', () => {
+  it('accepts token just before 24 hour expiry', async () => {
     const token = createSessionToken();
     vi.advanceTimersByTime(24 * 60 * 60 * 1000 - 1);
     expect(isValidSession(token)).toBe(true);
   });
 
-  it('creates unique tokens each time', () => {
+  it('creates unique tokens each time', async () => {
     const t1 = createSessionToken();
     const t2 = createSessionToken();
     expect(t1).not.toBe(t2);
   });
 
-  it('revokeSession removes a valid token', () => {
+  it('revokeSession removes a valid token', async () => {
     const token = createSessionToken();
     expect(isValidSession(token)).toBe(true);
     expect(revokeSession(token)).toBe(true);
     expect(isValidSession(token)).toBe(false);
   });
 
-  it('revokeSession returns false for unknown token', () => {
+  it('revokeSession returns false for unknown token', async () => {
     expect(revokeSession('no-such-token')).toBe(false);
   });
 
-  it('cleanup removes expired sessions naturally', () => {
+  it('cleanup removes expired sessions naturally', async () => {
     const token = createSessionToken();
     expect(isValidSession(token)).toBe(true);
     vi.advanceTimersByTime(24 * 60 * 60 * 1000 + 1);
@@ -79,23 +79,23 @@ describe('SessionManager', () => {
 });
 
 describe('timingSafeCompare', () => {
-  it('returns true for identical strings', () => {
+  it('returns true for identical strings', async () => {
     expect(timingSafeCompare('abc123', 'abc123')).toBe(true);
   });
 
-  it('returns false for different strings of same length', () => {
+  it('returns false for different strings of same length', async () => {
     expect(timingSafeCompare('abc123', 'xyz789')).toBe(false);
   });
 
-  it('returns false for different length strings', () => {
+  it('returns false for different length strings', async () => {
     expect(timingSafeCompare('short', 'verylongstring')).toBe(false);
   });
 
-  it('returns false for empty vs non-empty', () => {
+  it('returns false for empty vs non-empty', async () => {
     expect(timingSafeCompare('', 'something')).toBe(false);
   });
 
-  it('returns true for two empty strings', () => {
+  it('returns true for two empty strings', async () => {
     expect(timingSafeCompare('', '')).toBe(true);
   });
 });
@@ -121,68 +121,68 @@ describe('requireAdmin', () => {
     logLevel: 'error',
   };
 
-  it('returns true when no password or adminToken configured', () => {
+  it('returns true when no password or adminToken configured', async () => {
     const { req, res } = mockReqRes();
-    expect(requireAdmin(req, res, baseConfig)).toBe(true);
+    expect(await requireAdmin(req, res, baseConfig)).toBe(true);
   });
 
-  it('returns false with no token when adminToken is required', () => {
+  it('returns false with no token when adminToken is required', async () => {
     const { req, res } = mockReqRes();
     const config = { ...baseConfig, adminToken: 'secret' };
-    expect(requireAdmin(req, res, config)).toBe(false);
+    expect(await requireAdmin(req, res, config)).toBe(false);
     expect(res.statusCode).toBe(401);
   });
 
-  it('returns false with wrong token when adminToken is required', () => {
+  it('returns false with wrong token when adminToken is required', async () => {
     const { req, res } = mockReqRes('wrong', 'x-admin-token');
     const config = { ...baseConfig, adminToken: 'secret' };
-    expect(requireAdmin(req, res, config)).toBe(false);
+    expect(await requireAdmin(req, res, config)).toBe(false);
     expect(res.statusCode).toBe(401);
   });
 
-  it('returns true with correct x-admin-token', () => {
+  it('returns true with correct x-admin-token', async () => {
     const { req, res } = mockReqRes('secret', 'x-admin-token');
     const config = { ...baseConfig, adminToken: 'secret' };
-    expect(requireAdmin(req, res, config)).toBe(true);
+    expect(await requireAdmin(req, res, config)).toBe(true);
   });
 
-  it('returns true with correct Bearer token', () => {
+  it('returns true with correct Bearer token', async () => {
     const { req, res } = mockReqRes('secret', 'authorization');
     const config = { ...baseConfig, adminToken: 'secret' };
-    expect(requireAdmin(req, res, config)).toBe(true);
+    expect(await requireAdmin(req, res, config)).toBe(true);
   });
 
-  it('returns true with valid session token via x-admin-token', () => {
+  it('returns true with valid session token via x-admin-token', async () => {
     const sessionToken = createSessionToken();
     const { req, res } = mockReqRes(sessionToken, 'x-admin-token');
     const config = { ...baseConfig, adminToken: 'secret' };
-    expect(requireAdmin(req, res, config)).toBe(true);
+    expect(await requireAdmin(req, res, config)).toBe(true);
   });
 
-  it('returns true with valid session token via Bearer', () => {
+  it('returns true with valid session token via Bearer', async () => {
     const sessionToken = createSessionToken();
     const { req, res } = mockReqRes(sessionToken, 'authorization');
     const config = { ...baseConfig, adminToken: 'secret' };
-    expect(requireAdmin(req, res, config)).toBe(true);
+    expect(await requireAdmin(req, res, config)).toBe(true);
   });
 
-  it('returns false with no token when password is required', () => {
+  it('returns false with no token when password is required', async () => {
     const { req, res } = mockReqRes();
     const config = { ...baseConfig, password: 'mypass' };
-    expect(requireAdmin(req, res, config)).toBe(false);
+    expect(await requireAdmin(req, res, config)).toBe(false);
   });
 
-  it('returns false when password is set but no token provided (needs session from login)', () => {
+  it('returns false when password is set but no token provided (needs session from login)', async () => {
     const { req, res } = mockReqRes();
     const config = { ...baseConfig, password: 'mypass' };
     // Password is set but no adminToken: must authenticate via login to get session token
-    expect(requireAdmin(req, res, config)).toBe(false);
+    expect(await requireAdmin(req, res, config)).toBe(false);
     expect(res.statusCode).toBe(401);
   });
 });
 
 describe('setSecurityHeaders', () => {
-  it('sets all expected security headers on response', () => {
+  it('sets all expected security headers on response', async () => {
     const req = {} as http.IncomingMessage;
     const res = new http.ServerResponse(req);
     setSecurityHeaders(res);
@@ -194,7 +194,7 @@ describe('setSecurityHeaders', () => {
 });
 
 describe('PerIpRateLimiter', () => {
-  it('allows requests up to RPM limit', () => {
+  it('allows requests up to RPM limit', async () => {
     const limiter = new PerIpRateLimiter(3, 60000);
     for (let i = 0; i < 3; i++) {
       const result = limiter.tryConsume('127.0.0.1');
@@ -203,7 +203,7 @@ describe('PerIpRateLimiter', () => {
     limiter.destroy();
   });
 
-  it('blocks requests exceeding RPM limit', () => {
+  it('blocks requests exceeding RPM limit', async () => {
     const limiter = new PerIpRateLimiter(2, 60000);
     limiter.tryConsume('127.0.0.1');
     limiter.tryConsume('127.0.0.1');
@@ -213,7 +213,7 @@ describe('PerIpRateLimiter', () => {
     limiter.destroy();
   });
 
-  it('returns correct remaining count', () => {
+  it('returns correct remaining count', async () => {
     const limiter = new PerIpRateLimiter(5, 60000);
     const r1 = limiter.tryConsume('10.0.0.1');
     expect(r1.remaining).toBe(4);
@@ -222,7 +222,7 @@ describe('PerIpRateLimiter', () => {
     limiter.destroy();
   });
 
-  it('tracks different IPs independently', () => {
+  it('tracks different IPs independently', async () => {
     const limiter = new PerIpRateLimiter(1, 60000);
     expect(limiter.tryConsume('1.1.1.1').allowed).toBe(true);
     expect(limiter.tryConsume('2.2.2.2').allowed).toBe(true);
@@ -240,13 +240,13 @@ describe('LoginRateLimiter', () => {
     vi.useRealTimers();
   });
 
-  it('allows first login attempt', () => {
+  it('allows first login attempt', async () => {
     const limiter = new LoginRateLimiter(5, 5, 300_000);
     const result = limiter.tryConsume('10.0.0.1');
     expect(result.allowed).toBe(true);
   });
 
-  it('blocks after exceeding RPM', () => {
+  it('blocks after exceeding RPM', async () => {
     const limiter = new LoginRateLimiter(2, 5, 300_000);
     limiter.tryConsume('10.0.0.1');
     limiter.tryConsume('10.0.0.1');
@@ -255,7 +255,7 @@ describe('LoginRateLimiter', () => {
     expect(result.reason).toContain('Too many login attempts');
   });
 
-  it('locks out after repeated failures', () => {
+  it('locks out after repeated failures', async () => {
     const limiter = new LoginRateLimiter(5, 3, 300_000);
     for (let i = 0; i < 3; i++) {
       limiter.tryConsume('10.0.0.1');
@@ -267,7 +267,7 @@ describe('LoginRateLimiter', () => {
     expect(result.reason).toContain('locked');
   });
 
-  it('resets after window expires', () => {
+  it('resets after window expires', async () => {
     const limiter = new LoginRateLimiter(2, 5, 300_000);
     limiter.tryConsume('10.0.0.1');
     limiter.tryConsume('10.0.0.1');
@@ -278,7 +278,7 @@ describe('LoginRateLimiter', () => {
     expect(limiter.tryConsume('10.0.0.1').allowed).toBe(true);
   });
 
-  it('unlocks after lockout duration', () => {
+  it('unlocks after lockout duration', async () => {
     const limiter = new LoginRateLimiter(5, 3, 300_000);
     for (let i = 0; i < 3; i++) {
       limiter.tryConsume('10.0.0.1');

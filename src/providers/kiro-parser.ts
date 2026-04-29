@@ -1,8 +1,13 @@
 import crypto from 'crypto';
+import { logger } from '../logger.js';
 import type {
   AnthropicResponse,
   AnthropicContentBlock,
   AnthropicStreamEvent,
+  InternalResponse,
+  InternalContentBlock,
+  InternalStreamEvent,
+  InternalUsage,
 } from './types.js';
 
 const THINKING_START = '<thinking>';
@@ -55,7 +60,10 @@ function parseAwsEvents(raw: string): { events: ParsedEvent[]; remaining: string
       } else if (parsed.contextUsagePercentage !== undefined) {
         events.push({ type: 'contextUsage', data: { percentage: parsed.contextUsagePercentage } });
       }
-    } catch { /* skip malformed JSON in stream */ }
+    } catch {
+      const data = raw.substring(jsonStart, jsonEnd + 1);
+      logger.debug('Skipping malformed Kiro event', { preview: data.slice(0, 100) });
+    }
 
     pos = jsonEnd + 1;
   }
@@ -253,4 +261,97 @@ export function parseKiroStreamChunk(chunk: string, state: KiroStreamState): Ant
   }
 
   return result;
+}
+
+// ─── Internal-type wrappers (new exports) ───
+
+function mapAnthropicContentBlockToInternal(block: AnthropicContentBlock): InternalContentBlock {
+  switch (block.type) {
+    case 'text':
+      return { type: 'text', text: block.text };
+    case 'tool_use':
+      return { type: 'tool_use', id: block.id, name: block.name, input: block.input };
+    case 'thinking':
+      return { type: 'thinking', thinking: block.thinking };
+    default:
+      // Fallback for image / tool_result blocks which shouldn't appear in assistant responses
+      return { type: 'text', text: '' };
+  }
+}
+
+function mapAnthropicUsageToInternal(usage: { input_tokens: number; output_tokens: number; cache_creation_input_tokens?: number; cache_read_input_tokens?: number }): InternalUsage {
+  return {
+    input_tokens: usage.input_tokens,
+    output_tokens: usage.output_tokens,
+    cache_creation_input_tokens: usage.cache_creation_input_tokens,
+    cache_read_input_tokens: usage.cache_read_input_tokens,
+  };
+}
+
+export function parseKiroResponseToInternal(raw: string, originalModel: string): InternalResponse {
+  const anthropic = parseKiroResponse(raw, originalModel);
+  return {
+    id: anthropic.id,
+    content: anthropic.content.map(mapAnthropicContentBlockToInternal),
+    model: anthropic.model,
+    stop_reason: anthropic.stop_reason,
+    stop_sequence: anthropic.stop_sequence,
+    usage: mapAnthropicUsageToInternal(anthropic.usage),
+  };
+}
+
+function mapAnthropicStreamEventToInternal(ev: AnthropicStreamEvent): InternalStreamEvent {
+  switch (ev.type) {
+    case 'message_start':
+      return {
+        type: 'message_start',
+        message: {
+          id: ev.message.id,
+          content: ev.message.content.map(mapAnthropicContentBlockToInternal),
+          model: ev.message.model,
+          stop_reason: ev.message.stop_reason,
+          stop_sequence: ev.message.stop_sequence,
+          usage: mapAnthropicUsageToInternal(ev.message.usage),
+        },
+      };
+    case 'content_block_start':
+      return {
+        type: 'content_block_start',
+        index: ev.index,
+        content_block: mapAnthropicContentBlockToInternal(ev.content_block),
+      };
+    case 'content_block_delta':
+      if (ev.delta.type === 'text_delta') {
+        return { type: 'content_block_delta', index: ev.index, delta: { type: 'text_delta', text: ev.delta.text } };
+      } else if (ev.delta.type === 'input_json_delta') {
+        return { type: 'content_block_delta', index: ev.index, delta: { type: 'input_json_delta', partial_json: ev.delta.partial_json } };
+      } else {
+        return { type: 'content_block_delta', index: ev.index, delta: { type: 'thinking_delta', thinking: ev.delta.thinking } };
+      }
+    case 'content_block_stop':
+      return { type: 'content_block_stop', index: ev.index };
+    case 'message_delta':
+      return {
+        type: 'message_delta',
+        delta: {
+          stop_reason: ev.delta.stop_reason,
+          stop_sequence: ev.delta.stop_sequence,
+        },
+        usage: { output_tokens: ev.usage.output_tokens },
+      };
+    case 'message_stop':
+      return { type: 'message_stop' };
+    case 'ping':
+      return { type: 'ping' };
+    case 'error':
+      return { type: 'error', error: { type: ev.error.type, message: ev.error.message } };
+    default:
+      // Should never reach here
+      return { type: 'ping' };
+  }
+}
+
+export function parseKiroStreamChunkToInternal(chunk: string, state: KiroStreamState): InternalStreamEvent[] {
+  const events = parseKiroStreamChunk(chunk, state);
+  return events.map(mapAnthropicStreamEventToInternal);
 }

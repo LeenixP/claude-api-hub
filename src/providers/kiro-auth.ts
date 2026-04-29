@@ -20,6 +20,8 @@ export class KiroAuth {
   private creds: KiroCredentials = {};
   private region: string;
   private credsPath: string;
+  private _refreshPromise: Promise<void> | null = null;
+  private _saveFailed = false;
 
   constructor(region?: string, credsPath?: string) {
     this.region = region || 'us-east-1';
@@ -77,7 +79,12 @@ export class KiroAuth {
     if (!this.creds.refreshToken) {
       throw new Error('No refresh token available');
     }
-    await this.refreshToken();
+    if (!this._refreshPromise) {
+      this._refreshPromise = this.refreshToken().finally(() => {
+        this._refreshPromise = null;
+      });
+    }
+    await this._refreshPromise;
     return this.creds.accessToken!;
   }
 
@@ -140,7 +147,11 @@ export class KiroAuth {
       } catch { /* new file — expected on first save */ }
       const merged = { ...existing, ...this.creds };
       fs.writeFileSync(this.credsPath, JSON.stringify(merged, null, 2), 'utf-8');
-    } catch (err) { logger.warn('Failed to save Kiro credentials', { error: (err as Error).message, path: this.credsPath }); }
+      this._saveFailed = false;
+    } catch (err) {
+      this._saveFailed = true;
+      logger.error('Failed to save Kiro credentials', { error: (err as Error).message, path: this.credsPath });
+    }
   }
 
   static async refreshCredentials(credsPath: string): Promise<KiroCredentials> {

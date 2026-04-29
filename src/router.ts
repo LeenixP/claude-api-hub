@@ -1,10 +1,12 @@
 import { Provider, RouteResult } from './providers/types.js';
+import { logger } from './logger.js';
 
 /** Routes Claude model names to configured providers via alias resolution and fallback chains. */
 export class ModelRouter {
   private providers: Map<string, Provider> = new Map();
   private aliases: Record<string, string>;
   private fallbackChain: Record<string, string>;
+  private unhealthyProviders = new Map<string, number>(); // name → recoverAfter (ms)
 
   constructor(aliases: Record<string, string> = {}, fallbackChain: Record<string, string> = {}) {
     this.aliases = aliases;
@@ -58,21 +60,12 @@ export class ModelRouter {
 
     for (const provider of this.providers.values()) {
       if (provider.config.enabled && provider.matchModel(model)) {
-        if (provider.isHealthy && !provider.isHealthy()) {
-          const fallback = this.tryFallback(provider.name, model);
-          if (fallback) return { ...fallback, originalModel };
-        }
+        if (this.isUnhealthy(provider.name)) continue;
         return { provider, resolvedModel: provider.resolveModel(model), originalModel };
       }
     }
 
-    // No alias/prefix/model match — use first healthy enabled provider
-    for (const provider of this.providers.values()) {
-      if (provider.config.enabled && (!provider.isHealthy || provider.isHealthy())) {
-        return { provider, resolvedModel: provider.resolveModel(model), originalModel };
-      }
-    }
-    throw new Error(`No route found for model "${originalModel}" and no healthy providers available`);
+    throw new Error(`No route found for model "${originalModel}". Check provider configuration.`);
   }
 
   getProviders(): Provider[] {
@@ -83,24 +76,50 @@ export class ModelRouter {
     this.aliases = aliases;
   }
 
-  setFallbackChain(chain: Record<string, string>): void {
-    this.fallbackChain = chain;
+  /**
+   * Resolve a fallback provider for the given provider name.
+   * Returns undefined if no fallback is configured.
+   */
+  resolveFallback(providerName: string): Provider | undefined {
+    const target = this.fallbackChain[providerName];
+    if (!target) return undefined;
+    const fallback = this.providers.get(target);
+    if (!fallback || !fallback.config.enabled) return undefined;
+    return fallback;
   }
 
-  private tryFallback(providerName: string, model: string): { provider: Provider; resolvedModel: string } | null {
-    const visited = new Set<string>();
-    let current = providerName;
-    while (this.fallbackChain[current]) {
-      const next = this.fallbackChain[current];
-      if (visited.has(next)) break;
-      visited.add(next);
-      const fallback = this.providers.get(next);
-      if (fallback && fallback.config.enabled && (!fallback.isHealthy || fallback.isHealthy())) {
-        return { provider: fallback, resolvedModel: fallback.resolveModel(model) };
-      }
-      current = next;
+  getFallbackChain(): Record<string, string> {
+    return { ...this.fallbackChain };
+  }
+
+  /** Mark a provider as unhealthy for 60 seconds. Repeated calls extend the time. */
+  markUnhealthy(name: string, durationMs = 60_000): void {
+    this.unhealthyProviders.set(name, Date.now() + durationMs);
+  }
+
+  /** Clear unhealthy status for a provider. */
+  markHealthy(name: string): void {
+    this.unhealthyProviders.delete(name);
+  }
+
+  /** Check if a provider is currently considered unhealthy. */
+  isUnhealthy(name: string): boolean {
+    const recoverAt = this.unhealthyProviders.get(name);
+    if (!recoverAt) return false;
+    if (Date.now() >= recoverAt) {
+      this.unhealthyProviders.delete(name);
+      return false;
     }
-    return null;
+    return true;
+  }
+
+  /** Returns names of providers that are currently healthy. */
+  getHealthyProviderNames(): string[] {
+    const result: string[] = [];
+    for (const p of this.providers.values()) {
+      result.push(p.name);
+    }
+    return result;
   }
 
   private getProviderKey(provider: Provider): string {
@@ -115,10 +134,6 @@ export class ModelRouter {
     for (const provider of this.providers.values()) {
       const configKey = this.getProviderKey(provider);
       if ((configKey === providerKey || provider.name === providerKey) && provider.config.enabled) {
-        if (provider.isHealthy && !provider.isHealthy()) {
-          const fallback = this.tryFallback(provider.name, actualModel);
-          if (fallback) return { ...fallback, originalModel };
-        }
         return { provider, resolvedModel: provider.resolveModel(actualModel), originalModel };
       }
     }
@@ -138,7 +153,7 @@ export class ModelRouter {
     }
     for (const [model, owners] of modelOwners) {
       if (owners.length > 1) {
-        console.warn(`[warn] Model "${model}" exists in multiple providers: ${owners.join(', ')}. Use "providerKey/${model}" to disambiguate.`);
+        logger.warn(`[warn] Model "${model}" exists in multiple providers: ${owners.join(', ')}. Use "providerKey/${model}" to disambiguate.`);
       }
     }
   }

@@ -36,23 +36,23 @@ export async function handleProbeRoute(
     const providerKey = decodeURIComponent(testMatch[1]);
     const pc = config.providers[providerKey];
     if (!pc) {
-      sendError(res, 404, 'not_found_error', `Provider "${providerKey}" not found`, config, origin);
+      await sendError(res, 404, 'not_found_error', `Provider "${providerKey}" not found`, config, origin);
       return true;
     }
     let testProvider: Provider | null;
     try {
-      testProvider = createProvider(pc);
+      testProvider = await createProvider(pc);
     } catch (err) {
-      sendError(res, 500, 'api_error', `Provider init failed: ${(err as Error).message}`, config, origin);
+      await sendError(res, 500, 'api_error', `Provider init failed: ${(err as Error).message}`, config, origin);
       return true;
     }
     if (!testProvider) {
-      sendError(res, 500, 'api_error', `Provider "${providerKey}" failed to initialize`, config, origin);
+      await sendError(res, 500, 'api_error', `Provider "${providerKey}" failed to initialize`, config, origin);
       return true;
     }
     const model = pc.defaultModel || pc.models[0];
     if (!model) {
-      sendError(res, 400, 'invalid_request_error', 'No model configured for this provider', config, origin);
+      await sendError(res, 400, 'invalid_request_error', 'No model configured for this provider', config, origin);
       return true;
     }
     const providerLabel = pc.name || providerKey;
@@ -66,13 +66,13 @@ export async function handleProbeRoute(
       Object.assign(built.headers, getCodingAgentHeaders(!!pc.passthrough, config));
       if (pc.passthrough) built.url = withBetaQueryParam(built.url, true);
     } catch (err) {
-      sendError(res, 500, 'api_error', `Build error: ${(err as Error).message}`, config, origin);
+      await sendError(res, 500, 'api_error', `Build error: ${(err as Error).message}`, config, origin);
       return true;
     }
 
     const startTime = Date.now();
     try {
-      const upstream = await forwardRequest(built.url, built.headers, built.body, 30000, config.maxResponseBytes);
+      const upstream = await forwardRequest(built.url, built.headers, built.body, 30000, config.maxResponseBytes, config.ssrfAllowlist);
       const latency = Date.now() - startTime;
       const errMsg = extractError(upstream.body);
 
@@ -80,7 +80,7 @@ export async function handleProbeRoute(
       // Coding Plan errors are special: the endpoint only works with real Claude Code sessions.
       if (CODING_PLAN_RE.test(errMsg)) {
         logger.info(`Probe for ${providerKey}: coding plan endpoint confirmed reachable (${latency}ms)`);
-        sendJson(res, 200, {
+        await sendJson(res, 200, {
           success: true,
           latencyMs: latency,
           model,
@@ -91,12 +91,12 @@ export async function handleProbeRoute(
       }
 
       if (upstream.status === 200 && !errMsg) {
-        sendJson(res, 200, { success: true, latencyMs: latency, model, provider: providerLabel }, config, origin);
+        await sendJson(res, 200, { success: true, latencyMs: latency, model, provider: providerLabel }, config, origin);
       } else {
-        sendJson(res, 200, { success: false, latencyMs: latency, status: upstream.status, error: errMsg, model, provider: providerLabel }, config, origin);
+        await sendJson(res, 200, { success: false, latencyMs: latency, status: upstream.status, error: errMsg, model, provider: providerLabel }, config, origin);
       }
     } catch (err) {
-      sendJson(res, 200, { success: false, latencyMs: Date.now() - startTime, error: (err as Error).message, model, provider: providerLabel }, config, origin);
+      await sendJson(res, 200, { success: false, latencyMs: Date.now() - startTime, error: (err as Error).message, model, provider: providerLabel }, config, origin);
     }
     return true;
   }

@@ -7,6 +7,10 @@ import { logger } from './logger.js';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 let cached: string | null = null;
 
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
 const ICON_PATH = join(__dirname, '../static/icon.png');
 let iconData: Buffer | null = null;
 
@@ -35,7 +39,7 @@ export function dashboardHtml(version: string = ''): string {
       .replace('<link rel="stylesheet" href="style.css">', () => '<style>' + css + '</style>')
       .replace('<script src="bundle.js"></script>', () => '<script>' + js + '</script>');
   }
-  return cached.replace(/\{\{VERSION\}\}/g, version);
+  return cached.replace(/\{\{VERSION\}\}/g, escapeHtml(version));
 }
 
 let cachedETag: string | null = null;

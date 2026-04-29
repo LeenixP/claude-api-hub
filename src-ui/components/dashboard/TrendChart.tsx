@@ -152,6 +152,7 @@ export function TrendChart({ logs, rangeHours }: TrendChartProps) {
           }}
           onMouseLeave={() => setTooltip(null)}>
           <canvas ref={canvasRef} role="img" aria-label={t('chart.requests')} style="display:block;width:100%" />
+          <div class="sr-only">{t('chart.requests')}: {buckets.reduce((s, b) => s + b.total, 0)} {t('chart.lastHours', { range })}</div>
           {tooltip && (
             <div style={`position:absolute;pointer-events:none;top:${tooltip.y}px;padding:6px 12px;border-radius:6px;background:var(--color-surface-hover);border:1px solid var(--color-border);font-size:12px;z-index:10;white-space:nowrap;transform:translate(-50%,-110%);transition:left 0.05s ease`}
               ref={(el) => adjustTooltipEdge(el, tooltip.x)}>

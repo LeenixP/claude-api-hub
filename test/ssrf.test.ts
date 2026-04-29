@@ -31,12 +31,12 @@ describe('isSSRFSafe - IPv4 private ranges', () => {
     expect(await isSSRFSafe('172.32.0.1')).toBe(true);
   });
 
-  it('allows 192.168.x.x (LAN access)', async () => {
+  it('allows 192.168.x.x (LAN - needed for local services)', async () => {
     expect(await isSSRFSafe('192.168.0.1')).toBe(true);
     expect(await isSSRFSafe('192.168.255.255')).toBe(true);
   });
 
-  it('allows 127.x.x.x (loopback for local services)', async () => {
+  it('allows 127.x.x.x (loopback - needed for local services)', async () => {
     expect(await isSSRFSafe('127.0.0.1')).toBe(true);
     expect(await isSSRFSafe('127.255.255.255')).toBe(true);
   });
@@ -59,7 +59,7 @@ describe('isSSRFSafe - IPv4 private ranges', () => {
 });
 
 describe('isSSRFSafe - IPv6 private ranges', () => {
-  it('allows ::1 (loopback for local services)', async () => {
+  it('allows ::1 (loopback - needed for local services)', async () => {
     expect(await isSSRFSafe('::1')).toBe(true);
   });
 
@@ -79,8 +79,28 @@ describe('isSSRFSafe - IPv6 private ranges', () => {
     expect(await isSSRFSafe('::')).toBe(false);
   });
 
-  it('allows ::ffff:127.0.0.1 (IPv4-mapped loopback)', async () => {
+  it('allows ::ffff:127.0.0.1 (IPv4-mapped loopback - allowed for local services)', async () => {
     expect(await isSSRFSafe('::ffff:127.0.0.1')).toBe(true);
+  });
+
+  it('rejects ::ffff:10.0.0.1 (IPv4-mapped RFC1918)', async () => {
+    expect(await isSSRFSafe('::ffff:10.0.0.1')).toBe(false);
+  });
+
+  it('rejects ::ffff:172.16.0.1 (IPv4-mapped RFC1918)', async () => {
+    expect(await isSSRFSafe('::ffff:172.16.0.1')).toBe(false);
+  });
+
+  it('rejects ::ffff:169.254.0.1 (IPv4-mapped link-local)', async () => {
+    expect(await isSSRFSafe('::ffff:169.254.0.1')).toBe(false);
+  });
+
+  it('rejects ::ffff:0.0.0.0 (IPv4-mapped broadcast)', async () => {
+    expect(await isSSRFSafe('::ffff:0.0.0.0')).toBe(false);
+  });
+
+  it('allows ::ffff:8.8.8.8 (IPv4-mapped public)', async () => {
+    expect(await isSSRFSafe('::ffff:8.8.8.8')).toBe(true);
   });
 
   it('allows public IPv6 addresses', async () => {
@@ -137,5 +157,19 @@ describe('isSSRFSafe - DNS cache', () => {
 
     await isSSRFSafe('refresh.example.com');
     expect(mockResolve4).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('isSSRFSafe - allowlist', () => {
+  it('allows 127.0.0.1 (already allowed by default)', async () => {
+    expect(await isSSRFSafe('127.0.0.1', ['127.0.0.1'])).toBe(true);
+  });
+
+  it('allows 192.168.1.100 (already allowed by default)', async () => {
+    expect(await isSSRFSafe('192.168.1.100', ['192.168.1.100'])).toBe(true);
+  });
+
+  it('still blocks 10.x IPs not in allowlist', async () => {
+    expect(await isSSRFSafe('10.0.0.1', ['192.168.1.100'])).toBe(false);
   });
 });

@@ -1,39 +1,29 @@
 import type { Provider, ProviderConfig } from './types.js';
+import { providerRegistry } from './registry.js';
 import { ClaudeProvider } from './claude.js';
 import { GenericOpenAIProvider } from './generic.js';
 import { KiroProvider } from './kiro.js';
+import { logger } from '../logger.js';
+import { getErrorMessage } from '../utils/error.js';
 
-type ProviderFactory = (config: ProviderConfig) => Provider;
+// Register built-in provider types at module level
+providerRegistry.register('anthropic', ClaudeProvider);
+providerRegistry.register('openai', GenericOpenAIProvider);
+providerRegistry.register('kiro', KiroProvider);
 
-const registry = new Map<string, ProviderFactory>();
-
-registry.set('passthrough', (config) => new ClaudeProvider(config));
-registry.set('openai', (config) => new GenericOpenAIProvider(config));
-registry.set('kiro', (config) => new KiroProvider(config));
-
-export function registerProviderType(type: string, factory: ProviderFactory): void {
-  registry.set(type, factory);
-}
-
-export function createProvider(config: ProviderConfig): Provider | null {
-  // Check for explicit provider type first
-  const explicitType = config.providerType as string | undefined;
-  if (explicitType && registry.has(explicitType)) {
-    try {
-      return registry.get(explicitType)!(config);
-    } catch (err) {
-      console.error(`[warn] Skipping provider "${config.name}": ${(err as Error).message}`);
+export async function createProvider(config: ProviderConfig): Promise<Provider | null> {
+  try {
+    const provider = providerRegistry.create(config);
+    if (!provider) {
+      logger.warn(`No registered provider type for "${config.name}"`);
       return null;
     }
+    if ('ensureReady' in provider && typeof (provider as Record<string, unknown>).ensureReady === 'function') {
+      await (provider as { ensureReady(): Promise<void> }).ensureReady();
+    }
+    return provider;
+  } catch (err) {
+    logger.warn(`Skipping provider "${config.name}": ${getErrorMessage(err)}`);
+    return null;
   }
-  const isAnthropicMode = config.passthrough || config.authMode === 'anthropic';
-  const type = isAnthropicMode ? 'passthrough' : 'openai';
-  const factory = registry.get(type);
-  if (!factory) throw new Error(`Unknown provider type: ${type}`);
-  return factory(config);
-}
-
-/** Check if a provider config uses the Kiro backend (non-JSON upstream response). */
-export function isKiroProvider(config: ProviderConfig): boolean {
-  return (config.providerType as string) === 'kiro';
 }

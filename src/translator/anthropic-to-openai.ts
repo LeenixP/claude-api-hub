@@ -164,17 +164,17 @@ function convertToolChoice(
 export function translateRequest(req: AnthropicRequest, targetModel: string): OpenAIRequest {
   const messages: OpenAIMessage[] = [];
 
-  // Convert system field to system message
   if (req.system) {
-    let systemText: string;
     if (typeof req.system === 'string') {
-      systemText = req.system;
+      messages.push({ role: 'system', content: req.system });
     } else {
-      systemText = req.system.map((b) => b.text).join('\n');
+      messages.push({
+        role: 'system',
+        content: req.system.map((b) => b.text).join('\n'),
+      });
     }
-    messages.push({ role: 'system', content: systemText });
   }
- // Convert each Anthropic message
+
   for (const msg of req.messages) {
     messages.push(...convertMessage(msg));
   }
@@ -183,35 +183,31 @@ export function translateRequest(req: AnthropicRequest, targetModel: string): Op
     model: targetModel,
     messages,
     max_tokens: req.max_tokens,
-    max_completion_tokens: req.max_tokens,
   };
 
   if (req.temperature !== undefined) result.temperature = req.temperature;
   if (req.top_p !== undefined) result.top_p = req.top_p;
-  if (req.top_k !== undefined) {
-    (result as unknown as Record<string, unknown>).top_k = req.top_k;
-  }
+  if (req.top_k !== undefined) (result as unknown as Record<string, unknown>).top_k = req.top_k;
   if (req.stream !== undefined) {
     result.stream = req.stream;
-    if (req.stream) {
-      (result as unknown as Record<string, unknown>).stream_options = { include_usage: true };
-    }
+    if (req.stream) (result as unknown as Record<string, unknown>).stream_options = { include_usage: true };
   }
-  if (req.stop_sequences && req.stop_sequences.length > 0) {
-    result.stop = req.stop_sequences;
-  }
+  if (req.stop_sequences?.length) result.stop = req.stop_sequences;
   if (req.thinking?.type === 'enabled') {
     (result as unknown as Record<string, unknown>).reasoning_effort = 'high';
-    if (req.thinking.budget_tokens) {
-      result.max_completion_tokens = req.thinking.budget_tokens + (req.max_tokens || 4096);
-    }
+    const MAX_COMPLETION_TOKENS = 200000;
+    result.max_completion_tokens = Math.min(
+      req.thinking.budget_tokens + (req.max_tokens || 4096),
+      MAX_COMPLETION_TOKENS,
+    );
+    delete result.max_tokens;
   }
 
   const tools = convertTools(req.tools);
   if (tools) result.tools = tools;
 
   const toolChoice = convertToolChoice(req.tool_choice);
-  if (toolChoice !== undefined) result.tool_choice = toolChoice;
+  if (toolChoice) result.tool_choice = toolChoice;
 
   return result;
 }

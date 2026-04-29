@@ -1,5 +1,5 @@
 import http from 'http';
-import { sendJson, sendJsonAsync, sendError, maskKey } from '../utils/http.js';
+import { sendJson, sendError, maskKey } from '../utils/http.js';
 import { forwardRequest } from '../services/forwarder.js';
 import { createProvider } from '../providers/factory.js';
 import { logger } from '../logger.js';
@@ -18,37 +18,37 @@ export async function handleAdminLogsRoutes(
   const { config, logManager, rateTracker } = ctx;
 
   if (req.method === 'GET' && pathname === '/api/stats' && rateTracker) {
-    sendJson(res, 200, rateTracker.getStats(), config, origin);
+    await sendJson(res, 200, rateTracker.getStats(), config, origin);
     return true;
   }
 
   if (req.method === 'GET' && pathname === '/api/token-stats') {
-    await sendJsonAsync(res, 200, logManager.getTokenStats(), config, origin);
+    await sendJson(res, 200, logManager.getTokenStats(), config, origin);
     return true;
   }
 
   if (req.method === 'GET' && pathname === '/api/logs') {
-    const allLogs = logManager.getLogs();
     const url = new URL(req.url || '', `http://${req.headers.host || 'localhost'}`);
     const limit = Math.min(parseInt(url.searchParams.get('limit') || '200'), 500);
     const offset = parseInt(url.searchParams.get('offset') || '0');
     const providerFilter = url.searchParams.get('provider');
     const statusFilter = url.searchParams.get('status');
+    const allLogs = logManager.getLogs(limit, offset);
     let filtered = allLogs;
     if (providerFilter) filtered = filtered.filter(l => l.provider === providerFilter);
     if (statusFilter) filtered = filtered.filter(l => String(l.status) === statusFilter);
-    await sendJsonAsync(res, 200, { total: filtered.length, logs: filtered.slice(offset, offset + limit) }, config, origin);
+    await sendJson(res, 200, { total: logManager.getLogCount(), logs: filtered }, config, origin);
     return true;
   }
 
   if (req.method === 'POST' && pathname === '/api/logs/clear') {
     logManager.clearLogs();
-    sendJson(res, 200, { cleared: true }, config, origin);
+    await sendJson(res, 200, { cleared: true }, config, origin);
     return true;
   }
 
   if (req.method === 'GET' && pathname === '/api/logs/file-status') {
-    sendJson(res, 200, {
+    await sendJson(res, 200, {
       enabled: logManager.isFileLogging(),
       fileCount: logManager.getFileCount(),
       maxFiles: logManager.maxFiles,
@@ -58,7 +58,7 @@ export async function handleAdminLogsRoutes(
   }
 
   if (req.method === 'PUT' && pathname === '/api/logs/file-toggle') {
-    sendJson(res, 200, { enabled: logManager.toggleFileLogging() }, config, origin);
+    await sendJson(res, 200, { enabled: logManager.toggleFileLogging() }, config, origin);
     return true;
   }
 
@@ -69,14 +69,14 @@ export async function handleAdminLogsRoutes(
       if (!p.apiKey) { results[p.name || key] = { status: 'no_key', latencyMs: 0 }; return; }
       const start = Date.now();
       try {
-        const provider = createProvider(p);
+        const provider = await createProvider(p);
         if (!provider) { results[p.name || key] = { status: 'init_failed', latencyMs: 0 }; return; }
         const model = p.defaultModel || p.models[0];
         if (!model) { results[p.name || key] = { status: 'no_model', latencyMs: 0 }; return; }
         const testReq = buildTestRequest(model);
         const built = provider.buildRequest(testReq);
         Object.assign(built.headers, getCodingAgentHeaders(!!p.passthrough));
-        const upstream = await forwardRequest(built.url, built.headers, built.body, 15000, config.maxResponseBytes);
+        const upstream = await forwardRequest(built.url, built.headers, built.body, 15000, config.maxResponseBytes, config.ssrfAllowlist);
         const latency = Date.now() - start;
         if (upstream.status === 200) {
           let errMsg = '';
@@ -98,7 +98,7 @@ export async function handleAdminLogsRoutes(
       }
     });
     await Promise.all(tasks);
-    sendJson(res, 200, results, config, origin);
+    await sendJson(res, 200, results, config, origin);
     return true;
   }
 

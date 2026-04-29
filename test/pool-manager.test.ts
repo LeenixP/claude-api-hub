@@ -9,8 +9,8 @@ describe('KeyPool', () => {
   });
 
   describe('Round-Robin rotation', () => {
-    beforeEach(() => {
-      pool = new KeyPool(['a', 'b', 'c'], { persist: false });
+    beforeEach(async () => {
+      pool = await KeyPool.create(['a', 'b', 'c'], { persist: false });
     });
 
     it('cycles through keys in order', () => {
@@ -22,8 +22,8 @@ describe('KeyPool', () => {
   });
 
   describe('reportError', () => {
-    beforeEach(() => {
-      pool = new KeyPool(['a', 'b'], { persist: false });
+    beforeEach(async () => {
+      pool = await KeyPool.create(['a', 'b'], { persist: false });
     });
 
     it('marks key unhealthy after 5 consecutive errors', () => {
@@ -40,8 +40,8 @@ describe('KeyPool', () => {
   });
 
   describe('reportSuccess', () => {
-    beforeEach(() => {
-      pool = new KeyPool(['a'], { persist: false });
+    beforeEach(async () => {
+      pool = await KeyPool.create(['a'], { persist: false });
     });
 
     it('resets error count and restores health', () => {
@@ -54,8 +54,8 @@ describe('KeyPool', () => {
   });
 
   describe('getKey skips unhealthy keys', () => {
-    beforeEach(() => {
-      pool = new KeyPool(['a', 'b'], { persist: false });
+    beforeEach(async () => {
+      pool = await KeyPool.create(['a', 'b'], { persist: false });
     });
 
     it('returns only healthy keys', () => {
@@ -66,8 +66,8 @@ describe('KeyPool', () => {
   });
 
   describe('getStatus', () => {
-    it('returns correct status for all keys', () => {
-      pool = new KeyPool(['x', 'y'], { persist: false });
+    it('returns correct status for all keys', async () => {
+      pool = await KeyPool.create(['x', 'y'], { persist: false });
       pool.reportError('x');
       const status = pool.getStatus();
       expect(status).toEqual([
@@ -78,8 +78,8 @@ describe('KeyPool', () => {
   });
 
   describe('all keys unhealthy', () => {
-    it('getKey returns null as fallback', () => {
-      pool = new KeyPool(['a', 'b'], { persist: false });
+    it('getKey returns null as fallback', async () => {
+      pool = await KeyPool.create(['a', 'b'], { persist: false });
       for (let i = 0; i < 5; i++) {
         pool.reportError('a');
         pool.reportError('b');
@@ -90,14 +90,14 @@ describe('KeyPool', () => {
   });
 
   describe('loadState static method', () => {
-    it('returns default state when no state file exists', () => {
+    it('returns default state when no state file exists', async () => {
       const { unlinkSync, existsSync } = require('fs');
       const { join } = require('path');
       const { homedir } = require('os');
       const statePath = join(homedir(), '.claude-api-hub', 'keypool-state.json');
       if (existsSync(statePath)) unlinkSync(statePath);
 
-      const state = KeyPool.loadState(['key1', 'key2']);
+      const state = await KeyPool.loadState(['key1', 'key2']);
       expect(state.keys).toHaveLength(2);
       expect(state.keys[0].key).toBe('key1');
       expect(state.keys[0].healthy).toBe(true);
@@ -105,23 +105,27 @@ describe('KeyPool', () => {
       expect(state.index).toBe(0);
     });
 
-    it('loads and reconciles state from existing file', () => {
+    it('loads and reconciles state from existing file', async () => {
       const { mkdirSync, writeFileSync, existsSync, unlinkSync } = require('fs');
       const { join } = require('path');
       const { homedir } = require('os');
+      const crypto = require('crypto');
       const hubDir = join(homedir(), '.claude-api-hub');
       const statePath = join(hubDir, 'keypool-state.json');
       if (!existsSync(hubDir)) mkdirSync(hubDir, { recursive: true });
+
+      const keepKeyId = crypto.createHash('sha256').update('keep-key').digest('hex').slice(0, 16);
+      const oldKeyId = crypto.createHash('sha256').update('old-key').digest('hex').slice(0, 16);
+
       writeFileSync(statePath, JSON.stringify({
         keys: [
-          { key: 'old-key', healthy: false, errorCount: 5, unhealthySince: 1000 },
-          { key: 'keep-key', healthy: true, errorCount: 0, unhealthySince: 0 },
+          { key: oldKeyId, healthy: false, errorCount: 5, unhealthySince: 1000 },
+          { key: keepKeyId, healthy: true, errorCount: 0, unhealthySince: 0 },
         ],
         index: 1,
       }), 'utf-8');
 
-      // 'old-key' is dropped, 'keep-key' is kept, 'new-key' is added
-      const state = KeyPool.loadState(['keep-key', 'new-key']);
+      const state = await KeyPool.loadState(['keep-key', 'new-key']);
       expect(state.keys).toHaveLength(2);
       const keepKey = state.keys.find(k => k.key === 'keep-key')!;
       expect(keepKey.healthy).toBe(true);
@@ -130,11 +134,10 @@ describe('KeyPool', () => {
       expect(newKey.errorCount).toBe(0);
       expect(state.index).toBe(1);
 
-      // Cleanup
       if (existsSync(statePath)) unlinkSync(statePath);
     });
 
-    it('returns default state when state file JSON is corrupt', () => {
+    it('returns default state when state file JSON is corrupt', async () => {
       const { mkdirSync, writeFileSync, existsSync, unlinkSync } = require('fs');
       const { join } = require('path');
       const { homedir } = require('os');
@@ -143,7 +146,7 @@ describe('KeyPool', () => {
       if (!existsSync(hubDir)) mkdirSync(hubDir, { recursive: true });
       writeFileSync(statePath, 'corrupt json {{{', 'utf-8');
 
-      const state = KeyPool.loadState(['key1']);
+      const state = await KeyPool.loadState(['key1']);
       expect(state.keys).toHaveLength(1);
       expect(state.keys[0].key).toBe('key1');
       expect(state.keys[0].healthy).toBe(true);
@@ -154,28 +157,38 @@ describe('KeyPool', () => {
   });
 
   describe('saveState', () => {
-    it('persists keys and index to state file', () => {
-      const { readFileSync, existsSync, unlinkSync } = require('fs');
+    it('persists keys and index to state file', async () => {
+      const { readFileSync, existsSync, unlinkSync, statSync } = require('fs');
       const { join } = require('path');
       const { homedir } = require('os');
+      const crypto = require('crypto');
       const statePath = join(homedir(), '.claude-api-hub', 'keypool-state.json');
       if (existsSync(statePath)) unlinkSync(statePath);
 
-      pool = new KeyPool(['a', 'b'], { persist: false });
-      pool.reportError('a'); // bump error count
+      pool = await KeyPool.create(['a', 'b'], { persist: false });
+      pool.reportError('a');
       pool.saveState();
 
       expect(existsSync(statePath)).toBe(true);
       const saved = JSON.parse(readFileSync(statePath, 'utf-8'));
       expect(saved.keys).toHaveLength(2);
-      expect(saved.keys[0].key).toBe('a');
+      const keyIdA = crypto.createHash('sha256').update('a').digest('hex').slice(0, 16);
+      const keyIdB = crypto.createHash('sha256').update('b').digest('hex').slice(0, 16);
+      expect(saved.keys[0].key).toBe(keyIdA);
+      expect(saved.keys[1].key).toBe(keyIdB);
+      expect(saved.keys[0].key).not.toBe('a');
       expect(saved.keys[0].errorCount).toBe(1);
+      const raw = readFileSync(statePath, 'utf-8');
+      expect(raw).not.toContain('"a"');
+      expect(raw).not.toContain('"b"');
+      const mode = statSync(statePath).mode & 0o777;
+      expect(mode).toBe(0o600);
     });
   });
 
   describe('reportError with unknown key', () => {
-    it('is a no-op for keys not in the pool', () => {
-      pool = new KeyPool(['a'], { persist: false });
+    it('is a no-op for keys not in the pool', async () => {
+      pool = await KeyPool.create(['a'], { persist: false });
       pool.reportError('non-existent-key');
       const status = pool.getStatus();
       expect(status).toHaveLength(1);
@@ -185,74 +198,73 @@ describe('KeyPool', () => {
   });
 
   describe('reportSuccess with unknown key', () => {
-    it('is a no-op for keys not in the pool', () => {
-      pool = new KeyPool(['a'], { persist: false });
+    it('is a no-op for keys not in the pool', async () => {
+      pool = await KeyPool.create(['a'], { persist: false });
       for (let i = 0; i < 5; i++) pool.reportError('a');
       pool.reportSuccess('non-existent-key');
       const status = pool.getStatus();
-      expect(status[0].healthy).toBe(false); // 'a' still unhealthy
+      expect(status[0].healthy).toBe(false);
     });
   });
 
   describe('getKey with single key', () => {
-    it('returns the only key repeatedly', () => {
-      pool = new KeyPool(['only'], { persist: false });
+    it('returns the only key repeatedly', async () => {
+      pool = await KeyPool.create(['only'], { persist: false });
       expect(pool.getKey()).toBe('only');
       expect(pool.getKey()).toBe('only');
       expect(pool.getKey()).toBe('only');
     });
 
-    it('returns null when the only key is unhealthy', () => {
-      pool = new KeyPool(['only'], { persist: false });
+    it('returns null when the only key is unhealthy', async () => {
+      pool = await KeyPool.create(['only'], { persist: false });
       for (let i = 0; i < 5; i++) pool.reportError('only');
       expect(pool.getKey()).toBeNull();
     });
   });
 
   describe('getKey with empty pool', () => {
-    it('returns null', () => {
-      pool = new KeyPool([], { persist: false });
+    it('returns null', async () => {
+      pool = await KeyPool.create([], { persist: false });
       expect(pool.getKey()).toBeNull();
     });
   });
 
   describe('allUnhealthy with mixed health', () => {
-    it('returns false when some keys are healthy', () => {
-      pool = new KeyPool(['a', 'b'], { persist: false });
+    it('returns false when some keys are healthy', async () => {
+      pool = await KeyPool.create(['a', 'b'], { persist: false });
       for (let i = 0; i < 5; i++) pool.reportError('a');
       expect(pool.allUnhealthy()).toBe(false);
     });
   });
 
   describe('destroy with persist', () => {
-    it('saves state on destroy when persist is true', () => {
+    it('saves state on destroy when persist is true', async () => {
       const { existsSync, unlinkSync, readFileSync } = require('fs');
       const { join } = require('path');
       const { homedir } = require('os');
       const statePath = join(homedir(), '.claude-api-hub', 'keypool-state.json');
       if (existsSync(statePath)) unlinkSync(statePath);
 
-      pool = new KeyPool(['key1', 'key2'], { persist: true });
-      pool.getKey(); // advance index
+      pool = await KeyPool.create(['key1', 'key2'], { persist: true });
+      pool.getKey();
       pool.destroy();
 
       expect(existsSync(statePath)).toBe(true);
       const saved = JSON.parse(readFileSync(statePath, 'utf-8'));
       expect(saved.keys).toHaveLength(2);
-      expect(saved.index).toBe(1); // getKey advanced index
+      expect(saved.index).toBe(1);
     });
 
-    it('does not save state on destroy when persist is false', () => {
+    it('does not save state on destroy when persist is false', async () => {
       const { existsSync, unlinkSync } = require('fs');
       const { join } = require('path');
       const { homedir } = require('os');
       const statePath = join(homedir(), '.claude-api-hub', 'keypool-state.json');
       if (existsSync(statePath)) unlinkSync(statePath);
 
-      pool = new KeyPool(['key1'], { persist: false });
+      pool = await KeyPool.create(['key1'], { persist: false });
       pool.destroy();
 
-      // State file should not exist (was deleted before, persist=false skipped saveState)
       expect(existsSync(statePath)).toBe(false);
     });
   });
@@ -266,29 +278,27 @@ describe('KeyPool', () => {
       vi.useRealTimers();
     });
 
-    it('recovers unhealthy keys after KEY_POOL_RECOVERY_MS', () => {
-      pool = new KeyPool(['a'], { persist: false });
+    it('recovers unhealthy keys after KEY_POOL_RECOVERY_MS', async () => {
+      pool = await KeyPool.create(['a'], { persist: false });
       for (let i = 0; i < 5; i++) pool.reportError('a');
       expect(pool.getStatus()[0].healthy).toBe(false);
 
-      // Advance past recovery window
       vi.advanceTimersByTime(65_000);
       expect(pool.getStatus()[0].healthy).toBe(true);
       expect(pool.getStatus()[0].errorCount).toBe(0);
     });
 
-    it('does not recover before KEY_POOL_RECOVERY_MS', () => {
-      pool = new KeyPool(['a'], { persist: false });
+    it('does not recover before KEY_POOL_RECOVERY_MS', async () => {
+      pool = await KeyPool.create(['a'], { persist: false });
       for (let i = 0; i < 5; i++) pool.reportError('a');
       expect(pool.getStatus()[0].healthy).toBe(false);
 
-      // Advance just past the 50s check, but not to 60s
       vi.advanceTimersByTime(55_000);
       expect(pool.getStatus()[0].healthy).toBe(false);
     });
 
-    it('makes recovered keys available via getKey', () => {
-      pool = new KeyPool(['a'], { persist: false });
+    it('makes recovered keys available via getKey', async () => {
+      pool = await KeyPool.create(['a'], { persist: false });
       for (let i = 0; i < 5; i++) pool.reportError('a');
       expect(pool.getKey()).toBeNull();
 

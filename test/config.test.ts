@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { loadConfig, getConfigPath, backupConfig, restoreConfig } from '../src/config.js';
+import { loadConfig, getConfigPath, backupConfig, restoreConfig, migratePassword } from '../src/config.js';
 import { existsSync, unlinkSync, mkdirSync as fsMkdirSync, copyFileSync, chmodSync } from 'fs';
 import { homedir } from 'os';
 import { writeFileSync, mkdirSync, rmSync } from 'fs';
@@ -246,5 +246,40 @@ describe('config', () => {
     const backupPath = join(homedir(), '.claude-api-hub', 'providers.backup.json');
     if (existsSync(backupPath)) unlinkSync(backupPath);
     expect(restoreConfig()).toBe(false);
+  });
+
+  it('migratePassword hashes plaintext password and writes to file', async () => {
+    const cfg = { ...validConfig, password: 'plaintext123' };
+    const path = writeTestConfig(cfg);
+    const config = await loadConfig(path);
+    expect(config.password).toBe('plaintext123');
+
+    const migrated = await migratePassword(config, path);
+    expect(migrated).toBe(true);
+    expect(config.password).toContain(':');
+
+    // Verify file was updated
+    const raw = JSON.parse(require('fs').readFileSync(path, 'utf-8'));
+    expect(raw.password).toContain(':');
+  });
+
+  it('migratePassword returns false when password is already hashed', async () => {
+    const cfg = { ...validConfig, password: 'hash:salt:iterations' };
+    const path = writeTestConfig(cfg);
+    const config = await loadConfig(path);
+
+    const migrated = await migratePassword(config, path);
+    expect(migrated).toBe(false);
+    expect(config.password).toBe('hash:salt:iterations');
+  });
+
+  it('migratePassword returns false when no password is set', async () => {
+    const cfg = { ...validConfig };
+    delete (cfg as any).password;
+    const path = writeTestConfig(cfg);
+    const config = await loadConfig(path);
+
+    const migrated = await migratePassword(config, path);
+    expect(migrated).toBe(false);
   });
 });

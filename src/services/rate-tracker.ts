@@ -85,6 +85,24 @@ export class RateTracker {
     };
   }
 
+  setCumulativeTotals(totals: { totalTokens: number; totalRequests: number; maxQps: number; maxRpm: number; maxTps: number }): void {
+    this.totalTokens = totals.totalTokens;
+    this.totalRequests = totals.totalRequests;
+    if (totals.maxQps > this.maxQps) this.maxQps = totals.maxQps;
+    if (totals.maxRpm > this.maxRpm) this.maxRpm = totals.maxRpm;
+    if (totals.maxTps > this.maxTps) this.maxTps = totals.maxTps;
+  }
+
+  getCumulativeState(): { totalTokens: number; totalRequests: number; maxQps: number; maxRpm: number; maxTps: number } {
+    return {
+      totalTokens: this.totalTokens,
+      totalRequests: this.totalRequests,
+      maxQps: this.maxQps,
+      maxRpm: this.maxRpm,
+      maxTps: this.maxTps,
+    };
+  }
+
   destroy(): void {
     clearInterval(this.timer);
   }

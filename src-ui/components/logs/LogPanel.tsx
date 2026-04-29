@@ -149,7 +149,7 @@ export function LogPanel({ logs, connected, onClear }: LogPanelProps) {
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
           <div class="filter-group">
             {(['all', 'ok', 'errors'] as FilterType[]).map(f => (
-              <button key={f} onClick={() => setFilter(f)} class={`filter-btn capitalize ${filter === f ? 'filter-btn-active' : ''}`}>{f}</button>
+              <button key={f} onClick={() => setFilter(f)} aria-pressed={filter === f} class={`filter-btn capitalize ${filter === f ? 'filter-btn-active' : ''}`}>{f}</button>
             ))}
           </div>
           <input type="text" placeholder={t('logs.search')}
@@ -164,23 +164,23 @@ export function LogPanel({ logs, connected, onClear }: LogPanelProps) {
 
       {logs.length > 0 && (
         <div style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap">
-          <div style="flex:1;min-width:120px;padding:10px 14px;border-radius:8px;background:var(--color-bg-elevated);border:1px solid var(--color-border)">
+          <div style="flex:1;min-width:120px;padding:10px 14px;border-radius:8px;background:var(--color-surface);border:1px solid var(--color-border)">
             <div style="font-size:11px;color:var(--color-text-muted);margin-bottom:2px">{t('logs.todayRequests')}</div>
             <div style="font-size:18px;font-weight:700;color:var(--color-text)">{stats.todayCount}</div>
           </div>
-          <div style="flex:1;min-width:120px;padding:10px 14px;border-radius:8px;background:var(--color-bg-elevated);border:1px solid var(--color-border)">
+          <div style="flex:1;min-width:120px;padding:10px 14px;border-radius:8px;background:var(--color-surface);border:1px solid var(--color-border)">
             <div style="font-size:11px;color:var(--color-text-muted);margin-bottom:2px">{t('stats.success')}</div>
             <div style={`font-size:18px;font-weight:700;color:${stats.successRate >= 95 ? 'var(--color-success)' : stats.successRate >= 80 ? 'var(--color-warning)' : 'var(--color-danger)'}`}>{stats.successRate}%</div>
           </div>
-          <div style="flex:1;min-width:120px;padding:10px 14px;border-radius:8px;background:var(--color-bg-elevated);border:1px solid var(--color-border)">
+          <div style="flex:1;min-width:120px;padding:10px 14px;border-radius:8px;background:var(--color-surface);border:1px solid var(--color-border)">
             <div style="font-size:11px;color:var(--color-text-muted);margin-bottom:2px">{t('logs.avgLatency')}</div>
             <div style={`font-size:18px;font-weight:700;color:${getLatencyColor(stats.avgLatency)}`}>{formatDuration(stats.avgLatency)}</div>
           </div>
-          <div style="flex:1;min-width:120px;padding:10px 14px;border-radius:8px;background:var(--color-bg-elevated);border:1px solid var(--color-border)">
+          <div style="flex:1;min-width:120px;padding:10px 14px;border-radius:8px;background:var(--color-surface);border:1px solid var(--color-border)">
             <div style="font-size:11px;color:var(--color-text-muted);margin-bottom:2px">{t('logs.totalTokens')}</div>
             <div style="font-size:18px;font-weight:700;color:var(--color-text)">{formatTokens(stats.totalTokens)}</div>
           </div>
-          <div style="flex:1;min-width:120px;padding:10px 14px;border-radius:8px;background:var(--color-bg-elevated);border:1px solid var(--color-border)">
+          <div style="flex:1;min-width:120px;padding:10px 14px;border-radius:8px;background:var(--color-surface);border:1px solid var(--color-border)">
             <div style="font-size:11px;color:var(--color-text-muted);margin-bottom:2px">{t('logs.activeProviders')}</div>
             <div style="font-size:18px;font-weight:700;color:var(--color-text)">{stats.activeProviders}</div>
           </div>

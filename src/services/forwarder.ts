@@ -48,9 +48,10 @@ export async function forwardRequest(
   body: string,
   timeoutMs = 120000,
   maxResponseBytes = MAX_RESPONSE_SIZE,
+  allowlist?: string[],
 ): Promise<{ status: number; headers: http.IncomingHttpHeaders; body: string }> {
   const parsed = new URL(url);
-  const safeIP = await resolveSafeIP(parsed.hostname);
+  const safeIP = await resolveSafeIP(parsed.hostname, allowlist);
   if (!safeIP) {
     throw new Error(`SSRF: blocked request to private address ${parsed.hostname}`);
   }
@@ -102,9 +103,10 @@ export async function httpGet(
   headers: Record<string, string>,
   timeoutMs = 5000,
   maxResponseBytes = MAX_GET_SIZE,
+  allowlist?: string[],
 ): Promise<string> {
   const parsed = new URL(url);
-  const safeIP = await resolveSafeIP(parsed.hostname);
+  const safeIP = await resolveSafeIP(parsed.hostname, allowlist);
   if (!safeIP) {
     throw new Error(`SSRF: blocked request to private address ${parsed.hostname}`);
   }
@@ -149,11 +151,12 @@ export async function forwardStream(
   connectTimeoutMs = 30000,
   idleTimeoutMs = 60000,
   downstreamRes?: http.ServerResponse,
+  allowlist?: string[],
 ): Promise<void> {
   const parsed = new URL(url);
   let safeIP: string;
   try {
-    const resolved = await resolveSafeIP(parsed.hostname);
+    const resolved = await resolveSafeIP(parsed.hostname, allowlist);
     if (!resolved) throw new Error(`SSRF: blocked request to private address ${parsed.hostname}`);
     safeIP = resolved;
   } catch (err) {
@@ -204,15 +207,19 @@ export async function forwardStream(
       const ok = onChunk(chunk.toString('utf-8'));
       if (ok === false && downstreamRes && !paused) {
         paused = true;
+        if (idleTimer) { clearTimeout(idleTimer); idleTimer = null; }
         upstreamRes.pause();
         downstreamRes.once('drain', () => {
           paused = false;
+          resetIdleTimer();
           upstreamRes.resume();
         });
       }
     });
+
     upstreamRes.on('end', () => { if (idleTimer) clearTimeout(idleTimer); onEnd(); });
     upstreamRes.on('error', (err) => { if (idleTimer) clearTimeout(idleTimer); onError(err); });
+
   });
 
   req.on('timeout', () => {

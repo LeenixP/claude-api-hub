@@ -127,8 +127,8 @@ describe('HttpUtils', () => {
       } as unknown as http.ServerResponse;
     });
 
-    it('sends JSON with correct content type', () => {
-      sendJson(res, 200, { status: 'ok' });
+    it('sends JSON with correct content type', async () => {
+      await sendJson(res, 200, { status: 'ok' });
       expect(writeHeadSpy).toHaveBeenCalledWith(
         200,
         expect.objectContaining({
@@ -139,7 +139,7 @@ describe('HttpUtils', () => {
       expect(endSpy).toHaveBeenCalled();
     });
 
-    it('sends JSON with CORS config', () => {
+    it('sends JSON with CORS config', async () => {
       const config = {
         port: 3000,
         host: '127.0.0.1',
@@ -147,7 +147,7 @@ describe('HttpUtils', () => {
         logLevel: 'error' as const,
         corsOrigins: ['http://example.com'],
       };
-      sendJson(res, 200, { status: 'ok' }, config, 'http://example.com');
+      await sendJson(res, 200, { status: 'ok' }, config, 'http://example.com');
       expect(writeHeadSpy).toHaveBeenCalledWith(
         200,
         expect.objectContaining({
@@ -157,10 +157,10 @@ describe('HttpUtils', () => {
       );
     });
 
-    it('compresses large JSON with gzip', () => {
+    it('compresses large JSON with gzip', async () => {
       res.req = { headers: { 'accept-encoding': 'gzip' } } as any;
       const largeBody = 'x'.repeat(2000);
-      sendJson(res, 200, { data: largeBody });
+      await sendJson(res, 200, { data: largeBody });
       const headers = writeHeadSpy.mock.calls[0][1] as Record<string, string>;
       expect(headers['Content-Encoding']).toBe('gzip');
       expect(endSpy).toHaveBeenCalled();
@@ -182,8 +182,8 @@ describe('HttpUtils', () => {
       } as unknown as http.ServerResponse;
     });
 
-    it('sends error with correct format', () => {
-      sendError(res, 400, 'invalid_request_error', 'Bad request');
+    it('sends error with correct format', async () => {
+      await sendError(res, 400, 'invalid_request_error', 'Bad request');
       expect(writeHeadSpy).toHaveBeenCalledWith(
         400,
         expect.objectContaining({ 'Content-Type': 'application/json' }),

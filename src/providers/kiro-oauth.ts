@@ -196,6 +196,12 @@ export async function handleSocialAuth(
   // Close any existing server
   await closeCallbackServer('kiro-social');
 
+  // Guard against concurrent initiation (double-click, two admins)
+  if (activeServers.has('kiro-social')) {
+    logger.warn('[Kiro OAuth] Another social auth initiation is already in progress, rejecting duplicate');
+    throw new Error('Another social auth initiation is already in progress');
+  }
+
   const port = await findAvailablePort(
     KIRO_OAUTH_CONFIG.callbackPortStart,
     KIRO_OAUTH_CONFIG.callbackPortEnd,
@@ -299,7 +305,9 @@ function createCallbackServer(
           // Close server after response
           setTimeout(() => {
             server.close();
-            activeServers.delete('kiro-social');
+            if (activeServers.get('kiro-social')?.server === server) {
+              activeServers.delete('kiro-social');
+            }
           }, 1000);
         } else {
           res.writeHead(204);
@@ -319,6 +327,8 @@ function createCallbackServer(
     setTimeout(() => {
       if (server.listening) {
         server.close();
+      }
+      if (activeServers.get('kiro-social')?.server === server) {
         activeServers.delete('kiro-social');
       }
     }, KIRO_OAUTH_CONFIG.authTimeout);
@@ -402,6 +412,10 @@ async function pollBuilderIDToken(
 ): Promise<void> {
   const maxAttempts = Math.floor(expiresIn / interval);
   let attempts = 0;
+  if (activePollingTasks.has(taskId)) {
+    logger.warn(`[Kiro OAuth] Polling task ${taskId} already exists, rejecting duplicate`);
+    throw new Error(`Polling task ${taskId} already in progress`);
+  }
   const taskControl = { shouldStop: false };
   activePollingTasks.set(taskId, taskControl);
 
@@ -612,7 +626,9 @@ async function closeCallbackServer(key: string): Promise<void> {
       existing.server.close(() => { clearTimeout(timeout); resolve(); });
     });
   } catch (err) { logger.warn('Failed to close callback server', { error: getErrorMessage(err) }); }
-  activeServers.delete(key);
+  if (activeServers.get(key) === existing) {
+    activeServers.delete(key);
+  }
 }
 
 export async function cleanup(): Promise<void> {
