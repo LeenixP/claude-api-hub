@@ -72,6 +72,7 @@ export const PRESERVED_KEYS = new Set([
   'corsOrigins',    // CORS allowed origins
   'fallbackChain',  // provider fallback chain
   'version',        // gateway version stamp
+  'ssrfAllowlist',  // SSRF allowlist for trusted hostnames
 ]);
 
 // ── Derived helpers (no need to edit these) ──────────────────────────

@@ -18,10 +18,10 @@ function saveConfig(config: GatewayConfig): void {
   renameSync(tmpPath, configPath);
 }
 
-async function validateBaseUrl(baseUrl: string): Promise<string | null> {
+async function validateBaseUrl(baseUrl: string, ssrfAllowlist?: string[]): Promise<string | null> {
   try { new URL(baseUrl); } catch { return 'Invalid baseUrl format'; }
   const hostname = new URL(baseUrl).hostname;
-  if (!(await isSSRFSafe(hostname))) return 'baseUrl resolves to a private IP address';
+  if (!(await isSSRFSafe(hostname, ssrfAllowlist))) return 'baseUrl resolves to a private IP address';
   return null;
 }
 
@@ -65,7 +65,7 @@ export async function handleAdminConfigRoutes(
         Object.entries(config.providers).map(([key, p]) => [key, { ...p, apiKey: maskKey(p.apiKey) }]),
       ),
     };
-    sendJson(res, 200, masked, config, origin);
+    await sendJson(res, 200, masked, config, origin);
     return true;
   }
 
@@ -82,7 +82,7 @@ export async function handleAdminConfigRoutes(
         const hdrs: Record<string, string> = p.passthrough
           ? { 'x-api-key': p.apiKey, 'anthropic-version': '2023-06-01' }
           : { 'Authorization': `Bearer ${p.apiKey}` };
-        const body = await httpGet(url, hdrs);
+        const body = await httpGet(url, hdrs, 5000, undefined, config.ssrfAllowlist);
         const json = JSON.parse(body);
         const fetched = (json.data || []).map((m: { id?: string }) => m.id).filter(Boolean) as string[];
         results[key] = [...new Set([...fetched, ...(p.models || []), p.defaultModel].filter(Boolean))];
@@ -92,7 +92,7 @@ export async function handleAdminConfigRoutes(
       }
     });
     await Promise.all(tasks);
-    sendJson(res, 200, results, config, origin);
+    await sendJson(res, 200, results, config, origin);
     return true;
   }
 
@@ -101,32 +101,32 @@ export async function handleAdminConfigRoutes(
     const body = await readJson<{ baseUrl?: string; apiKey?: string; passthrough?: boolean }>(req, res, config);
     if (!body) return true;
     if (!body.baseUrl || !body.apiKey) {
-      sendError(res, 400, 'invalid_request_error', 'Missing baseUrl or apiKey', config, origin); return true;
+      await sendError(res, 400, 'invalid_request_error', 'Missing baseUrl or apiKey', config, origin); return true;
     }
-    const urlErr = await validateBaseUrl(body.baseUrl);
-    if (urlErr) { sendError(res, 400, 'invalid_request_error', urlErr, config, origin); return true; }
+    const urlErr = await validateBaseUrl(body.baseUrl, config.ssrfAllowlist);
+    if (urlErr) { await sendError(res, 400, 'invalid_request_error', urlErr, config, origin); return true; }
     try {
       const url = body.passthrough ? `${body.baseUrl}/v1/models` : `${body.baseUrl}/models`;
       const hdrs: Record<string, string> = body.passthrough
         ? { 'x-api-key': body.apiKey, 'anthropic-version': '2023-06-01' }
         : { 'Authorization': `Bearer ${body.apiKey}` };
-      const raw = await httpGet(url, hdrs, 10000);
+      const raw = await httpGet(url, hdrs, 10000, undefined, config.ssrfAllowlist);
       const json = JSON.parse(raw);
       const models = (json.data || []).map((m: { id?: string }) => m.id).filter(Boolean) as string[];
-      sendJson(res, 200, { models }, config, origin);
+      await sendJson(res, 200, { models }, config, origin);
     } catch {
       if (body.passthrough) {
         try {
           const fallbackUrl = body.baseUrl.replace(/\/anthropic\/?$/, '') + '/models';
-          const raw = await httpGet(fallbackUrl, { 'Authorization': `Bearer ${body.apiKey}` }, 10000);
+          const raw = await httpGet(fallbackUrl, { 'Authorization': `Bearer ${body.apiKey}` }, 10000, undefined, config.ssrfAllowlist);
           const json = JSON.parse(raw);
           const models = (json.data || []).map((m: { id?: string }) => m.id).filter(Boolean) as string[];
-          sendJson(res, 200, { models }, config, origin);
+          await sendJson(res, 200, { models }, config, origin);
         } catch {
-          sendJson(res, 200, { models: [], warning: 'This provider does not support model listing. Add models manually.' }, config, origin);
+          await sendJson(res, 200, { models: [], warning: 'This provider does not support model listing. Add models manually.' }, config, origin);
         }
       } else {
-        sendJson(res, 200, { models: [], warning: 'Failed to fetch models. Add models manually.' }, config, origin);
+        await sendJson(res, 200, { models: [], warning: 'Failed to fetch models. Add models manually.' }, config, origin);
       }
     }
     return true;
@@ -139,15 +139,15 @@ export async function handleAdminConfigRoutes(
     const authMode = body.authMode as string | undefined;
     const isOAuth = authMode === 'oauth';
     if (models && Array.isArray(models) && models.length === 0) {
-      sendError(res, 400, 'invalid_request_error', 'models array must not be empty', config, origin); return true;
+      await sendError(res, 400, 'invalid_request_error', 'models array must not be empty', config, origin); return true;
     }
     if (!name || !baseUrl || (!isOAuth && !apiKey) || !models || !defaultModel) {
-      sendError(res, 400, 'invalid_request_error', 'Missing required fields: name, baseUrl, apiKey (or authMode=oauth), models, defaultModel', config, origin); return true;
+      await sendError(res, 400, 'invalid_request_error', 'Missing required fields: name, baseUrl, apiKey (or authMode=oauth), models, defaultModel', config, origin); return true;
     }
-    const urlErr = await validateBaseUrl(baseUrl);
-    if (urlErr) { sendError(res, 400, 'invalid_request_error', urlErr, config, origin); return true; }
+    const urlErr = await validateBaseUrl(baseUrl, config.ssrfAllowlist);
+    if (urlErr) { await sendError(res, 400, 'invalid_request_error', urlErr, config, origin); return true; }
     if (config.providers[name]) {
-      sendError(res, 409, 'conflict_error', `Provider "${name}" already exists`, config, origin); return true;
+      await sendError(res, 409, 'conflict_error', `Provider "${name}" already exists`, config, origin); return true;
     }
     const allowedFields = ['name', 'baseUrl', 'apiKey', 'models', 'defaultModel', 'enabled', 'prefix', 'passthrough', 'authMode', 'providerType', 'options'];
     const newProvider: ProviderConfig = { name, baseUrl, apiKey: apiKey || '', models, defaultModel, enabled: enabled ?? true };
@@ -159,7 +159,7 @@ export async function handleAdminConfigRoutes(
     config.providers[name] = newProvider;
     saveConfig(config);
     await rebuildProviders(router, config);
-    sendJson(res, 201, { ...newProvider, apiKey: maskKey(newProvider.apiKey) }, config, origin);
+    await sendJson(res, 201, { ...newProvider, apiKey: maskKey(newProvider.apiKey) }, config, origin);
     return true;
   }
 
@@ -167,13 +167,13 @@ export async function handleAdminConfigRoutes(
   if (providerMatch && (req.method === 'PUT' || req.method === 'DELETE')) {
     const providerName = decodeURIComponent(providerMatch[1]);
     if (!config.providers[providerName]) {
-      sendError(res, 404, 'not_found_error', `Provider "${providerName}" not found`, config, origin); return true;
+      await sendError(res, 404, 'not_found_error', `Provider "${providerName}" not found`, config, origin); return true;
     }
     if (req.method === 'DELETE') {
       delete config.providers[providerName];
       saveConfig(config);
       await rebuildProviders(router, config);
-      sendJson(res, 200, { deleted: providerName }, config, origin);
+      await sendJson(res, 200, { deleted: providerName }, config, origin);
       return true;
     }
     const updates = await readJson<Partial<ProviderConfig>>(req, res, config);
@@ -186,8 +186,8 @@ export async function handleAdminConfigRoutes(
       }
     }
     if (filtered.baseUrl) {
-      const urlErr = await validateBaseUrl(filtered.baseUrl);
-      if (urlErr) { sendError(res, 400, 'invalid_request_error', urlErr, config, origin); return true; }
+      const urlErr = await validateBaseUrl(filtered.baseUrl, config.ssrfAllowlist);
+      if (urlErr) { await sendError(res, 400, 'invalid_request_error', urlErr, config, origin); return true; }
     }
     // Preserve real API key if frontend sends masked value
     if (filtered.apiKey && filtered.apiKey.includes('***')) {
@@ -198,12 +198,12 @@ export async function handleAdminConfigRoutes(
     saveConfig(config);
     await rebuildProviders(router, config);
     const updated = config.providers[providerName];
-    sendJson(res, 200, { ...updated, apiKey: maskKey(updated.apiKey) }, config, origin);
+    await sendJson(res, 200, { ...updated, apiKey: maskKey(updated.apiKey) }, config, origin);
     return true;
   }
 
   if (req.method === 'GET' && pathname === '/api/aliases') {
-    sendJson(res, 200, config.aliases ?? {}, config, origin);
+    await sendJson(res, 200, config.aliases ?? {}, config, origin);
     return true;
   }
 
@@ -213,17 +213,17 @@ export async function handleAdminConfigRoutes(
     const validTiers = ['haiku', 'sonnet', 'opus'];
     const invalidKeys = Object.keys(newAliases).filter(k => !validTiers.includes(k));
     if (invalidKeys.length > 0) {
-      sendError(res, 400, 'invalid_request_error', `Invalid alias keys: ${invalidKeys.join(', ')}. Only haiku, sonnet, opus are allowed.`, config, origin); return true;
+      await sendError(res, 400, 'invalid_request_error', `Invalid alias keys: ${invalidKeys.join(', ')}. Only haiku, sonnet, opus are allowed.`, config, origin); return true;
     }
     config.aliases = newAliases;
     router.setAliases(newAliases);
     saveConfig(config);
-    sendJson(res, 200, config.aliases, config, origin);
+    await sendJson(res, 200, config.aliases, config, origin);
     return true;
   }
 
   if (req.method === 'GET' && pathname === '/api/tier-timeouts') {
-    sendJson(res, 200, config.tierTimeouts ?? {}, config, origin);
+    await sendJson(res, 200, config.tierTimeouts ?? {}, config, origin);
     return true;
   }
 
@@ -233,11 +233,11 @@ export async function handleAdminConfigRoutes(
     const validTierKeys = ['haiku', 'sonnet', 'opus'];
     const invalidKeys = Object.keys(newTimeouts).filter(k => !validTierKeys.includes(k));
     if (invalidKeys.length > 0) {
-      sendError(res, 400, 'invalid_request_error', `Invalid tier keys: ${invalidKeys.join(', ')}`, config, origin); return true;
+      await sendError(res, 400, 'invalid_request_error', `Invalid tier keys: ${invalidKeys.join(', ')}`, config, origin); return true;
     }
     config.tierTimeouts = newTimeouts;
     saveConfig(config);
-    sendJson(res, 200, config.tierTimeouts, config, origin);
+    await sendJson(res, 200, config.tierTimeouts, config, origin);
     return true;
   }
 
@@ -245,12 +245,12 @@ export async function handleAdminConfigRoutes(
     const newConfig = await readJson<GatewayConfig>(req, res, config);
     if (!newConfig) return true;
     if (!newConfig.providers || typeof newConfig.providers !== 'object') {
-      sendError(res, 400, 'invalid_request_error', 'Config must contain a providers object', config, origin); return true;
+      await sendError(res, 400, 'invalid_request_error', 'Config must contain a providers object', config, origin); return true;
     }
     for (const [, p] of Object.entries(newConfig.providers)) {
       if (p.baseUrl) {
-        const urlErr = await validateBaseUrl(p.baseUrl);
-        if (urlErr) { sendError(res, 400, 'invalid_request_error', urlErr, config, origin); return true; }
+        const urlErr = await validateBaseUrl(p.baseUrl, config.ssrfAllowlist);
+        if (urlErr) { await sendError(res, 400, 'invalid_request_error', urlErr, config, origin); return true; }
       }
     }
     try {
@@ -271,9 +271,9 @@ export async function handleAdminConfigRoutes(
       saveConfig(config);
       router.setAliases(config.aliases ?? {});
       await rebuildProviders(router, config);
-      sendJson(res, 200, { imported: true }, config, origin);
+      await sendJson(res, 200, { imported: true }, config, origin);
     } catch (err) {
-      sendError(res, 500, 'api_error', `Import failed: ${getErrorMessage(err)}`, config, origin);
+      await sendError(res, 500, 'api_error', `Import failed: ${getErrorMessage(err)}`, config, origin);
     }
     return true;
   }
@@ -291,9 +291,9 @@ export async function handleAdminConfigRoutes(
           Object.entries(config.providers).map(([key, p]) => [key, { ...p, apiKey: maskKey(p.apiKey) }]),
         ),
       };
-      sendJson(res, 200, { reloaded: true, config: masked }, config, origin);
+      await sendJson(res, 200, { reloaded: true, config: masked }, config, origin);
     } catch (err) {
-      sendError(res, 500, 'api_error', `Reload failed: ${getErrorMessage(err)}`, config, origin);
+      await sendError(res, 500, 'api_error', `Reload failed: ${getErrorMessage(err)}`, config, origin);
     }
     return true;
   }

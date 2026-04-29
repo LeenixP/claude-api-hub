@@ -4,7 +4,7 @@ import process from 'process';
 import { execFile } from 'child_process';
 import { spawn } from 'child_process';
 import type { RouteContext } from './types.js';
-import { getInstallInfo, getRestartInfo, saveRestartInfo } from '../install-info.js';
+import { getInstallInfo, saveRestartInfo } from '../install-info.js';
 import { backupConfig, restoreConfig } from '../config.js';
 import { logger } from '../logger.js';
 import { getErrorMessage } from '../utils/error.js';
@@ -162,10 +162,9 @@ export async function handleSystemRoutes(
     // Small delay to ensure response is sent
     setTimeout(() => {
       try {
-        const restartInfo = getRestartInfo();
-        const args = restartInfo ? restartInfo.argv.slice(1) : process.argv.slice(1);
-        const execPath = restartInfo?.execPath || process.execPath;
-        const cwd = restartInfo?.cwd || process.cwd();
+        const args = process.argv.slice(1);
+        const execPath = process.execPath;
+        const cwd = process.cwd();
 
         const child = spawn(execPath, args, {
           cwd,

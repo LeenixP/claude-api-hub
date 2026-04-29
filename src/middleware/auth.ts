@@ -1,6 +1,9 @@
 import http from 'http';
 import crypto from 'crypto';
+import { promisify } from 'util';
 import type { GatewayConfig } from '../providers/types.js';
+
+const scryptAsync = promisify(crypto.scrypt);
 import { sendError } from '../utils/http.js';
 import { logger } from '../logger.js';
 import { SESSION_MAX_AGE_MS, SESSION_CLEANUP_MS, RATE_LIMIT_WINDOW_MS, LOGIN_RATE_LIMIT_RPM, LOGIN_LOCKOUT_ATTEMPTS, LOGIN_LOCKOUT_MS } from '../constants.js';
@@ -113,16 +116,16 @@ export function isValidSession(token: string): boolean {
 
 const SCRYPT_KEYLEN = 64;
 
-export function hashPassword(password: string): string {
+export async function hashPassword(password: string): Promise<string> {
   const salt = crypto.randomBytes(32).toString('hex');
-  const hash = crypto.scryptSync(password, salt, SCRYPT_KEYLEN).toString('hex');
+  const hash = (await scryptAsync(password, salt, SCRYPT_KEYLEN) as Buffer).toString('hex');
   return `${hash}:${salt}`;
 }
 
-export function verifyPassword(password: string, stored: string): boolean {
+export async function verifyPassword(password: string, stored: string): Promise<boolean> {
   const [hash, salt] = stored.split(':');
   if (!hash || !salt) return false;
-  const computed = crypto.scryptSync(password, salt, SCRYPT_KEYLEN).toString('hex');
+  const computed = (await scryptAsync(password, salt, SCRYPT_KEYLEN) as Buffer).toString('hex');
   const bufHash = Buffer.from(hash, 'hex');
   const bufComputed = Buffer.from(computed, 'hex');
   if (bufHash.length !== bufComputed.length) return false;
@@ -132,23 +135,22 @@ export function verifyPassword(password: string, stored: string): boolean {
 export function timingSafeCompare(a: string, b: string): boolean {
   const bufA = Buffer.from(a, 'utf-8');
   const bufB = Buffer.from(b, 'utf-8');
-  if (bufA.length !== bufB.length) {
-    const padded = Buffer.alloc(bufA.length);
-    bufB.copy(padded);
-    crypto.timingSafeEqual(bufA, padded);
-    return false;
-  }
-  return crypto.timingSafeEqual(bufA, bufB);
+  const maxLen = Math.max(bufA.length, bufB.length);
+  const paddedA = Buffer.alloc(maxLen);
+  const paddedB = Buffer.alloc(maxLen);
+  bufA.copy(paddedA);
+  bufB.copy(paddedB);
+  return crypto.timingSafeEqual(paddedA, paddedB) && bufA.length === bufB.length;
 }
 
-export function verifyProxyToken(token: string, config: GatewayConfig): boolean {
+export async function verifyProxyToken(token: string, config: GatewayConfig): Promise<boolean> {
   const adminToken = config.adminToken || process.env.ADMIN_TOKEN;
   if (adminToken && timingSafeCompare(token, adminToken)) return true;
-  if (config.password && verifyPassword(token, config.password)) return true;
+  if (config.password && await verifyPassword(token, config.password)) return true;
   return false;
 }
 
-export function requireAdmin(req: http.IncomingMessage, res: http.ServerResponse, config: GatewayConfig): boolean {
+export async function requireAdmin(req: http.IncomingMessage, res: http.ServerResponse, config: GatewayConfig): Promise<boolean> {
   const password = config.password;
   const adminToken = config.adminToken || process.env.ADMIN_TOKEN;
   if (!password && !adminToken) return true;
@@ -156,7 +158,13 @@ export function requireAdmin(req: http.IncomingMessage, res: http.ServerResponse
     || req.headers['x-admin-token'] as string;
   if (token && isValidSession(token)) return true;
   if (token && adminToken && timingSafeCompare(token, adminToken)) return true;
-  sendError(res, 401, 'authentication_error', 'Invalid or missing admin token', config, req.headers['origin'] as string);
+  // Also accept ANTHROPIC_AUTH_TOKEN via x-api-key for admin access
+  const authToken = process.env.ANTHROPIC_AUTH_TOKEN;
+  if (authToken) {
+    const apiKey = req.headers['x-api-key'] as string;
+    if (apiKey && timingSafeCompare(apiKey, authToken)) return true;
+  }
+  await sendError(res, 401, 'authentication_error', 'Invalid or missing admin token', config, req.headers['origin'] as string);
   return false;
 }
 
@@ -217,7 +225,7 @@ export function setSecurityHeaders(res: http.ServerResponse): void {
   res.setHeader('X-Frame-Options', 'DENY');
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
   res.setHeader('Content-Security-Policy',
-    "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' http: https:; frame-ancestors 'none'");
+    "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self'; frame-ancestors 'none'");
   res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
   res.setHeader('Permissions-Policy', 'geolocation=(), microphone=(), camera=(), payment=()');
 }

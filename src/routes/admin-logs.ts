@@ -1,5 +1,5 @@
 import http from 'http';
-import { sendJson, sendJsonAsync, sendError, maskKey } from '../utils/http.js';
+import { sendJson, sendError, maskKey } from '../utils/http.js';
 import { forwardRequest } from '../services/forwarder.js';
 import { createProvider } from '../providers/factory.js';
 import { logger } from '../logger.js';
@@ -18,12 +18,12 @@ export async function handleAdminLogsRoutes(
   const { config, logManager, rateTracker } = ctx;
 
   if (req.method === 'GET' && pathname === '/api/stats' && rateTracker) {
-    sendJson(res, 200, rateTracker.getStats(), config, origin);
+    await sendJson(res, 200, rateTracker.getStats(), config, origin);
     return true;
   }
 
   if (req.method === 'GET' && pathname === '/api/token-stats') {
-    await sendJsonAsync(res, 200, logManager.getTokenStats(), config, origin);
+    await sendJson(res, 200, logManager.getTokenStats(), config, origin);
     return true;
   }
 
@@ -37,18 +37,18 @@ export async function handleAdminLogsRoutes(
     let filtered = allLogs;
     if (providerFilter) filtered = filtered.filter(l => l.provider === providerFilter);
     if (statusFilter) filtered = filtered.filter(l => String(l.status) === statusFilter);
-    await sendJsonAsync(res, 200, { total: logManager.getLogCount(), logs: filtered }, config, origin);
+    await sendJson(res, 200, { total: logManager.getLogCount(), logs: filtered }, config, origin);
     return true;
   }
 
   if (req.method === 'POST' && pathname === '/api/logs/clear') {
     logManager.clearLogs();
-    sendJson(res, 200, { cleared: true }, config, origin);
+    await sendJson(res, 200, { cleared: true }, config, origin);
     return true;
   }
 
   if (req.method === 'GET' && pathname === '/api/logs/file-status') {
-    sendJson(res, 200, {
+    await sendJson(res, 200, {
       enabled: logManager.isFileLogging(),
       fileCount: logManager.getFileCount(),
       maxFiles: logManager.maxFiles,
@@ -58,7 +58,7 @@ export async function handleAdminLogsRoutes(
   }
 
   if (req.method === 'PUT' && pathname === '/api/logs/file-toggle') {
-    sendJson(res, 200, { enabled: logManager.toggleFileLogging() }, config, origin);
+    await sendJson(res, 200, { enabled: logManager.toggleFileLogging() }, config, origin);
     return true;
   }
 
@@ -76,7 +76,7 @@ export async function handleAdminLogsRoutes(
         const testReq = buildTestRequest(model);
         const built = provider.buildRequest(testReq);
         Object.assign(built.headers, getCodingAgentHeaders(!!p.passthrough));
-        const upstream = await forwardRequest(built.url, built.headers, built.body, 15000, config.maxResponseBytes);
+        const upstream = await forwardRequest(built.url, built.headers, built.body, 15000, config.maxResponseBytes, config.ssrfAllowlist);
         const latency = Date.now() - start;
         if (upstream.status === 200) {
           let errMsg = '';
@@ -98,7 +98,7 @@ export async function handleAdminLogsRoutes(
       }
     });
     await Promise.all(tasks);
-    sendJson(res, 200, results, config, origin);
+    await sendJson(res, 200, results, config, origin);
     return true;
   }
 

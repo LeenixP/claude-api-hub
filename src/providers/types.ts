@@ -51,6 +51,7 @@ export interface GatewayConfig {
   tokenRefreshMinutes?: number;
   /** Override the anthropic-beta header for provider test probes. Auto-captured from real traffic if not set. */
   codingAgentBetas?: string;
+  ssrfAllowlist?: string[];
 }
 
 // ─── Anthropic API Types (incoming from Claude Code) ───

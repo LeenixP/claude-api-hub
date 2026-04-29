@@ -10,6 +10,12 @@ import type { RouteContext } from './types.js';
 import type { PerIpRateLimiter } from '../middleware/auth.js';
 import { captureBetaHeader, withBetaQueryParam } from './test-request.js';
 
+const FORWARDED_HEADERS = new Set([
+  'anthropic-version', 'anthropic-beta', 'user-agent', 'accept', 'content-type',
+]);
+const FORWARDED_PREFIXES = ['x-stainless-'];
+const PRE_HEADER_BUFFER_MAX = 64;
+
 /** Recursively strip cache_control from request objects */
 function stripCacheControl(obj: unknown): void {
   if (!obj || typeof obj !== 'object') return;
@@ -158,7 +164,11 @@ async function handleStreamProxy(
         processAndWrite(chunk);
         return;
       }
-      preHeaderBuffer.push(chunk);
+      if (preHeaderBuffer.length < PRE_HEADER_BUFFER_MAX) {
+        preHeaderBuffer.push(chunk);
+      } else {
+        logger.warn('Pre-header buffer limit reached, dropping chunk');
+      }
     },
     () => {
       // Flush any remaining buffered data
@@ -194,13 +204,13 @@ async function handleStreamProxy(
       }, logDetail);
       res.end();
     },
-    (err) => {
+    async (err) => {
       provider.reportError?.(built.usedKey);
       ctx.router.markUnhealthy(provider.name);
       const errMsg = getErrorMessage(err);
       if (!res.headersSent) {
         ctx.logManager?.addLog({ ...logEntry, status: 502, durationMs: Date.now() - startTime, error: errMsg }, logDetail);
-        sendError(res, 502, 'api_error', `Upstream stream error: ${errMsg}`, ctx.config, origin);
+        await sendError(res, 502, 'api_error', `Upstream stream error: ${errMsg}`, ctx.config, origin);
       } else {
         ctx.logManager?.addLog({ ...logEntry, status: 502, durationMs: Date.now() - startTime, error: errMsg }, logDetail);
         res.write(`data: ${JSON.stringify({ type: 'error', error: { type: 'api_error', message: errMsg } })}\n\n`);
@@ -232,6 +242,7 @@ async function handleStreamProxy(
     timeoutMs,
     idleTimeoutMs,
     res,
+    ctx.config.ssrfAllowlist,
   );
 }
 
@@ -258,14 +269,14 @@ async function handleNonStreamProxy(
 
     let upstream;
     try {
-      upstream = await forwardRequest(currentBuilt.url, currentBuilt.headers, currentBuilt.body, ctx.config.streamTimeoutMs ?? 120000, ctx.config.maxResponseBytes);
+      upstream = await forwardRequest(currentBuilt.url, currentBuilt.headers, currentBuilt.body, ctx.config.streamTimeoutMs ?? 120000, ctx.config.maxResponseBytes, ctx.config.ssrfAllowlist);
     } catch (err) {
       ctx.router.markUnhealthy(p.name);
       if (isFallback) {
         p.reportError?.(currentBuilt.usedKey);
         const errMsg = getErrorMessage(err);
         ctx.logManager?.addLog({ ...logEntry, status: 502, durationMs: Date.now() - startTime, error: errMsg }, logDetail);
-        sendError(res, 502, 'api_error', `Upstream request failed: ${errMsg}`, ctx.config, origin);
+        await sendError(res, 502, 'api_error', `Upstream request failed: ${errMsg}`, ctx.config, origin);
         return;
       }
       continue; // Try fallback on connection error
@@ -296,7 +307,7 @@ async function handleNonStreamProxy(
       try { upstreamJson = JSON.parse(upstream.body); } catch {
         p.reportError?.(currentBuilt.usedKey);
         ctx.logManager?.addLog({ ...logEntry, status: 502, durationMs: Date.now() - startTime, error: 'Invalid JSON from upstream' }, { ...logDetail, upstreamBody: upstream.body });
-        sendError(res, 502, 'api_error', 'Invalid JSON from upstream provider', ctx.config, origin);
+        await sendError(res, 502, 'api_error', 'Invalid JSON from upstream provider', ctx.config, origin);
         return;
       }
     }
@@ -306,7 +317,7 @@ async function handleNonStreamProxy(
       p.reportError?.(currentBuilt.usedKey);
       const errMsg = getErrorMessage(err);
       ctx.logManager?.addLog({ ...logEntry, status: 502, durationMs: Date.now() - startTime, error: `Parse error: ${errMsg}` }, logDetail);
-      sendError(res, 502, 'api_error', `Response parse error: ${errMsg}`, ctx.config, origin);
+      await sendError(res, 502, 'api_error', `Response parse error: ${errMsg}`, ctx.config, origin);
       return;
     }
 
@@ -323,14 +334,14 @@ async function handleNonStreamProxy(
       inputTokens: usage?.input_tokens ?? 0,
       outputTokens: usage?.output_tokens ?? 0,
     }, logDetail);
-    sendJson(res, 200, anthropicResp, ctx.config, origin);
+    await sendJson(res, 200, anthropicResp, ctx.config, origin);
     return;
   }
 
   // All attempts exhausted without a successful response
   provider.reportError?.(built.usedKey);
   ctx.logManager?.addLog({ ...logEntry, status: 502, durationMs: Date.now() - startTime, error: 'All providers exhausted' }, logDetail);
-  sendError(res, 502, 'api_error', 'All providers failed', ctx.config, origin);
+  await sendError(res, 502, 'api_error', 'All providers failed', ctx.config, origin);
 }
 
 export async function handleProxyRoute(
@@ -354,7 +365,7 @@ export async function handleProxyRoute(
       res.setHeader('X-RateLimit-Limit', rateLimiter.rpm.toString());
       if (!rl.allowed) {
         res.setHeader('Retry-After', rl.retryAfter.toString());
-        sendError(res, 429, 'rate_limit_error', 'Too many requests. Please slow down.', config, origin);
+        await sendError(res, 429, 'rate_limit_error', 'Too many requests. Please slow down.', config, origin);
         return true;
       }
     }
@@ -363,14 +374,14 @@ export async function handleProxyRoute(
     const requestId = `req_${crypto.randomUUID()}`;
     let bodyStr: string;
     try { bodyStr = await readBody(req); } catch (err) {
-      sendError(res, 400, 'invalid_request_error', getErrorMessage(err), config, origin); return true;
+      await sendError(res, 400, 'invalid_request_error', getErrorMessage(err), config, origin); return true;
     }
     let anthropicReq: AnthropicRequest;
     try { anthropicReq = JSON.parse(bodyStr) as AnthropicRequest; } catch {
-      sendError(res, 400, 'invalid_request_error', 'Invalid JSON body', config, origin); return true;
+      await sendError(res, 400, 'invalid_request_error', 'Invalid JSON body', config, origin); return true;
     }
     if (!anthropicReq.model) {
-      sendError(res, 400, 'invalid_request_error', 'Missing required field: model', config, origin); return true;
+      await sendError(res, 400, 'invalid_request_error', 'Missing required field: model', config, origin); return true;
     }
 
     const rawModel = anthropicReq.model;
@@ -389,7 +400,7 @@ export async function handleProxyRoute(
     let routeResult;
     try { routeResult = router.route(anthropicReq.model); } catch (err) {
       logManager.addLog({ time: new Date().toISOString(), requestId, claudeModel, resolvedModel: '', provider: '', protocol: '', targetUrl: '', stream: !!anthropicReq.stream, status: 500, durationMs: Date.now() - startTime, error: getErrorMessage(err) });
-      sendError(res, 500, 'api_error', getErrorMessage(err), config, origin); return true;
+      await sendError(res, 500, 'api_error', getErrorMessage(err), config, origin); return true;
     }
 
     const { provider, resolvedModel } = routeResult;
@@ -412,18 +423,14 @@ export async function handleProxyRoute(
     let built: { url: string; headers: Record<string, string>; body: string; usedKey: string };
     try { built = provider.buildRequest(anthropicReq); } catch (err) {
       logManager.addLog({ time: new Date().toISOString(), requestId, claudeModel, resolvedModel, provider: provider.name, protocol, targetUrl: '', stream: !!anthropicReq.stream, status: 500, durationMs: Date.now() - startTime, error: `Build error: ${getErrorMessage(err)}` });
-      sendError(res, 500, 'api_error', `Provider build error: ${getErrorMessage(err)}`, config, origin); return true;
+      await sendError(res, 500, 'api_error', `Provider build error: ${getErrorMessage(err)}`, config, origin); return true;
     }
 
-    // Forward Claude Code identity headers to all providers — many upstream APIs
-    // (including OpenAI-compatible ones) reject requests that lack coding agent signals.
+    // Forward a safe allowlist of headers to upstream providers.
     {
-      const skipHeaders = new Set([
-        'host', 'connection', 'content-length', 'transfer-encoding', 'accept-encoding',
-        'x-api-key', 'authorization',
-      ]);
       for (const [h, v] of Object.entries(req.headers)) {
-        if (!skipHeaders.has(h) && typeof v === 'string') {
+        if (typeof v !== 'string') continue;
+        if (FORWARDED_HEADERS.has(h) || FORWARDED_PREFIXES.some(p => h.startsWith(p))) {
           built.headers[h] = v;
           if (h === 'anthropic-beta') captureBetaHeader(v);
         }

@@ -39,10 +39,10 @@ export function clearDnsCache(): void {
 }
 
 const PRIVATE_RANGES = [
-  // IPv4 RFC1918
+  // IPv4 RFC1918 (only block 10.x and 172.16-31.x — corporate intranets)
   { start: '10.0.0.0', end: '10.255.255.255' },
   { start: '172.16.0.0', end: '172.31.255.255' },
-  // 192.168.x and 127.x allowed for local/LAN service access (e.g. Ollama)
+  // Allowed by design: 127.x (loopback/Ollama), 192.168.x (home LAN), 100.64.x (Tailscale/CGNAT)
   // IPv4 link-local
   { start: '169.254.0.0', end: '169.254.255.255' },
   // IPv4 broadcast
@@ -69,8 +69,16 @@ function isPrivateIPv6(ip: string): boolean {
     const ipv4 = lower.slice(7);
     return isPrivateIPv4(ipv4);
   }
-  // ::1 (loopback) allowed for local access
   return lower.startsWith('fc') || lower.startsWith('fd') || lower.startsWith('fe80') || lower === '::';
+}
+
+function isAllowlisted(hostname: string, allowlist?: string[]): boolean {
+  if (!allowlist?.length) return false;
+  const h = hostname.toLowerCase();
+  return allowlist.some(entry => {
+    const e = entry.toLowerCase();
+    return h === e || h === e.split(':')[0];
+  });
 }
 
 /**
@@ -78,7 +86,8 @@ function isPrivateIPv6(ip: string): boolean {
  * Returns the first safe IPv4 address, or null if none found.
  * Throws if the hostname resolves to any private IP.
  */
-export async function resolveSafeIP(hostname: string): Promise<string | null> {
+export async function resolveSafeIP(hostname: string, allowlist?: string[]): Promise<string | null> {
+  if (isAllowlisted(hostname, allowlist)) return hostname;
   // Direct IP address check
   const ipv4Regex = /^\d{1,3}(\.\d{1,3}){3}$/;
   if (ipv4Regex.test(hostname)) {
@@ -110,7 +119,8 @@ export async function resolveSafeIP(hostname: string): Promise<string | null> {
   return v4Result[0] ?? v6Result[0] ?? null;
 }
 
-export async function isSSRFSafe(hostname: string): Promise<boolean> {
+export async function isSSRFSafe(hostname: string, allowlist?: string[]): Promise<boolean> {
+  if (isAllowlisted(hostname, allowlist)) return true;
   // Direct IP address check
   const ipv4Regex = /^\d{1,3}(\.\d{1,3}){3}$/;
   if (ipv4Regex.test(hostname)) {
