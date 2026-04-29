@@ -5,7 +5,7 @@ import { createProvider } from './providers/factory.js';
 import { getConfigPath } from './config.js';
 import { logger } from './logger.js';
 import { getCorsHeaders, sendError, sendJson, readBody, maskKey } from './utils/http.js';
-import { PerIpRateLimiter, requireAdmin, setSecurityHeaders, createSessionToken, verifyPassword, loginRateLimiter, revokeSession } from './middleware/auth.js';
+import { PerIpRateLimiter, requireAdmin, setSecurityHeaders, createSessionToken, verifyPassword, verifyProxyToken, isValidSession, loginRateLimiter, revokeSession } from './middleware/auth.js';
 import { LogManager } from './services/log-manager.js';
 import type { EventBus } from './services/event-bus.js';
 import type { RateTracker } from './services/rate-tracker.js';
@@ -106,6 +106,24 @@ export function createServer(router: ModelRouter, config: GatewayConfig, logMana
       if (await handleAdminLogsRoutes(req, res, ctx, pathname, cors, origin)) return;
       if (await handleOAuthRoutes(req, res, ctx, pathname, cors, origin)) return;
       if (await handleProbeRoute(req, res, ctx, pathname, cors, origin)) return;
+
+      // ─── Proxy Auth Gate ───
+
+      if (pathname === '/v1/messages') {
+        const proxySecret = config.password || config.adminToken || process.env.ADMIN_TOKEN;
+        if (proxySecret) {
+          const token = (req.headers['x-api-key'] as string)
+            || req.headers['authorization']?.replace(/^Bearer\s+/i, '');
+          if (!token) {
+            sendError(res, 401, 'authentication_error', 'Missing API key. Provide an x-api-key or Authorization header.', config, origin);
+            return;
+          }
+          if (!isValidSession(token) && !verifyProxyToken(token, config)) {
+            sendError(res, 401, 'authentication_error', 'Invalid API key.', config, origin);
+            return;
+          }
+        }
+      }
 
       // ─── Proxy: /v1/messages ───
 

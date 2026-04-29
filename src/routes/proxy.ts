@@ -81,6 +81,7 @@ async function handleStreamProxy(
   idleTimeoutMs: number,
   cors: Record<string, string>,
   origin: string | undefined,
+  fallbackProvider?: Provider,
 ): Promise<void> {
   const sniffer = createTokenSniffer();
   const isPassthrough = provider.config.passthrough;
@@ -181,6 +182,7 @@ async function handleStreamProxy(
       const inputTok = parsedInputTokens || sniffed?.inputTokens || 0;
       const outputTok = parsedOutputTokens || sniffed?.outputTokens || 0;
       const totalTok = inputTok + outputTok;
+      ctx.router.markHealthy(provider.name);
       provider.reportSuccess?.(built.usedKey);
       ctx.rateTracker?.record(totalTok || undefined);
       ctx.logManager?.addLog({
@@ -194,6 +196,7 @@ async function handleStreamProxy(
     },
     (err) => {
       provider.reportError?.(built.usedKey);
+      ctx.router.markUnhealthy(provider.name);
       const errMsg = getErrorMessage(err);
       if (!res.headersSent) {
         ctx.logManager?.addLog({ ...logEntry, status: 502, durationMs: Date.now() - startTime, error: errMsg }, logDetail);
@@ -207,6 +210,7 @@ async function handleStreamProxy(
     (statusCode, _headers, rawBody) => {
       if (statusCode !== 200) {
         provider.reportError?.(built.usedKey);
+        if (statusCode >= 500) ctx.router.markUnhealthy(provider.name);
         ctx.logManager?.addLog({ ...logEntry, status: statusCode, durationMs: Date.now() - startTime, error: rawBody?.slice(0, 200) }, logDetail);
         res.writeHead(statusCode, { 'Content-Type': 'application/json', 'X-Request-Id': requestId, ...cors });
         res.end(rawBody);
@@ -256,6 +260,7 @@ async function handleNonStreamProxy(
     try {
       upstream = await forwardRequest(currentBuilt.url, currentBuilt.headers, currentBuilt.body, ctx.config.streamTimeoutMs ?? 120000, ctx.config.maxResponseBytes);
     } catch (err) {
+      ctx.router.markUnhealthy(p.name);
       if (isFallback) {
         p.reportError?.(currentBuilt.usedKey);
         const errMsg = getErrorMessage(err);
@@ -267,6 +272,7 @@ async function handleNonStreamProxy(
     }
 
     if (upstream.status !== 200) {
+      if (upstream.status >= 500) ctx.router.markUnhealthy(p.name);
       if (isFallback || upstream.status < 500) {
         // Non-5xx or already on fallback: report error immediately
         p.reportError?.(currentBuilt.usedKey);
@@ -306,6 +312,7 @@ async function handleNonStreamProxy(
 
     const usedKey = currentBuilt.usedKey;
     const usage = anthropicResp.usage || (upstreamJson.usage ? { input_tokens: upstreamJson.usage.prompt_tokens, output_tokens: upstreamJson.usage.completion_tokens } : null);
+    ctx.router.markHealthy(p.name);
     p.reportSuccess?.(usedKey);
     ctx.rateTracker?.record((usage?.input_tokens ?? 0) + (usage?.output_tokens ?? 0) || undefined);
     ctx.logManager?.addLog({
@@ -443,6 +450,7 @@ export async function handleProxyRoute(
         req, res, ctx, provider, built, anthropicReq,
         requestId, logEntry, logDetail, startTime,
         reqStreamTimeoutMs, reqStreamIdleMs, cors, origin,
+        fallbackProvider,
       );
       return true;
     }

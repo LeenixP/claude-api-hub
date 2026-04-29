@@ -6,6 +6,7 @@ export class ModelRouter {
   private providers: Map<string, Provider> = new Map();
   private aliases: Record<string, string>;
   private fallbackChain: Record<string, string>;
+  private unhealthyProviders = new Map<string, number>(); // name → recoverAfter (ms)
 
   constructor(aliases: Record<string, string> = {}, fallbackChain: Record<string, string> = {}) {
     this.aliases = aliases;
@@ -59,6 +60,7 @@ export class ModelRouter {
 
     for (const provider of this.providers.values()) {
       if (provider.config.enabled && provider.matchModel(model)) {
+        if (this.isUnhealthy(provider.name)) continue;
         return { provider, resolvedModel: provider.resolveModel(model), originalModel };
       }
     }
@@ -88,6 +90,36 @@ export class ModelRouter {
 
   getFallbackChain(): Record<string, string> {
     return { ...this.fallbackChain };
+  }
+
+  /** Mark a provider as unhealthy for 60 seconds. Repeated calls extend the time. */
+  markUnhealthy(name: string, durationMs = 60_000): void {
+    this.unhealthyProviders.set(name, Date.now() + durationMs);
+  }
+
+  /** Clear unhealthy status for a provider. */
+  markHealthy(name: string): void {
+    this.unhealthyProviders.delete(name);
+  }
+
+  /** Check if a provider is currently considered unhealthy. */
+  isUnhealthy(name: string): boolean {
+    const recoverAt = this.unhealthyProviders.get(name);
+    if (!recoverAt) return false;
+    if (Date.now() >= recoverAt) {
+      this.unhealthyProviders.delete(name);
+      return false;
+    }
+    return true;
+  }
+
+  /** Returns names of providers that are currently healthy. */
+  getHealthyProviderNames(): string[] {
+    const result: string[] = [];
+    for (const p of this.providers.values()) {
+      result.push(p.name);
+    }
+    return result;
   }
 
   private getProviderKey(provider: Provider): string {

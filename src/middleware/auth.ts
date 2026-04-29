@@ -141,6 +141,13 @@ export function timingSafeCompare(a: string, b: string): boolean {
   return crypto.timingSafeEqual(bufA, bufB);
 }
 
+export function verifyProxyToken(token: string, config: GatewayConfig): boolean {
+  const adminToken = config.adminToken || process.env.ADMIN_TOKEN;
+  if (adminToken && timingSafeCompare(token, adminToken)) return true;
+  if (config.password && verifyPassword(token, config.password)) return true;
+  return false;
+}
+
 export function requireAdmin(req: http.IncomingMessage, res: http.ServerResponse, config: GatewayConfig): boolean {
   const password = config.password;
   const adminToken = config.adminToken || process.env.ADMIN_TOKEN;
