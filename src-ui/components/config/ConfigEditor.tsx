@@ -233,7 +233,7 @@ export function ConfigEditor({ config, onSaved }: ConfigEditorProps) {
         body: JSON.stringify({ providerId, credsPath: kp?.config.options?.credsPath }),
       });
       if (res.ok) {
-        showToast('Token refreshed', 'success');
+        showToast(t('config.oauthRefreshed'), 'success');
         const status = await getKiroAuthStatus(kp?.config.options?.credsPath as string);
         setOauthStatuses(prev => ({ ...prev, [providerId]: status }));
       } else {
@@ -369,7 +369,7 @@ export function ConfigEditor({ config, onSaved }: ConfigEditorProps) {
       <h3 style="font-size:15px;font-weight:700;color:var(--color-text);margin-bottom:6px">{highlight(t('config.kiroOAuth'))}</h3>
       <p style="font-size:12px;color:var(--color-text-muted);margin-bottom:18px">{t('config.kiroDesc')}</p>
       {kiroProviders.length === 0 ? (
-        <p style="font-size:14px;color:var(--color-text-dim)">No Kiro OAuth providers configured</p>
+        <p style="font-size:14px;color:var(--color-text-dim)">{t('config.noKiroProviders')}</p>
       ) : (
         kiroProviders.map(kp => {
           const status = oauthStatuses[kp.id];

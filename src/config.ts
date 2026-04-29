@@ -259,7 +259,7 @@ export async function migratePassword(config: GatewayConfig, filePath: string): 
   }
   try {
     const { hashPassword } = await import('./middleware/auth.js');
-    config.password = hashPassword(config.password);
+    config.password = await hashPassword(config.password);
     writeFileSync(filePath, JSON.stringify(config, null, 2), 'utf-8');
     logger.info('Password auto-hashed and saved to config');
     return true;

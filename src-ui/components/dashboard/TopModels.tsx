@@ -63,7 +63,7 @@ export function TopModels({ tokenStats, config }: TopModelsProps) {
     });
 
     return top;
-  }, [tokenStats]);
+  }, [tokenStats, t]);
 
   const maxTokens = useMemo(() => {
     if (!rows.length) return 0;

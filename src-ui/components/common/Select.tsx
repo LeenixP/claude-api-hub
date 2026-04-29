@@ -1,8 +1,6 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'preact/hooks';
 import { useLocale } from '../../lib/i18n.js';
 
-let _selectIdCounter = 0;
-
 interface Option {
   value: string;
   label: string;
@@ -19,7 +17,8 @@ interface SelectProps {
 
 export function Select({ value, options, onChange, placeholder, error }: SelectProps) {
   const { t } = useLocale();
-  const selectId = `select-dropdown-${++_selectIdCounter}`;
+  const idRef = useRef(`select-${Math.random().toString(36).slice(2, 8)}`);
+  const selectId = idRef.current;
   const [open, setOpen] = useState(false);
   const [dropUp, setDropUp] = useState(false);
   const [kbIdx, setKbIdx] = useState(-1);
@@ -156,7 +155,7 @@ export function Select({ value, options, onChange, placeholder, error }: SelectP
     const isActive = o.value === value;
     const isKb = idx === kbIdx;
     return (
-      <div key={o.value} data-idx={idx} role="option" aria-selected={isActive}
+      <div key={o.value} data-idx={idx} role="option" aria-selected={isActive} id={`${selectId}-opt-${idx}`}
         onClick={(e) => { e.stopPropagation(); handleSelect(o.value); }}
         style={`padding:10px 14px;cursor:pointer;font-size:14px;border-radius:6px;margin:2px 4px;${
           isKb ? 'background:var(--color-surface-hover);' : ''
@@ -185,7 +184,7 @@ export function Select({ value, options, onChange, placeholder, error }: SelectP
     : 'position:absolute;top:calc(100% + 4px);left:0;right:0;max-height:260px;overflow-y:auto;background:var(--color-surface);border:1px solid var(--color-border-strong);border-radius:10px;box-shadow:var(--shadow-card-hover);z-index:50;padding:4px 0';
 
   return (
-    <div ref={rootRef} role="combobox" aria-expanded={open} aria-haspopup="listbox" style="position:relative;user-select:none" onKeyDown={handleKeyDown} tabindex="0"
+    <div ref={rootRef} role="combobox" aria-expanded={open} aria-haspopup="listbox" aria-controls={open ? selectId : undefined} aria-activedescendant={kbIdx >= 0 ? `${selectId}-opt-${kbIdx}` : undefined} style="position:relative;user-select:none" onKeyDown={handleKeyDown} tabindex="0"
       onfocusout={(e: FocusEvent) => {
         if (rootRef.current && !rootRef.current.contains(e.relatedTarget as Node)) setOpen(false);
       }}>

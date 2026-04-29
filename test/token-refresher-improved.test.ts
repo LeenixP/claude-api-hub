@@ -69,8 +69,7 @@ describe('TokenRefresher with OAuth providers', () => {
     });
 
     refresher.start();
-    vi.advanceTimersByTime(61 * 1000);
-    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(61 * 1000);
 
     expect(refreshCredentials).toHaveBeenCalled();
     expect(rebuildFn).toHaveBeenCalled();
@@ -85,8 +84,7 @@ describe('TokenRefresher with OAuth providers', () => {
     });
 
     refresher.start();
-    vi.advanceTimersByTime(61 * 1000);
-    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(61 * 1000);
 
     expect(refreshCredentials).not.toHaveBeenCalled();
     expect(rebuildFn).not.toHaveBeenCalled();
@@ -102,8 +100,7 @@ describe('TokenRefresher with OAuth providers', () => {
     (refreshCredentials as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('Refresh failed'));
 
     refresher.start();
-    vi.advanceTimersByTime(61 * 1000);
-    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(61 * 1000);
 
     expect(refreshCredentials).toHaveBeenCalled();
     expect(rebuildFn).not.toHaveBeenCalled();
@@ -124,8 +121,7 @@ describe('TokenRefresher with OAuth providers', () => {
     });
 
     refresher.start();
-    vi.advanceTimersByTime(61 * 1000);
-    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(61 * 1000);
 
     expect(refreshCredentials).toHaveBeenCalled();
     expect(rebuildFn).toHaveBeenCalled();
@@ -142,8 +138,7 @@ describe('TokenRefresher with OAuth providers', () => {
     refresher = new TokenRefresher(mockRouter, config, rebuildFn, 1);
 
     refresher.start();
-    vi.advanceTimersByTime(61 * 1000);
-    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(61 * 1000);
 
     expect(getCredentialStatus).not.toHaveBeenCalled();
     expect(rebuildFn).not.toHaveBeenCalled();
@@ -166,8 +161,7 @@ describe('TokenRefresher with OAuth providers', () => {
     refresher = new TokenRefresher(mockRouter, config, rebuildFn, 1);
 
     refresher.start();
-    vi.advanceTimersByTime(61 * 1000);
-    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(61 * 1000);
 
     expect(getCredentialStatus).not.toHaveBeenCalled();
     expect(rebuildFn).not.toHaveBeenCalled();
@@ -180,8 +174,7 @@ describe('TokenRefresher with OAuth providers', () => {
     });
 
     refresher.start();
-    vi.advanceTimersByTime(61 * 1000);
-    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(61 * 1000);
 
     expect(refreshCredentials).not.toHaveBeenCalled();
     expect(rebuildFn).not.toHaveBeenCalled();
@@ -196,8 +189,7 @@ describe('TokenRefresher with OAuth providers', () => {
     });
 
     refresher.start();
-    vi.advanceTimersByTime(61 * 1000);
-    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(61 * 1000);
 
     expect(refreshCredentials).not.toHaveBeenCalled();
     expect(rebuildFn).not.toHaveBeenCalled();
@@ -236,8 +228,7 @@ describe('TokenRefresher with OAuth providers', () => {
     refresher = new TokenRefresher(mockRouter, config, rebuildFn, 1);
 
     refresher.start();
-    vi.advanceTimersByTime(61 * 1000);
-    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(61 * 1000);
 
     expect(refreshCredentials).toHaveBeenCalledTimes(2);
     expect(rebuildFn).toHaveBeenCalled();

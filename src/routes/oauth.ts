@@ -34,9 +34,9 @@ export async function handleOAuthRoutes(
         const provider = method === 'github' ? 'Github' as const : 'Google' as const;
         result = await handleSocialAuth(provider, { region });
       }
-      sendJson(res, 200, { authUrl: result.authUrl, authInfo: result.authInfo }, config, origin);
+      await sendJson(res, 200, { authUrl: result.authUrl, authInfo: result.authInfo }, config, origin);
     } catch (err) {
-      sendError(res, 500, 'api_error', `OAuth failed: ${getErrorMessage(err)}`, config, origin);
+      await sendError(res, 500, 'api_error', `OAuth failed: ${getErrorMessage(err)}`, config, origin);
     }
     return true;
   }
@@ -54,12 +54,12 @@ export async function handleOAuthRoutes(
         authMethod: body.authMethod,
       });
       if (result.success) {
-        sendJson(res, 200, { success: true, credsPath: result.credsPath }, config, origin);
+        await sendJson(res, 200, { success: true, credsPath: result.credsPath }, config, origin);
       } else {
-        sendError(res, 400, 'invalid_request_error', result.error || 'Import failed', config, origin);
+        await sendError(res, 400, 'invalid_request_error', result.error || 'Import failed', config, origin);
       }
     } catch (err) {
-      sendError(res, 500, 'api_error', `Import failed: ${getErrorMessage(err)}`, config, origin);
+      await sendError(res, 500, 'api_error', `Import failed: ${getErrorMessage(err)}`, config, origin);
     }
     return true;
   }
@@ -69,9 +69,9 @@ export async function handleOAuthRoutes(
     const credsPath = urlObj.searchParams.get('credsPath') || undefined;
     try {
       const status = getCredentialStatus(credsPath);
-      sendJson(res, 200, status, config, origin);
+      await sendJson(res, 200, status, config, origin);
     } catch (err) {
-      sendError(res, 500, 'api_error', `Status check failed: ${getErrorMessage(err)}`, config, origin);
+      await sendError(res, 500, 'api_error', `Status check failed: ${getErrorMessage(err)}`, config, origin);
     }
     return true;
   }
@@ -81,28 +81,28 @@ export async function handleOAuthRoutes(
     if (!body) return true;
     try {
       const refreshed = await refreshCredentials(body.credsPath);
-      sendJson(res, 200, { success: true, expiresAt: refreshed.expiresAt }, config, origin);
+      await sendJson(res, 200, { success: true, expiresAt: refreshed.expiresAt }, config, origin);
     } catch (err) {
-      sendError(res, 500, 'api_error', `Refresh failed: ${getErrorMessage(err)}`, config, origin);
+      await sendError(res, 500, 'api_error', `Refresh failed: ${getErrorMessage(err)}`, config, origin);
     }
     return true;
   }
 
   if (req.method === 'GET' && pathname === '/api/oauth/kiro/result') {
     const result = getLastOAuthResult();
-    sendJson(res, 200, result || { success: false, error: 'No pending OAuth result' }, config, origin);
+    await sendJson(res, 200, result || { success: false, error: 'No pending OAuth result' }, config, origin);
     if (result) clearLastOAuthResult();
     return true;
   }
 
   if (req.method === 'POST' && pathname === '/api/oauth/kiro/cancel') {
     cancelOAuth();
-    sendJson(res, 200, { cancelled: true }, config, origin);
+    await sendJson(res, 200, { cancelled: true }, config, origin);
     return true;
   }
 
   if (req.method === 'GET' && pathname === '/api/oauth/kiro/models') {
-    sendJson(res, 200, {
+    await sendJson(res, 200, {
       models: [
         'claude-sonnet-4-6',
         'claude-haiku-4-5',

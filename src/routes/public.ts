@@ -46,14 +46,14 @@ export async function handlePublicRoutes(
   }
 
   if (req.method === 'GET' && pathname === '/health') {
-    sendJson(res, 200, { status: 'ok', timestamp: new Date().toISOString() }, config, origin);
+    await sendJson(res, 200, { status: 'ok', timestamp: new Date().toISOString() }, config, origin);
     return true;
   }
 
   if (req.method === 'GET' && pathname === '/icon.png') {
     const icon = getIconData();
     if (!icon) {
-      sendError(res, 404, 'not_found_error', 'Icon not found', config, origin);
+      await sendError(res, 404, 'not_found_error', 'Icon not found', config, origin);
       return true;
     }
     res.writeHead(200, {
@@ -67,7 +67,7 @@ export async function handlePublicRoutes(
 
   if (req.method === 'GET' && pathname === '/api/auth/check') {
     const password = config.password;
-    sendJson(res, 200, { required: !!password }, config, origin);
+    await sendJson(res, 200, { required: !!password }, config, origin);
     return true;
   }
 
@@ -100,7 +100,7 @@ export async function handlePublicRoutes(
         models.push({ id: model, object: 'model', owned_by: provider.name });
       }
     }
-    sendJson(res, 200, { object: 'list', data: models }, config, origin);
+    await sendJson(res, 200, { object: 'list', data: models }, config, origin);
     return true;
   }
 

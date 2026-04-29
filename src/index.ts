@@ -118,6 +118,9 @@ async function main(): Promise<void> {
       const aliasStr = Object.entries(config.aliases).map(([k, v]) => `${k}→${v}`).join(', ');
       logger.info(`Aliases: ${aliasStr}`);
     }
+    if (process.env.ANTHROPIC_AUTH_TOKEN) {
+      logger.info('Proxy auth: ANTHROPIC_AUTH_TOKEN detected — x-api-key authentication enabled');
+    }
   });
 
 

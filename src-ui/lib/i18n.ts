@@ -22,6 +22,8 @@ const zh: Record<string, string> = {
   'app.retry': '重试',
   'app.skipToContent': '跳转到内容',
   'app.testComplete': '测试完成：{ok} 正常，{fail} 失败',
+  'app.updateAvailable': 'v{latest} 可用 (当前 {current})',
+  'app.viewUpdate': '查看更新 →',
 
   // Login
   'login.title': 'API Hub',
@@ -363,6 +365,8 @@ const en: Record<string, string> = {
   'app.retry': 'Retry',
   'app.skipToContent': 'Skip to content',
   'app.testComplete': 'Test complete: {ok} healthy, {fail} failed',
+  'app.updateAvailable': 'v{latest} available (current {current})',
+  'app.viewUpdate': 'View update →',
 
   'login.title': 'API Hub',
   'login.subtitle': 'Enter password to continue',

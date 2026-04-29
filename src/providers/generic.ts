@@ -22,7 +22,7 @@ export class GenericOpenAIProvider implements Provider {
     this.name = config.name;
     this.config = config;
     if (config.apiKeys && config.apiKeys.length > 0) {
-      this.pool = new KeyPool(config.apiKeys);
+      KeyPool.create(config.apiKeys).then(pool => { this.pool = pool; });
     }
   }
 

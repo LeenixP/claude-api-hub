@@ -17,7 +17,7 @@ export async function handleMetrics(
   cors: Record<string, string>,
 ): Promise<boolean> {
   if (req.method === 'GET' && pathname === '/metrics') {
-    if (!requireAdmin(req, res, ctx.config)) return true;
+    if (!await requireAdmin(req, res, ctx.config)) return true;
     const lines: string[] = [];
 
     // --- process metrics ---

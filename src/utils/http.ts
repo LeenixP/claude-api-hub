@@ -57,23 +57,6 @@ export function compressBody(
   return { buffer: Buffer.from(body) };
 }
 
-export function sendJson(res: http.ServerResponse, status: number, body: unknown, config?: GatewayConfig, origin?: string): void {
-  const payload = JSON.stringify(body);
-  const cors = config ? getCorsHeaders(config, origin) : { 'Access-Control-Allow-Origin': '*' };
-  const acceptEncoding = (res.req?.headers['accept-encoding'] as string) || '';
-  const compressed = compressBody(payload, acceptEncoding, 'application/json');
-  const headers: Record<string, string> = { 'Content-Type': 'application/json', ...cors };
-  if (compressed.encoding) {
-    headers['Content-Encoding'] = compressed.encoding;
-  }
-  res.writeHead(status, headers);
-  res.end(compressed.buffer);
-}
-
-export function sendError(res: http.ServerResponse, status: number, type: string, message: string, config?: GatewayConfig, origin?: string): void {
-  sendJson(res, status, { type: 'error', error: { type, message } }, config, origin);
-}
-
 export async function compressBodyAsync(
   body: string,
   acceptEncoding: string,
@@ -97,7 +80,20 @@ export async function compressBodyAsync(
   return { buffer: Buffer.from(body) };
 }
 
-export async function sendJsonAsync(
+export function sendJsonSync(res: http.ServerResponse, status: number, body: unknown, config?: GatewayConfig, origin?: string): void {
+  const payload = JSON.stringify(body);
+  const cors = config ? getCorsHeaders(config, origin) : { 'Access-Control-Allow-Origin': '*' };
+  const acceptEncoding = (res.req?.headers['accept-encoding'] as string) || '';
+  const compressed = compressBody(payload, acceptEncoding, 'application/json');
+  const headers: Record<string, string> = { 'Content-Type': 'application/json', ...cors };
+  if (compressed.encoding) {
+    headers['Content-Encoding'] = compressed.encoding;
+  }
+  res.writeHead(status, headers);
+  res.end(compressed.buffer);
+}
+
+export async function sendJson(
   res: http.ServerResponse,
   status: number,
   body: unknown,
@@ -114,6 +110,10 @@ export async function sendJsonAsync(
   }
   res.writeHead(status, headers);
   res.end(compressed.buffer);
+}
+
+export async function sendError(res: http.ServerResponse, status: number, type: string, message: string, config?: GatewayConfig, origin?: string): Promise<void> {
+  await sendJson(res, status, { type: 'error', error: { type, message } }, config, origin);
 }
 
 export function readBody(req: http.IncomingMessage, maxBytes = MAX_BODY_SIZE): Promise<string> {

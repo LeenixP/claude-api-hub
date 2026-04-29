@@ -207,10 +207,10 @@ function AppContent() {
           <div style={`margin-bottom:20px;padding:12px 18px;border-radius:8px;display:flex;align-items:center;gap:12px;background:rgba(59,130,246,0.1);border:1px solid rgba(59,130,246,0.25)`}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--color-primary)" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
             <span style="font-size:13px;color:var(--color-text);font-weight:500">
-              v{updateInfo.latestVersion} 可用 (当前 {config.version})
+              {t('app.updateAvailable', { latest: updateInfo.latestVersion, current: config.version })}
             </span>
             <a href="https://github.com/LeenixP/claude-api-hub/releases" target="_blank" rel="noopener" style="margin-left:auto;font-size:12px;color:var(--color-primary);text-decoration:none;font-weight:600;white-space:nowrap">
-              查看更新 →
+              {t('app.viewUpdate')}
             </a>
           </div>
         )}
