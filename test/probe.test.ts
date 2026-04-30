@@ -1,5 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll, vi, beforeEach } from 'vitest';
 import http from 'http';
+
+vi.stubEnv('ANTHROPIC_AUTH_TOKEN', '');
 import { createServer } from '../src/server.js';
 import { createRouter } from '../src/router.js';
 import { GenericOpenAIProvider } from '../src/providers/generic.js';

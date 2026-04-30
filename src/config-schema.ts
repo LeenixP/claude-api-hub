@@ -68,7 +68,6 @@ export const PRESERVED_KEYS = new Set([
   'aliases',        // model alias mappings
   'tierTimeouts',   // per-tier timeout overrides
   'password',       // admin dashboard password
-  'adminToken',     // admin auth token
   'corsOrigins',    // CORS allowed origins
   'fallbackChain',  // provider fallback chain
   'version',        // gateway version stamp

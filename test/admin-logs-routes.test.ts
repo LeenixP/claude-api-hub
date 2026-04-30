@@ -63,7 +63,7 @@ describe('admin logs routes', () => {
   let rateTracker: RateTracker;
 
   beforeAll(async () => {
-    const config = makeConfig({ adminToken: 'admin-secret' });
+    const config = makeConfig({ proxyApiKey: 'admin-secret' });
     const providers = [new GenericOpenAIProvider(testProviderConfig)];
     const router = createRouter(providers, {});
     logManager = new LogManager(200, 100, ':memory:');
@@ -96,7 +96,7 @@ describe('admin logs routes', () => {
     await new Promise<void>((resolve) => server.close(() => resolve()));
   });
 
-  const authHeaders = { 'x-admin-token': 'admin-secret' };
+  const authHeaders = { 'x-api-key': 'admin-secret' };
 
   it('GET /api/logs returns paginated response with total and logs', async () => {
     const res = await request(server, { method: 'GET', path: '/api/logs', headers: authHeaders });

@@ -25,8 +25,8 @@ export function createServer(router: ModelRouter, config: GatewayConfig, logMana
   if (config.rateLimitRpm && config.rateLimitRpm > 0) {
     rateLimiter = new PerIpRateLimiter(config.rateLimitRpm);
   }
-  if (!config.password && !config.adminToken && !process.env.ADMIN_TOKEN && !config.proxyApiKey) {
-    logger.warn('No password configured — management API is unprotected. Set password in config or ADMIN_TOKEN env var.');
+  if (!config.password && !config.proxyApiKey && !process.env.ANTHROPIC_AUTH_TOKEN) {
+    logger.warn('No auth configured — proxy and management API are unprotected.');
   }
 
   const ctx = { router, config, logManager, eventBus, rateTracker };
@@ -110,7 +110,7 @@ export function createServer(router: ModelRouter, config: GatewayConfig, logMana
       // ─── Proxy Auth Gate ───
       if (pathname.startsWith('/v1/') && pathname !== '/v1/models') {
         const authToken = process.env.ANTHROPIC_AUTH_TOKEN;
-        const proxySecret = config.password || config.adminToken || process.env.ADMIN_TOKEN;
+        const proxySecret = config.password;
 
         let proxyAuthed = false;
 
@@ -136,7 +136,7 @@ export function createServer(router: ModelRouter, config: GatewayConfig, logMana
 
           if (!proxyAuthed) {
             await sendError(res, 401, 'authentication_error',
-              authToken ? 'Invalid API key. Set x-api-key header with your ANTHROPIC_AUTH_TOKEN.' : 'Missing hub token. Set x-hub-token header.',
+              'Invalid or missing API key. Set x-api-key header with your ANTHROPIC_AUTH_TOKEN or proxy API key.',
               config, origin);
             return;
           }

@@ -1,5 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import http from 'http';
+
+vi.stubEnv('ANTHROPIC_AUTH_TOKEN', '');
 import {
   createSessionToken,
   isValidSession,
@@ -101,7 +103,7 @@ describe('timingSafeCompare', () => {
 });
 
 describe('requireAdmin', () => {
-  function mockReqRes(token?: string, headerType?: 'authorization' | 'x-admin-token') {
+  function mockReqRes(token?: string, headerType?: 'authorization' | 'x-admin-token' | 'x-api-key') {
     const req = {
       headers: {} as Record<string, string>,
     } as http.IncomingMessage;
@@ -109,6 +111,8 @@ describe('requireAdmin', () => {
       req.headers['authorization'] = `Bearer ${token}`;
     } else if (token && headerType === 'x-admin-token') {
       req.headers['x-admin-token'] = token;
+    } else if (token && headerType === 'x-api-key') {
+      req.headers['x-api-key'] = token;
     }
     const res = new http.ServerResponse(req);
     return { req, res };
@@ -121,48 +125,49 @@ describe('requireAdmin', () => {
     logLevel: 'error',
   };
 
-  it('returns true when no password or adminToken configured', async () => {
+  it('returns true when no password or proxyApiKey configured', async () => {
     const { req, res } = mockReqRes();
     expect(await requireAdmin(req, res, baseConfig)).toBe(true);
   });
 
-  it('returns false with no token when adminToken is required', async () => {
+  it('returns false with no token when proxyApiKey is required', async () => {
     const { req, res } = mockReqRes();
-    const config = { ...baseConfig, adminToken: 'secret' };
+    const config = { ...baseConfig, proxyApiKey: 'secret' };
     expect(await requireAdmin(req, res, config)).toBe(false);
     expect(res.statusCode).toBe(401);
   });
 
-  it('returns false with wrong token when adminToken is required', async () => {
+  it('returns false with wrong token when proxyApiKey is required', async () => {
     const { req, res } = mockReqRes('wrong', 'x-admin-token');
-    const config = { ...baseConfig, adminToken: 'secret' };
+    const config = { ...baseConfig, proxyApiKey: 'secret' };
     expect(await requireAdmin(req, res, config)).toBe(false);
     expect(res.statusCode).toBe(401);
   });
 
-  it('returns true with correct x-admin-token', async () => {
-    const { req, res } = mockReqRes('secret', 'x-admin-token');
-    const config = { ...baseConfig, adminToken: 'secret' };
+  it('returns true with correct x-api-key', async () => {
+    const { req, res } = mockReqRes('secret', 'x-api-key');
+    const config = { ...baseConfig, proxyApiKey: 'secret' };
     expect(await requireAdmin(req, res, config)).toBe(true);
   });
 
-  it('returns true with correct Bearer token', async () => {
-    const { req, res } = mockReqRes('secret', 'authorization');
-    const config = { ...baseConfig, adminToken: 'secret' };
+  it('returns true with correct x-api-key via authorization is session only', async () => {
+    const sessionToken = createSessionToken();
+    const { req, res } = mockReqRes(sessionToken, 'authorization');
+    const config = { ...baseConfig, proxyApiKey: 'secret' };
     expect(await requireAdmin(req, res, config)).toBe(true);
   });
 
   it('returns true with valid session token via x-admin-token', async () => {
     const sessionToken = createSessionToken();
     const { req, res } = mockReqRes(sessionToken, 'x-admin-token');
-    const config = { ...baseConfig, adminToken: 'secret' };
+    const config = { ...baseConfig, proxyApiKey: 'secret' };
     expect(await requireAdmin(req, res, config)).toBe(true);
   });
 
   it('returns true with valid session token via Bearer', async () => {
     const sessionToken = createSessionToken();
     const { req, res } = mockReqRes(sessionToken, 'authorization');
-    const config = { ...baseConfig, adminToken: 'secret' };
+    const config = { ...baseConfig, proxyApiKey: 'secret' };
     expect(await requireAdmin(req, res, config)).toBe(true);
   });
 
@@ -175,7 +180,7 @@ describe('requireAdmin', () => {
   it('returns false when password is set but no token provided (needs session from login)', async () => {
     const { req, res } = mockReqRes();
     const config = { ...baseConfig, password: 'mypass' };
-    // Password is set but no adminToken: must authenticate via login to get session token
+    // Password is set but no proxyApiKey: must authenticate via login to get session token
     expect(await requireAdmin(req, res, config)).toBe(false);
     expect(res.statusCode).toBe(401);
   });

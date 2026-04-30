@@ -39,7 +39,6 @@ export interface GatewayConfig {
   aliases?: Record<string, string>;
   tierTimeouts?: Record<string, TierTimeout>;
   version?: string;
-  adminToken?: string;
   corsOrigins?: string[];
   rateLimitRpm?: number;
   streamTimeoutMs?: number;

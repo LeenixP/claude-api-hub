@@ -1,5 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import http from 'http';
+
+vi.stubEnv('ANTHROPIC_AUTH_TOKEN', '');
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
