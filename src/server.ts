@@ -25,8 +25,8 @@ export function createServer(router: ModelRouter, config: GatewayConfig, logMana
   if (config.rateLimitRpm && config.rateLimitRpm > 0) {
     rateLimiter = new PerIpRateLimiter(config.rateLimitRpm);
   }
-  if (!config.password && !config.adminToken && !process.env.ADMIN_TOKEN && !config.proxyApiKey) {
-    logger.warn('No password configured — management API is unprotected. Set password in config or ADMIN_TOKEN env var.');
+  if (!config.password && !config.proxyApiKey && !process.env.ANTHROPIC_AUTH_TOKEN) {
+    logger.warn('No auth configured — proxy and management API are unprotected.');
   }
 
   const ctx = { router, config, logManager, eventBus, rateTracker };
@@ -108,35 +108,36 @@ export function createServer(router: ModelRouter, config: GatewayConfig, logMana
       if (await handleProbeRoute(req, res, ctx, pathname, cors, origin)) return;
 
       // ─── Proxy Auth Gate ───
+      // Only ANTHROPIC_AUTH_TOKEN and proxyApiKey gate the proxy.
+      // Dashboard password does NOT affect proxy — it's for dashboard login only.
       if (pathname.startsWith('/v1/') && pathname !== '/v1/models') {
         const authToken = process.env.ANTHROPIC_AUTH_TOKEN;
-        const proxySecret = config.password || config.adminToken || process.env.ADMIN_TOKEN;
+        const proxyApiKey = config.proxyApiKey;
 
-        let proxyAuthed = false;
+        if (authToken || proxyApiKey) {
+          let proxyAuthed = false;
 
-        // Check x-api-key against ANTHROPIC_AUTH_TOKEN or proxyApiKey
-        const apiKey = req.headers['x-api-key'] as string;
-        if (apiKey) {
-          if (authToken && timingSafeCompare(apiKey, authToken)) {
-            proxyAuthed = true;
-          } else if (config.proxyApiKey && timingSafeCompare(apiKey, config.proxyApiKey)) {
-            proxyAuthed = true;
+          const apiKey = req.headers['x-api-key'] as string;
+          if (apiKey) {
+            if (authToken && timingSafeCompare(apiKey, authToken)) {
+              proxyAuthed = true;
+            } else if (proxyApiKey && timingSafeCompare(apiKey, proxyApiKey)) {
+              proxyAuthed = true;
+            }
           }
-        }
 
-        // Fall back to existing auth methods if not yet authenticated
-        if (!proxyAuthed && (authToken || proxySecret || config.proxyApiKey)) {
-          const token = (req.headers['x-hub-token'] as string)
-            || req.headers['authorization']?.replace(/^Bearer\s+/i, '');
-          if (token && isValidSession(token)) {
-            proxyAuthed = true;
-          } else if (token && await verifyProxyToken(token, config)) {
-            proxyAuthed = true;
+          // Also accept session tokens (from dashboard login)
+          if (!proxyAuthed) {
+            const token = (req.headers['x-hub-token'] as string)
+              || req.headers['authorization']?.replace(/^Bearer\s+/i, '');
+            if (token && isValidSession(token)) {
+              proxyAuthed = true;
+            }
           }
 
           if (!proxyAuthed) {
             await sendError(res, 401, 'authentication_error',
-              authToken ? 'Invalid API key. Set x-api-key header with your ANTHROPIC_AUTH_TOKEN.' : 'Missing hub token. Set x-hub-token header.',
+              'Invalid or missing API key. Set x-api-key header with your ANTHROPIC_AUTH_TOKEN or proxy API key.',
               config, origin);
             return;
           }

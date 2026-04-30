@@ -42,7 +42,7 @@ Options:
 Environment variables:
   API_HUB_PORT         Override port
   API_HUB_HOST         Override host
-  ADMIN_TOKEN          Admin authentication token`);
+  ANTHROPIC_AUTH_TOKEN Proxy authentication token`);
       process.exit(0);
     }
   }

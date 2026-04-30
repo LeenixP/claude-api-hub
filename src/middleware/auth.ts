@@ -144,21 +144,17 @@ export function timingSafeCompare(a: string, b: string): boolean {
 }
 
 export async function verifyProxyToken(token: string, config: GatewayConfig): Promise<boolean> {
-  const adminToken = config.adminToken || process.env.ADMIN_TOKEN;
-  if (adminToken && timingSafeCompare(token, adminToken)) return true;
   if (config.password && await verifyPassword(token, config.password)) return true;
   return false;
 }
 
 export async function requireAdmin(req: http.IncomingMessage, res: http.ServerResponse, config: GatewayConfig): Promise<boolean> {
   const password = config.password;
-  const adminToken = config.adminToken || process.env.ADMIN_TOKEN;
-  if (!password && !adminToken) return true;
+  if (!password && !config.proxyApiKey && !process.env.ANTHROPIC_AUTH_TOKEN) return true;
   const token = req.headers['authorization']?.replace('Bearer ', '')
     || req.headers['x-admin-token'] as string;
   if (token && isValidSession(token)) return true;
-  if (token && adminToken && timingSafeCompare(token, adminToken)) return true;
-  // Also accept ANTHROPIC_AUTH_TOKEN via x-api-key for admin access
+  // Accept ANTHROPIC_AUTH_TOKEN via x-api-key
   const authToken = process.env.ANTHROPIC_AUTH_TOKEN;
   if (authToken) {
     const apiKey = req.headers['x-api-key'] as string;
@@ -169,7 +165,7 @@ export async function requireAdmin(req: http.IncomingMessage, res: http.ServerRe
     const apiKey = req.headers['x-api-key'] as string;
     if (apiKey && timingSafeCompare(apiKey, config.proxyApiKey)) return true;
   }
-  await sendError(res, 401, 'authentication_error', 'Invalid or missing admin token', config, req.headers['origin'] as string);
+  await sendError(res, 401, 'authentication_error', 'Invalid or missing credentials', config, req.headers['origin'] as string);
   return false;
 }
 

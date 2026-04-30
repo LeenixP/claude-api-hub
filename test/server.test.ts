@@ -187,7 +187,7 @@ describe('server with admin auth', () => {
   let server: http.Server;
 
   beforeAll(async () => {
-    const config = makeConfig({ adminToken: 'test-secret-token' });
+    const config = makeConfig({ proxyApiKey: 'test-secret-token' });
     const providers = [new GenericOpenAIProvider(testProviderConfig)];
     const router = createRouter(providers, {});
     server = createServer(router, config, new LogManager(200, 100, ':memory:'));
@@ -207,7 +207,7 @@ describe('server with admin auth', () => {
     const res = await request(server, {
       method: 'GET',
       path: '/api/config',
-      headers: { 'x-admin-token': 'test-secret-token' },
+      headers: { 'x-api-key': 'test-secret-token' },
     });
     expect(res.status).toBe(200);
     const json = JSON.parse(res.body);
@@ -219,7 +219,7 @@ describe('server with admin auth', () => {
     const res = await request(server, {
       method: 'GET',
       path: '/api/config',
-      headers: { 'x-admin-token': 'wrong-token' },
+      headers: { 'x-api-key': 'wrong-token' },
     });
     expect(res.status).toBe(401);
   });
@@ -241,7 +241,7 @@ describe('server with admin auth', () => {
     const res = await request(server, {
       method: 'POST',
       path: '/api/logs/clear',
-      headers: { 'Authorization': 'Bearer test-secret-token' },
+      headers: { 'x-api-key': 'test-secret-token' },
     });
     expect(res.status).toBe(200);
   });
@@ -379,11 +379,11 @@ describe('server /api/config/import', () => {
 
   beforeAll(async () => {
     tmpDir = mkdtempSync(join(tmpdir(), 'api-hub-test-'));
-    const seedConfig = makeConfig({ adminToken: 'import-token', port: 9999 });
+    const seedConfig = makeConfig({ proxyApiKey: 'import-token', port: 9999 });
     const tmpConfigPath = join(tmpDir, 'providers.json');
     writeFileSync(tmpConfigPath, JSON.stringify(seedConfig, null, 2));
     loadConfig(tmpConfigPath);
-    const config = makeConfig({ adminToken: 'import-token' });
+    const config = makeConfig({ proxyApiKey: 'import-token' });
     const providers = [new GenericOpenAIProvider(testProviderConfig)];
     const router = createRouter(providers, {});
     server = createServer(router, config, new LogManager(200, 100, ':memory:'));
@@ -409,7 +409,7 @@ describe('server /api/config/import', () => {
     const res = await request(server, {
       method: 'POST',
       path: '/api/config/import',
-      headers: { 'Content-Type': 'application/json', 'x-admin-token': 'import-token' },
+      headers: { 'Content-Type': 'application/json', 'x-api-key': 'import-token' },
       body: '{bad json',
     });
     expect(res.status).toBe(400);
@@ -419,7 +419,7 @@ describe('server /api/config/import', () => {
     const res = await request(server, {
       method: 'POST',
       path: '/api/config/import',
-      headers: { 'Content-Type': 'application/json', 'x-admin-token': 'import-token' },
+      headers: { 'Content-Type': 'application/json', 'x-api-key': 'import-token' },
       body: JSON.stringify({}),
     });
     expect(res.status).toBe(400);
@@ -437,7 +437,7 @@ describe('server /api/config/import', () => {
     const res = await request(server, {
       method: 'POST',
       path: '/api/config/import',
-      headers: { 'Content-Type': 'application/json', 'x-admin-token': 'import-token' },
+      headers: { 'Content-Type': 'application/json', 'x-api-key': 'import-token' },
       body: JSON.stringify(newConfig),
     });
     expect(res.status).toBe(200);
@@ -515,7 +515,7 @@ describe('server /api/auth/login', () => {
   });
 });
 
-describe('server /api/auth/login without adminToken', () => {
+describe('server /api/auth/login without proxyApiKey', () => {
   let server: http.Server;
 
   beforeEach(() => {
@@ -534,7 +534,7 @@ describe('server /api/auth/login without adminToken', () => {
     await new Promise<void>((resolve) => server.close(() => resolve()));
   });
 
-  it('POST /api/auth/login without adminToken configured returns success with empty token', async () => {
+  it('POST /api/auth/login without proxyApiKey configured returns success with empty token', async () => {
     const res = await request(server, {
       method: 'POST',
       path: '/api/auth/login',
@@ -668,8 +668,8 @@ describe('server with ANTHROPIC_AUTH_TOKEN proxy auth', () => {
     server = createServer(router, config, new LogManager(200, 100, ':memory:'));
     await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', () => resolve()));
 
-    // Server with adminToken to test x-hub-token backward compat
-    const adminConfig = makeConfig({ adminToken: 'test-auth-token' });
+    // Server with proxyApiKey to test x-hub-token backward compat
+    const adminConfig = makeConfig({ proxyApiKey: 'test-auth-token' });
     const adminProviders = [new GenericOpenAIProvider(testProviderConfig)];
     const adminRouter = createRouter(adminProviders, {});
     serverWithAdmin = createServer(adminRouter, adminConfig, new LogManager(200, 100, ':memory:'));
@@ -711,17 +711,17 @@ describe('server with ANTHROPIC_AUTH_TOKEN proxy auth', () => {
     expect(json.error.type).toBe('authentication_error');
   });
 
-  it('request with valid x-hub-token matching adminToken still works (backward compat)', async () => {
+  it('request with valid x-api-key matching proxyApiKey still works (backward compat)', async () => {
     const res = await request(serverWithAdmin, {
       method: 'POST',
       path: '/v1/messages',
       headers: {
         'Content-Type': 'application/json',
-        'x-hub-token': 'test-auth-token',
+        'x-api-key': 'test-auth-token',
       },
       body: JSON.stringify({ model: 'test-model-1', messages: [{ role: 'user', content: 'hi' }], max_tokens: 10 }),
     });
-    // x-hub-token matches adminToken via verifyProxyToken — upstream is fake so expect 502, not 401
+    // x-api-key matches proxyApiKey — upstream is fake so expect 502, not 401
     expect(res.status).not.toBe(401);
   });
 });

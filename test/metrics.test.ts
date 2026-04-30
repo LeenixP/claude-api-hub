@@ -1,5 +1,7 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import http from 'http';
+
+vi.stubEnv('ANTHROPIC_AUTH_TOKEN', '');
 import { createServer } from '../src/server.js';
 import { createRouter } from '../src/router.js';
 import { GenericOpenAIProvider } from '../src/providers/generic.js';
@@ -73,7 +75,7 @@ describe('metrics endpoint with admin auth', () => {
   let server: http.Server;
 
   beforeAll(async () => {
-    const config = makeConfig({ adminToken: 'metrics-secret' });
+    const config = makeConfig({ proxyApiKey: 'metrics-secret' });
     const providers = [new GenericOpenAIProvider(testProviderConfig)];
     const router = createRouter(providers, {});
     server = createServer(router, config, new LogManager(200, 100, ':memory:'));
@@ -93,7 +95,7 @@ describe('metrics endpoint with admin auth', () => {
     const res = await request(server, {
       method: 'GET',
       path: '/metrics',
-      headers: { 'x-admin-token': 'metrics-secret' },
+      headers: { 'x-api-key': 'metrics-secret' },
     });
     expect(res.status).toBe(200);
     expect(res.body).toContain('process_resident_memory_bytes');

@@ -108,12 +108,12 @@ describe('admin config routes', () => {
     tmpDir = mkdtempSync(join(tmpdir(), 'api-hub-test-'));
     const configPath = join(tmpDir, 'providers.json');
     // Use port 9999 for the temp config file (loadConfig validates port >= 1)
-    const fileConfig = makeConfig({ adminToken: 'admin-secret', port: 9999 });
+    const fileConfig = makeConfig({ proxyApiKey: 'admin-secret', port: 9999 });
     writeFileSync(configPath, JSON.stringify(fileConfig, null, 2));
     loadConfig(configPath);
 
     // Use port 0 for the actual test server
-    config = makeConfig({ adminToken: 'admin-secret' });
+    config = makeConfig({ proxyApiKey: 'admin-secret' });
     const providers = [new GenericOpenAIProvider(testProviderConfig)];
     const router = createRouter(providers, config.aliases ?? {});
     server = createServer(router, config, new LogManager(200, 100, ':memory:'));
@@ -125,7 +125,7 @@ describe('admin config routes', () => {
     try { rmSync(tmpDir, { recursive: true }); } catch {}
   });
 
-  const authHeaders = { 'x-admin-token': 'admin-secret' };
+  const authHeaders = { 'x-api-key': 'admin-secret' };
 
   it('GET /api/config returns masked config', async () => {
     const res = await request(server, { method: 'GET', path: '/api/config', headers: authHeaders });
