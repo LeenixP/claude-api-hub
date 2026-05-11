@@ -1,6 +1,6 @@
 import http from 'http';
 import crypto from 'crypto';
-import { sendJson, sendError, maskKey } from '../utils/http.js';
+import { sendJson, sendError } from '../utils/http.js';
 import { getErrorMessage } from '../utils/error.js';
 import { getConfigPath, loadConfig, normalizeProviders } from '../config.js';
 import { getAllowedConfigKeys } from '../config-schema.js';
@@ -60,16 +60,7 @@ export async function handleAdminConfigRoutes(
   const { config, router } = ctx;
 
   if (req.method === 'GET' && pathname === '/api/config') {
-    const masked: GatewayConfig = {
-      ...config,
-      providers: Object.fromEntries(
-        Object.entries(config.providers).map(([key, p]) => [key, { ...p, apiKey: maskKey(p.apiKey) }]),
-      ),
-    };
-    if (masked.proxyApiKey) {
-      masked.proxyApiKey = maskKey(masked.proxyApiKey);
-    }
-    await sendJson(res, 200, masked, config, origin);
+    await sendJson(res, 200, config, config, origin);
     return true;
   }
 
@@ -163,7 +154,7 @@ export async function handleAdminConfigRoutes(
     config.providers[name] = newProvider;
     saveConfig(config);
     await rebuildProviders(router, config);
-    await sendJson(res, 201, { ...newProvider, apiKey: maskKey(newProvider.apiKey) }, config, origin);
+    await sendJson(res, 201, newProvider, config, origin);
     return true;
   }
 
@@ -193,16 +184,11 @@ export async function handleAdminConfigRoutes(
       const urlErr = await validateBaseUrl(filtered.baseUrl, config.ssrfAllowlist);
       if (urlErr) { await sendError(res, 400, 'invalid_request_error', urlErr, config, origin); return true; }
     }
-    // Preserve real API key if frontend sends masked value
-    if (filtered.apiKey && filtered.apiKey.includes('***')) {
-      delete filtered.apiKey;
-    }
     const mergedProvider = { ...config.providers[providerName], ...filtered };
     config.providers[providerName] = { ...config.providers[providerName], ...filtered };
     saveConfig(config);
     await rebuildProviders(router, config);
-    const updated = config.providers[providerName];
-    await sendJson(res, 200, { ...updated, apiKey: maskKey(updated.apiKey) }, config, origin);
+    await sendJson(res, 200, config.providers[providerName], config, origin);
     return true;
   }
 
@@ -275,23 +261,16 @@ export async function handleAdminConfigRoutes(
       }
     }
     try {
-      // Preserve real API keys when frontend sends masked values back
-      if (newConfig.providers) {
-        for (const [key, p] of Object.entries(newConfig.providers)) {
-          if (p.apiKey && p.apiKey.includes('***') && config.providers[key]) {
-            p.apiKey = config.providers[key].apiKey;
-          }
-        }
-      }
-      // Preserve real proxyApiKey when frontend sends masked value back
-      if (newConfig.proxyApiKey && newConfig.proxyApiKey.includes('***')) {
-        newConfig.proxyApiKey = config.proxyApiKey;
-      }
       const allowedConfigKeys = getAllowedConfigKeys();
       for (const key of allowedConfigKeys) {
         if (key in newConfig) {
           (config as unknown as Record<string, unknown>)[key] = (newConfig as unknown as Record<string, unknown>)[key];
         }
+      }
+      // Hash password if it was changed to a plaintext value
+      if (config.password && !config.password.includes(':')) {
+        const { hashPassword } = await import('../middleware/auth.js');
+        config.password = await hashPassword(config.password);
       }
       saveConfig(config);
       router.setAliases(config.aliases ?? {});
@@ -310,16 +289,7 @@ export async function handleAdminConfigRoutes(
       Object.assign(config, merged);
       router.setAliases(config.aliases ?? {});
       await rebuildProviders(router, config);
-      const masked: GatewayConfig = {
-        ...config,
-        providers: Object.fromEntries(
-          Object.entries(config.providers).map(([key, p]) => [key, { ...p, apiKey: maskKey(p.apiKey) }]),
-        ),
-      };
-      if (masked.proxyApiKey) {
-        masked.proxyApiKey = maskKey(masked.proxyApiKey);
-      }
-      await sendJson(res, 200, { reloaded: true, config: masked }, config, origin);
+      await sendJson(res, 200, { reloaded: true, config }, config, origin);
     } catch (err) {
       await sendError(res, 500, 'api_error', `Reload failed: ${getErrorMessage(err)}`, config, origin);
     }

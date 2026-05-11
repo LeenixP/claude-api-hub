@@ -1,5 +1,5 @@
 import http from 'http';
-import { sendJson, sendError, maskKey } from '../utils/http.js';
+import { sendJson, sendError } from '../utils/http.js';
 import { forwardRequest } from '../services/forwarder.js';
 import { createProvider } from '../providers/factory.js';
 import { logger } from '../logger.js';

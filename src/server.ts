@@ -4,7 +4,7 @@ import { GatewayConfig } from './providers/types.js';
 import { createProvider } from './providers/factory.js';
 import { getConfigPath } from './config.js';
 import { logger } from './logger.js';
-import { getCorsHeaders, sendError, sendJson, readBody, maskKey } from './utils/http.js';
+import { getCorsHeaders, sendError, sendJson, readBody } from './utils/http.js';
 import { PerIpRateLimiter, requireAdmin, setSecurityHeaders, createSessionToken, verifyPassword, verifyProxyToken, isValidSession, loginRateLimiter, revokeSession, timingSafeCompare } from './middleware/auth.js';
 import { LogManager } from './services/log-manager.js';
 import type { EventBus } from './services/event-bus.js';

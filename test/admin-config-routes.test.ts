@@ -127,14 +127,13 @@ describe('admin config routes', () => {
 
   const authHeaders = { 'x-api-key': 'admin-secret' };
 
-  it('GET /api/config returns masked config', async () => {
+  it('GET /api/config returns config with plaintext keys', async () => {
     const res = await request(server, { method: 'GET', path: '/api/config', headers: authHeaders });
     expect(res.status).toBe(200);
     const json = JSON.parse(res.body);
     expect(json.providers).toBeDefined();
     expect(json.providers.test).toBeDefined();
-    expect(json.providers.test.apiKey).toContain('***');
-    expect(json.providers.test.apiKey).not.toContain('sk-test-key');
+    expect(json.providers.test.apiKey).toBe('sk-test-key');
     expect(json.aliases).toBeDefined();
     expect(json.tierTimeouts).toBeDefined();
   });
@@ -157,7 +156,7 @@ describe('admin config routes', () => {
     expect(res.status).toBe(201);
     const json = JSON.parse(res.body);
     expect(json.name).toBe('new-provider');
-    expect(json.apiKey).toContain('***');
+    expect(json.apiKey).toBe('sk-new-key');
   });
 
   it('POST /api/config/providers returns 409 for duplicate', async () => {
@@ -226,29 +225,22 @@ describe('admin config routes', () => {
     expect(json.models).toEqual(['updated-model']);
   });
 
-  it('PUT /api/config/providers/:name preserves masked API keys', async () => {
-    // First get the masked key
-    const getRes = await request(server, { method: 'GET', path: '/api/config', headers: authHeaders });
-    const configJson = JSON.parse(getRes.body);
-    const maskedKey = configJson.providers.test.apiKey;
-
-    // Send update with masked key
+  it('PUT /api/config/providers/:name updates apiKey directly', async () => {
     const res = await request(server, {
       method: 'PUT',
       path: '/api/config/providers/test',
       headers: { ...authHeaders, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ apiKey: maskedKey, baseUrl: 'https://api.preserve.com' }),
+      body: JSON.stringify({ apiKey: 'sk-updated-key', baseUrl: 'https://api.preserve.com' }),
     });
     expect(res.status).toBe(200);
     const json = JSON.parse(res.body);
-    // The key should still be masked in response, but the real key should be preserved internally
-    expect(json.apiKey).toContain('***');
+    expect(json.apiKey).toBe('sk-updated-key');
 
     // Verify by getting config again
     const getRes2 = await request(server, { method: 'GET', path: '/api/config', headers: authHeaders });
     const configJson2 = JSON.parse(getRes2.body);
     expect(configJson2.providers.test.baseUrl).toBe('https://api.preserve.com');
-    expect(configJson2.providers.test.apiKey).toContain('***');
+    expect(configJson2.providers.test.apiKey).toBe('sk-updated-key');
   });
 
   it('DELETE /api/config/providers/:name deletes provider', async () => {
@@ -387,15 +379,15 @@ describe('admin config routes', () => {
     expect(json.error.message).toContain('providers');
   });
 
-  it('POST /api/config/import preserves masked API keys', async () => {
-    // Get current config with masked keys
+  it('POST /api/config/import imports config with plaintext keys', async () => {
+    // Get current config
     const getRes = await request(server, { method: 'GET', path: '/api/config', headers: authHeaders });
     const currentConfig = JSON.parse(getRes.body);
     const providerNames = Object.keys(currentConfig.providers);
     expect(providerNames.length).toBeGreaterThan(0);
     const firstProvider = providerNames[0];
 
-    // Re-import with masked keys
+    // Re-import the config
     const res = await request(server, {
       method: 'POST',
       path: '/api/config/import',
@@ -404,13 +396,13 @@ describe('admin config routes', () => {
     });
     expect(res.status).toBe(200);
 
-    // Verify keys are still masked in response
+    // Verify keys are preserved in plaintext
     const getRes2 = await request(server, { method: 'GET', path: '/api/config', headers: authHeaders });
     const config2 = JSON.parse(getRes2.body);
-    expect(config2.providers[firstProvider].apiKey).toContain('***');
+    expect(config2.providers[firstProvider].apiKey).toBe(currentConfig.providers[firstProvider].apiKey);
   });
 
-  it('POST /api/config/reload reloads config from disk and returns masked config', async () => {
+  it('POST /api/config/reload reloads config from disk and returns plaintext config', async () => {
     // Sync temp config file with current server config so deepMerge is consistent
     const configPath = join(tmpDir, 'providers.json');
     // Use valid port (>=1) so loadConfig validation passes
@@ -425,12 +417,12 @@ describe('admin config routes', () => {
     expect(json.reloaded).toBe(true);
     expect(json.config).toBeDefined();
     expect(json.config.providers).toBeDefined();
-    // Verify the config has at least one provider with masked apiKey
+    // Verify the config has at least one provider with plaintext apiKey (not masked)
     const providerKeys = Object.keys(json.config.providers);
     expect(providerKeys.length).toBeGreaterThan(0);
     const firstProvider = json.config.providers[providerKeys[0]];
     if (firstProvider.apiKey) {
-      expect(firstProvider.apiKey).toContain('***');
+      expect(firstProvider.apiKey).not.toContain('***');
     }
   });
 

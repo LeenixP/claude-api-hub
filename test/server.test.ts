@@ -212,7 +212,7 @@ describe('server with admin auth', () => {
     expect(res.status).toBe(200);
     const json = JSON.parse(res.body);
     expect(json.providers).toBeDefined();
-    expect(json.providers.test.apiKey).toContain('***');
+    expect(json.providers.test.apiKey).toBe('sk-test-key');
   });
 
   it('GET /api/config with wrong token returns 401', async () => {
