@@ -194,67 +194,81 @@ export async function forwardStream(
   const isHttps = parsed.protocol === 'https:';
   const lib = isHttps ? https : http;
 
-  const options: http.RequestOptions = {
-    hostname: safeIP,
-    port: parsed.port || (isHttps ? 443 : 80),
-    path: parsed.pathname + parsed.search,
-    method: 'POST',
-    headers: { ...headers, 'Host': parsed.hostname, 'Content-Length': Buffer.byteLength(body) },
-    timeout: connectTimeoutMs,
-    agent: getAgent(parsed),
-  };
+  function attemptStream(isRetry: boolean): void {
+    const options: http.RequestOptions = {
+      hostname: safeIP,
+      port: parsed.port || (isHttps ? 443 : 80),
+      path: parsed.pathname + parsed.search,
+      method: 'POST',
+      headers: { ...headers, 'Host': parsed.hostname, 'Content-Length': Buffer.byteLength(body) },
+      timeout: connectTimeoutMs,
+      agent: getAgent(parsed),
+    };
 
-  const req = lib.request(options, (upstreamRes) => {
-    const statusCode = upstreamRes.statusCode ?? 502;
+    let gotResponse = false;
 
-    if (statusCode !== 200) {
-      const chunks: Buffer[] = [];
-      upstreamRes.on('data', (c: Buffer) => chunks.push(c));
-      upstreamRes.on('end', () => {
-        const rawBody = Buffer.concat(chunks).toString('utf-8');
-        if (onUpstreamResponse) onUpstreamResponse(statusCode, upstreamRes.headers, rawBody);
-      });
-      upstreamRes.on('error', onError);
-      return;
-    }
+    const req = lib.request(options, (upstreamRes) => {
+      gotResponse = true;
+      const statusCode = upstreamRes.statusCode ?? 502;
 
-    if (onUpstreamResponse) onUpstreamResponse(200, upstreamRes.headers);
-
-    let idleTimer: NodeJS.Timeout | null = null;
-    let paused = false;
-    function resetIdleTimer() {
-      if (idleTimer) clearTimeout(idleTimer);
-      idleTimer = setTimeout(() => {
-        upstreamRes.destroy(new Error(`Stream idle timeout: no data for ${idleTimeoutMs}ms`));
-      }, idleTimeoutMs);
-    }
-    resetIdleTimer();
-
-    upstreamRes.on('data', (chunk: Buffer) => {
-      resetIdleTimer();
-      const ok = onChunk(chunk.toString('utf-8'));
-      if (ok === false && downstreamRes && !paused) {
-        paused = true;
-        if (idleTimer) { clearTimeout(idleTimer); idleTimer = null; }
-        upstreamRes.pause();
-        downstreamRes.once('drain', () => {
-          paused = false;
-          resetIdleTimer();
-          upstreamRes.resume();
+      if (statusCode !== 200) {
+        const chunks: Buffer[] = [];
+        upstreamRes.on('data', (c: Buffer) => chunks.push(c));
+        upstreamRes.on('end', () => {
+          const rawBody = Buffer.concat(chunks).toString('utf-8');
+          if (onUpstreamResponse) onUpstreamResponse(statusCode, upstreamRes.headers, rawBody);
         });
+        upstreamRes.on('error', onError);
+        return;
       }
+
+      if (onUpstreamResponse) onUpstreamResponse(200, upstreamRes.headers);
+
+      let idleTimer: NodeJS.Timeout | null = null;
+      let paused = false;
+      function resetIdleTimer() {
+        if (idleTimer) clearTimeout(idleTimer);
+        idleTimer = setTimeout(() => {
+          upstreamRes.destroy(new Error(`Stream idle timeout: no data for ${idleTimeoutMs}ms`));
+        }, idleTimeoutMs);
+      }
+      resetIdleTimer();
+
+      upstreamRes.on('data', (chunk: Buffer) => {
+        resetIdleTimer();
+        const ok = onChunk(chunk.toString('utf-8'));
+        if (ok === false && downstreamRes && !paused) {
+          paused = true;
+          if (idleTimer) { clearTimeout(idleTimer); idleTimer = null; }
+          upstreamRes.pause();
+          downstreamRes.once('drain', () => {
+            paused = false;
+            resetIdleTimer();
+            upstreamRes.resume();
+          });
+        }
+      });
+
+      upstreamRes.on('end', () => { if (idleTimer) clearTimeout(idleTimer); onEnd(); });
+      upstreamRes.on('error', (err) => { if (idleTimer) clearTimeout(idleTimer); onError(err); });
+
     });
 
-    upstreamRes.on('end', () => { if (idleTimer) clearTimeout(idleTimer); onEnd(); });
-    upstreamRes.on('error', (err) => { if (idleTimer) clearTimeout(idleTimer); onError(err); });
+    req.on('timeout', () => {
+      req.destroy();
+      onError(new Error(`Stream connection timeout after ${connectTimeoutMs}ms`));
+    });
+    req.on('error', (err) => {
+      const code = (err as NodeJS.ErrnoException).code;
+      if (!isRetry && !gotResponse && code && RETRYABLE_CODES.has(code)) {
+        attemptStream(true);
+        return;
+      }
+      onError(err);
+    });
+    req.write(body);
+    req.end();
+  }
 
-  });
-
-  req.on('timeout', () => {
-    req.destroy();
-    onError(new Error(`Stream connection timeout after ${connectTimeoutMs}ms`));
-  });
-  req.on('error', onError);
-  req.write(body);
-  req.end();
+  attemptStream(false);
 }
