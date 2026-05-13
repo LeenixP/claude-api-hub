@@ -70,7 +70,7 @@
     "@types/node": "^22.0.0",
     "@vitest/coverage-v8": "^3.1.0",
     "esbuild": "^0.25.0",
-    "eslint": "^9.22.0",
+    "eslint": "^10.3.0",
     "htm": "^3.1.1",
     "postcss": "^8.5.0",
     "preact": "^10.26.0",
