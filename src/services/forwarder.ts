@@ -42,19 +42,14 @@ export function destroyAgents(): void {
   agentPoolOrder.length = 0;
 }
 
-export async function forwardRequest(
-  url: string,
+function doForwardRequest(
+  parsed: URL,
+  safeIP: string,
   headers: Record<string, string>,
   body: string,
-  timeoutMs = 120000,
-  maxResponseBytes = MAX_RESPONSE_SIZE,
-  allowlist?: string[],
+  timeoutMs: number,
+  maxResponseBytes: number,
 ): Promise<{ status: number; headers: http.IncomingHttpHeaders; body: string }> {
-  const parsed = new URL(url);
-  const safeIP = await resolveSafeIP(parsed.hostname, allowlist);
-  if (!safeIP) {
-    throw new Error(`SSRF: blocked request to private address ${parsed.hostname}`);
-  }
   const isHttps = parsed.protocol === 'https:';
   const lib = isHttps ? https : http;
 
@@ -96,6 +91,39 @@ export async function forwardRequest(
     req.write(body);
     req.end();
   });
+}
+
+const RETRYABLE_CODES = new Set(['ECONNRESET', 'EPIPE', 'ETIMEDOUT', 'ECONNREFUSED', 'EHOSTUNREACH']);
+
+export async function forwardRequest(
+  url: string,
+  headers: Record<string, string>,
+  body: string,
+  timeoutMs = 120000,
+  maxResponseBytes = MAX_RESPONSE_SIZE,
+  allowlist?: string[],
+): Promise<{ status: number; headers: http.IncomingHttpHeaders; body: string }> {
+  const parsed = new URL(url);
+  const safeIP = await resolveSafeIP(parsed.hostname, allowlist);
+  if (!safeIP) {
+    throw new Error(`SSRF: blocked request to private address ${parsed.hostname}`);
+  }
+
+  try {
+    const result = await doForwardRequest(parsed, safeIP, headers, body, timeoutMs, maxResponseBytes);
+    // Detect empty 200 response (likely stale keep-alive socket or upstream gateway issue)
+    if (result.status === 200 && !result.body) {
+      throw Object.assign(new Error('Empty response body from upstream'), { code: 'ECONNRESET' });
+    }
+    return result;
+  } catch (err: unknown) {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code && RETRYABLE_CODES.has(code)) {
+      // Retry once on connection-level errors (stale keep-alive sockets)
+      return doForwardRequest(parsed, safeIP, headers, body, timeoutMs, maxResponseBytes);
+    }
+    throw err;
+  }
 }
 
 export async function httpGet(

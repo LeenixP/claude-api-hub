@@ -96,6 +96,7 @@ async function handleStreamProxy(
   const streamContext = !isPassthrough && hasParser ? provider.createStreamContext!(anthropicReq.model) : null;
   let sseBuffer = '';
   let preHeaderBuffer: string[] = [];
+  let dataWritten = false;
   // Token accumulator from parsed Anthropic events (works for all non-passthrough providers)
   let parsedInputTokens = 0;
   let parsedOutputTokens = 0;
@@ -131,6 +132,7 @@ async function handleStreamProxy(
 
   function processAndWrite(rawChunk: string): void {
     sniffer.processChunk(rawChunk);
+    dataWritten = true;
 
     if (isPassthrough || !hasParser) {
       res.write(rawChunk);
@@ -171,6 +173,23 @@ async function handleStreamProxy(
       }
     },
     () => {
+      // Detect empty stream: upstream sent 200 headers but no actual data
+      if (!dataWritten) {
+        provider.reportError?.(built.usedKey);
+        ctx.router.markUnhealthy(provider.name);
+        const errMsg = 'Upstream returned empty stream (possible stale connection)';
+        logger.warn(errMsg, { provider: provider.name, url: built.url });
+        if (!res.headersSent) {
+          ctx.logManager?.addLog({ ...logEntry, status: 502, durationMs: Date.now() - startTime, error: errMsg }, logDetail);
+          sendError(res, 502, 'api_error', errMsg, ctx.config, origin);
+        } else {
+          ctx.logManager?.addLog({ ...logEntry, status: 502, durationMs: Date.now() - startTime, error: errMsg }, logDetail);
+          res.write(`data: ${JSON.stringify({ type: 'error', error: { type: 'api_error', message: errMsg } })}\n\n`);
+          res.end();
+        }
+        return;
+      }
+
       // Flush any remaining buffered data
       if (!isPassthrough && hasParser && sseBuffer.trim()) {
         const trimmed = sseBuffer.trim();
